@@ -15,7 +15,7 @@ jobs:
   install-and-run:
     runs-on: windows-2025
     steps:
-      - name: Download private RC installer
+      - name: Download release installer
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -52,5 +52,9 @@ jobs:
           Start-Sleep -Seconds 8
           if ($running.HasExited) { throw "installed app exited early with $($running.ExitCode)" }
           Stop-Process -Id $running.Id -Force
+          $restarted = Start-Process -FilePath $app.FullName -WindowStyle Hidden -PassThru
+          Start-Sleep -Seconds 5
+          if ($restarted.HasExited) { throw "restarted app exited early with $($restarted.ExitCode)" }
+          Stop-Process -Id $restarted.Id -Force
           $runtimeCount = @($manifest.runtimeHashes.PSObject.Properties).Count
-          "INSTALLER_SMOKE_PASS version=$($app.VersionInfo.ProductVersion) runtimeFiles=$runtimeCount path=$($app.FullName)"
+          "INSTALLER_SMOKE_PASS version=$($app.VersionInfo.ProductVersion) runtimeFiles=$runtimeCount restart=true path=$($app.FullName)"
