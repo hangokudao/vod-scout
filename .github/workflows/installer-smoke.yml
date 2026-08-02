@@ -1,0 +1,56 @@
+name: Installer smoke test
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Private RC release tag to test
+        required: true
+        default: v0.3.2-rc.1
+
+permissions:
+  contents: read
+
+jobs:
+  install-and-run:
+    runs-on: windows-2025
+    steps:
+      - name: Download private RC installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "${{ inputs.release_tag }}" --repo "${{ github.repository }}" --pattern "VOD-Scout-*-windows-x64-setup.exe" --dir "$env:RUNNER_TEMP\installer"
+      - name: Install, verify ACL and launch headless
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $installers = @(Get-ChildItem -LiteralPath "$env:RUNNER_TEMP\installer" -Filter "*.exe" -File)
+          if ($installers.Count -ne 1) { throw "expected exactly one installer, found $($installers.Count)" }
+          $installer = $installers[0]
+          $process = Start-Process -FilePath $installer.FullName -ArgumentList "/S" -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "installer exit code $($process.ExitCode)" }
+          $apps = @(Get-ChildItem -LiteralPath $env:LOCALAPPDATA -Recurse -Filter "vod-scout.exe" -File | Where-Object { $_.VersionInfo.ProductVersion -like "0.3.2*" })
+          if ($apps.Count -ne 1) { throw "expected one installed vod-scout.exe v0.3.2, found $($apps.Count)" }
+          $app = $apps[0]
+          $acl = icacls $app.DirectoryName
+          if ($acl -match "(Everyone|BUILTIN\\Users|Authenticated Users).*(\(F\)|\(M\)|\(W\))") { throw "shared principal has write permission: $acl" }
+          $binaryText = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($app.FullName))
+          if ($binaryText -match "runneradmin|C:\\Users\\") { throw "installed binary contains a build-user path" }
+          $manifests = @(Get-ChildItem -LiteralPath $app.DirectoryName -Recurse -Filter "manifest.json" -File | Where-Object { $_.FullName -match "[\\/]media-tools[\\/]manifest.json$" })
+          if ($manifests.Count -ne 1) { throw "expected one media-tools manifest, found $($manifests.Count)" }
+          $runtimeRoot = $manifests[0].DirectoryName
+          $manifest = Get-Content -Raw -Encoding utf8 -LiteralPath $manifests[0].FullName | ConvertFrom-Json
+          foreach ($entry in $manifest.runtimeHashes.PSObject.Properties) {
+            $runtimeFile = Join-Path $runtimeRoot ($entry.Name -replace "/", [IO.Path]::DirectorySeparatorChar)
+            if (-not (Test-Path -LiteralPath $runtimeFile -PathType Leaf)) { throw "missing runtime file $($entry.Name)" }
+            $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $runtimeFile).Hash.ToLowerInvariant()
+            if ($actual -ne $entry.Value) { throw "runtime hash mismatch $($entry.Name)" }
+          }
+          $env:VOD_SCOUT_HEADLESS_E2E = "1"
+          $env:VOD_SCOUT_E2E_DATA_DIR = "$env:RUNNER_TEMP\vod-scout-data"
+          $running = Start-Process -FilePath $app.FullName -WindowStyle Hidden -PassThru
+          Start-Sleep -Seconds 8
+          if ($running.HasExited) { throw "installed app exited early with $($running.ExitCode)" }
+          Stop-Process -Id $running.Id -Force
+          $runtimeCount = @($manifest.runtimeHashes.PSObject.Properties).Count
+          "INSTALLER_SMOKE_PASS version=$($app.VersionInfo.ProductVersion) runtimeFiles=$runtimeCount path=$($app.FullName)"

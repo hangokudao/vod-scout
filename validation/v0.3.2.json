@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "version": "0.3.2",
+  "validatedAt": "2026-08-03T00:07:30+09:00",
+  "environment": {
+    "os": "Windows 11 x64",
+    "node": "24.18.0",
+    "transcriptionBackend": "whisper.cpp CPU",
+    "apiTokensUsed": false
+  },
+  "automated": {
+    "frontend": { "passed": 6, "failed": 0 },
+    "rust": { "passed": 22, "failed": 0, "ignoredActualMedia": 1 },
+    "fixtureWorker": { "passed": 5, "failed": 0 },
+    "archiveSafety": { "passed": 6, "failed": 0 },
+    "clippyWarnings": 0,
+    "npmProductionVulnerabilities": 0
+  },
+  "youtubeMetadata": {
+    "status": "PASS",
+    "durationSeconds": 3929,
+    "extractor": "Youtube",
+    "ytDlpVersion": "2026.07.04"
+  },
+  "longKoreanQuickAnalysis": {
+    "status": "PASS",
+    "sourceDurationSeconds": 3929.081,
+    "analysisMode": "quick",
+    "plannedChunks": 3,
+    "completedUnits": 9,
+    "totalUnits": 9,
+    "elapsedSecondsApprox": 382,
+    "transcriptSegments": 241,
+    "chatMotionPoints": 261,
+    "candidates": 8,
+    "previewPlayerReady": true,
+    "etaSeen": true,
+    "provenanceVerified": true,
+    "isolatedJobDeleted": true,
+    "storageBytesBeforeDeletion": 14435534
+  },
+  "installerSmoke": {
+    "status": "PASS",
+    "githubActionsRun": 30753595845,
+    "version": "0.3.2",
+    "currentUserAclVerified": true,
+    "runtimeHashesVerified": 28,
+    "headlessLaunchSeconds": 8
+  },
+  "holds": [
+    "8시간 실제 영상 실시간 회귀는 사용자 마감 승인에 따라 생략",
+    "8시간 전체 정밀 분석은 지원 주장 제외",
+    "GPU 전사, 채팅 OCR·자동 ROI, LLM 재순위는 v0.3.2 비범위"
+  ]
+}

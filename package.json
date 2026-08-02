@@ -1,0 +1,44 @@
+{
+  "name": "vod-scout",
+  "private": true,
+  "version": "0.3.2",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "vitest run",
+    "test:security": "node --test scripts/archive-safety.test.mjs",
+    "test:watch": "vitest",
+    "sidecar": "node scripts/prepare-sidecar.mjs",
+    "media-tools": "node scripts/prepare-media-tools.mjs",
+    "check:yt-dlp": "node scripts/check-yt-dlp.mjs",
+    "sbom": "node scripts/generate-sbom.mjs",
+    "release:assets": "node scripts/generate-release-assets.mjs",
+    "tauri": "tauri",
+    "tauri:dev": "node scripts/prepare-sidecar.mjs && node scripts/prepare-media-tools.mjs && tauri dev",
+    "tauri:build": "node scripts/prepare-sidecar.mjs --release && node scripts/prepare-media-tools.mjs && tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-dialog": "^2.4.0",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
+    "lucide-react": "^1.28.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^5.0.4",
+    "jsdom": "^27.0.1",
+    "typescript": "~5.9.3",
+    "vite": "^8.2.0",
+    "vitest": "^4.0.17"
+  }
+}

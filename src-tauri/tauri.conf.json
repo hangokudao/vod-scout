@@ -1,0 +1,70 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "VOD Scout",
+  "version": "0.3.2",
+  "identifier": "com.vodscout.app",
+  "build": {
+    "beforeDevCommand": "npm.cmd run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm.cmd run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "VOD Scout",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 860,
+        "minHeight": 640,
+        "visible": false,
+        "resizable": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost data: blob:; media-src 'self' asset: http://asset.localhost blob:; style-src 'self' 'unsafe-inline'",
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPLOCALDATA/jobs/*/review-clips/*.mp4",
+          "$APPLOCALDATA/e2e-*/jobs/*/review-clips/*.mp4"
+        ]
+      },
+      "devCsp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": true,
+    "targets": ["nsis"],
+    "externalBin": ["binaries/fixture-worker"],
+    "resources": ["resources/media-tools/**/*", "../THIRD-PARTY-NOTICES.md"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true },
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "installMode": "currentUser",
+        "languages": ["Korean", "English"]
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYyMzgzNTIwNjM0M0VDNQpSV1RGUGpRR1VvTWpCdHRMWXFRbVgyaTJMRzNMTktjRGI5ZE8vY0xwbmUzdTVlb2xHM1U4OWxESwo=",
+      "endpoints": [
+        "https://github.com/hangokudao/vod-scout/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+[package]
+name = "fixture-worker"
+version = "0.1.0"
+description = "Deterministic VOD Scout pipeline fixture worker"
+edition = "2021"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

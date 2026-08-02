@@ -1,0 +1,58 @@
+name: Release Windows app
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: windows-2025
+    env:
+      RUSTFLAGS: "--remap-path-prefix=${{ github.workspace }}=/src --remap-path-prefix=C:\\Users\\runneradmin\\.cargo\\registry\\src=/cargo/registry/src"
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Install Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: stable
+      - name: Install dependencies and verify source
+        shell: pwsh
+        run: |
+          npm ci
+          npm run media-tools
+          npm run check:yt-dlp
+          npm test
+          npm run test:security
+          cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Read release notes
+        id: release_notes
+        shell: pwsh
+        run: |
+          "body<<VOD_SCOUT_RELEASE_NOTES" >> $env:GITHUB_OUTPUT
+          Get-Content -LiteralPath docs/V0.3.2-RELEASE.md -Encoding utf8 >> $env:GITHUB_OUTPUT
+          "VOD_SCOUT_RELEASE_NOTES" >> $env:GITHUB_OUTPUT
+      - name: Build signed updater and publish release
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "VOD Scout ${{ github.ref_name }}"
+          releaseBody: ${{ steps.release_notes.outputs.body }}
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
