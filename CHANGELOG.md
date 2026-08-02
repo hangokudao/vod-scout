@@ -27,6 +27,7 @@
 - 손상된 snapshot을 가진 UUID 고아 작업이 전체 삭제에서 빠지던 문제와 snapshot ID 불일치 경계를 수정했다.
 - 날짜에 따라 내용이 바뀌는 FFmpeg `latest` URL을 불변 autobuild URL과 asset SHA-256으로 교체했다.
 - 깨끗한 GitHub Actions runner에서 Rust 검증 전에 fixture sidecar를 만들지 않아 릴리스가 중단되던 문제를 수정했다.
+- Tauri Action이 만든 설치 파일 이름과 설치 스모크 workflow의 다운로드 패턴이 달랐던 문제를 수정했다.
 
 ### Security
 
