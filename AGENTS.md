@@ -76,3 +76,9 @@ cargo test --manifest-path src-tauri/fixture-worker/Cargo.toml
 - 첫 공개 릴리스 전 `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`, 체크섬, SBOM, 릴리스 노트, 직접 다운로드 스모크가 모두 필요하다.
 - 공개 전 private staging과 공개 전환은 `docs/GIT-PRIVATE-REPOSITORY-PLAN.md`, 배포 자산과 설정은 `docs/OPEN-SOURCE-RELEASE-PLAN.md`를 따른다.
 - 첫 공개가 끝나면 public 저장소를 일반 개발과 기여의 정본으로 사용한다.
+
+## 8. 사용자 문구와 UI 표현
+
+- 사용자에게 보이는 문서와 UI에서는 영어 개발 용어를 직역하지 말고, 국내에서 자연스럽게 통용되는 표현을 사용한다. 불필요한 번역투는 제외한다.
+- 코드 식별자, 파일명, 명령어, API·제품 고유명은 원문을 유지한다.
+- 기술 용어가 꼭 필요하면 자연스러운 한국어 설명을 먼저 쓰고, 원어는 이해에 도움이 될 때만 괄호로 덧붙인다.

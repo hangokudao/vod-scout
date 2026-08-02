@@ -8,10 +8,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 설치·updater 파일 | `VOD-Scout-0.3.2-windows-x64-setup.exe` |
-| 크기 | `233,818,565 bytes` |
-| SHA-256 | `0393A57C84879F0F3B7B8A0065FDAF4F544A57B2A740D4CAE7DCDA90F5F5EE05` |
-| updater 서명 | `VOD-Scout-0.3.2-windows-x64-setup.exe.sig`, 독립 minisign 검증 PASS |
+| 설치·updater 파일 | `VOD.Scout_0.3.2_x64-setup.exe` |
+| 크기 | `233,848,505 bytes` |
+| SHA-256 | `FF9C6F7421793618D8053D6790AF8964326E4B8F6B7C99875616C4501C8A5D01` |
+| updater 서명 | `VOD.Scout_0.3.2_x64-setup.exe.sig`, 공개 재다운로드 후 독립 minisign 검증 PASS |
 | Authenticode | 없음. 첫 설치에서 SmartScreen 경고 가능 |
 | SBOM | SPDX 2.3, npm·Cargo 656 packages |
 
@@ -52,7 +52,8 @@ runtime manifest schema 5는 FFmpeg·Whisper의 EXE/DLL, yt-dlp, Deno, 모델을
 | 개인 빌드 경로 | release EXE·installer 문자열 스캔 0건 |
 | secret·금지 파일 검사 | Git 이력·staged scan PASS, 커밋된 금지 파일 0개 |
 | 8시간 실제 영상 | 사용자 마감 승인에 따라 생략, 96분·10청크 예산 단위 테스트만 PASS, 실시간 결과 HOLD |
-| 새 Windows 설치 ACL·runtime 28개 재해시·실행 | PASS, private Windows runner run `30753595845` |
-| public Release 직접 다운로드 | 공개 직후 검증 예정 |
+| 새 Windows 설치 ACL·runtime 28개 재해시·실행 | PASS, public run `30754986062` |
+| public Release 직접 다운로드 | PASS, 설치 EXE·서명·manifest·SBOM 4개 SHA-256 및 updater 서명 검증 |
+| 설치 후 종료·재실행 | PASS, public Windows runner run `30754986062`, `restart=true` |
 
 실제 테스트 데이터는 `VOD_SCOUT_E2E_DATA_DIR`로 사용자 작업과 분리했다. 기존 사용자 데이터와 `D:\VOD Scout` 설치본은 수정하거나 삭제하지 않았다. 상세 근거는 `validation/v0.3.2.json`과 `docs/V0.3.2-RELEASE.md`에 기록한다.
