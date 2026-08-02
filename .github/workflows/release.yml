@@ -30,6 +30,7 @@ jobs:
         shell: pwsh
         run: |
           npm ci
+          npm run sidecar
           npm run media-tools
           npm run check:yt-dlp
           npm test

@@ -25,6 +25,8 @@
 - CSV 저장 경로를 프런트엔드 IPC 입력으로 받지 않고 Rust 백엔드의 네이티브 저장 대화상자에서만 선택한다.
 - 분석 모드·범위가 달라진 뒤 이전 전사와 후보가 섞일 수 있던 체크포인트 재사용을 수정했다.
 - 손상된 snapshot을 가진 UUID 고아 작업이 전체 삭제에서 빠지던 문제와 snapshot ID 불일치 경계를 수정했다.
+- 날짜에 따라 내용이 바뀌는 FFmpeg `latest` URL을 불변 autobuild URL과 asset SHA-256으로 교체했다.
+- 깨끗한 GitHub Actions runner에서 Rust 검증 전에 fixture sidecar를 만들지 않아 릴리스가 중단되던 문제를 수정했다.
 
 ### Security
 

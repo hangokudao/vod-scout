@@ -1,11 +1,11 @@
 {
   "schemaVersion": 5,
-  "preparedAt": "2026-08-02T14:16:31.204Z",
+  "preparedAt": "2026-08-02T15:18:01.053Z",
   "artifacts": {
     "ffmpeg": {
-      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-win64-lgpl-shared-8.1.zip",
-      "sha256": "d0e27b409599525395a0982c88a4597d0f764ef038aeb20ed5dbca74b3654fbf",
-      "archive": "ffmpeg-n8.1-win64-lgpl-shared.zip"
+      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-01-13-21/ffmpeg-n8.1.2-34-g9b6c8969e0-win64-lgpl-shared-8.1.zip",
+      "sha256": "3bba81dcfd017a6ea1627905549769913948831ef10f3e7df7541f736067bff8",
+      "archive": "ffmpeg-n8.1.2-34-g9b6c8969e0-win64-lgpl-shared-8.1.zip"
     },
     "whisper": {
       "url": "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.1/whisper-bin-x64.zip",

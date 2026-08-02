@@ -31,9 +31,17 @@
 ## 2026-08-02 · 설치 폴더 권한과 실행 파일 해시
 
 - 증상: 진행 중인 취약점 점검에서 기존 비표준 설치 폴더가 상위 권한을 상속하며 일반 사용자 수정 권한이 있고, 설치된 `vod-scout.exe` 해시가 현재 release EXE와 다르다고 보고됐다.
-- 원인: 점검 완료 전이라 확정되지 않았다. 이전 설치본과 현재 빌드가 다른 정상적인 경우와 설치 경로 변조 가능성을 분리해야 한다.
-- 수정: 아직 적용하지 않았다.
-- 필요한 검증: 설치본 버전·파일 해시·NSIS 원본 해시를 연결하고, 설치 폴더 ACL이 current-user 설치 정책에 적절한지 평가한다.
+- 원인: 기존 비표준 설치본은 v0.3.2 패키지와 다른 산출물이었고 상위 폴더의 공유 쓰기 권한을 상속했다.
+- 수정: v0.3.2를 current-user NSIS로 패키징하고 runtime 28개 SHA-256 검증, updater minisign, release EXE 경로 치환을 적용했다.
+- 회귀 테스트: private Windows runner에서 새 설치 ACL, runtime 28개 재해시, v0.3.2 실행을 확인했다. 기존 `D:\VOD Scout`는 수정하지 않았다.
+- 상태: `PASS`
+
+## 2026-08-03 · v0.3.2 · 깨끗한 CI 릴리스 준비 실패
+
+- 증상: public 태그의 첫 Actions run `30753813573`이 FFmpeg archive SHA 불일치와 fixture sidecar 부재로 패키징 전에 중단됐다.
+- 원인: FFmpeg 다운로드가 이동하는 `latest` 자산을 사용했고, 로컬 빌드가 남겨 둔 sidecar를 깨끗한 runner에서도 존재한다고 가정했다.
+- 수정: FFmpeg를 `autobuild-2026-08-01-13-21`의 불변 URL과 GitHub asset SHA-256에 고정하고, CI 검증 전에 `npm run sidecar`를 실행한다.
+- 회귀 테스트: 새 archive SHA-256, 재생성한 runtime manifest, 반복 `npm run media-tools`, yt-dlp 검사를 로컬에서 통과했다. public Actions 재실행 결과는 릴리스 문서에 기록한다.
 - 상태: `HOLD`
 
 ## 2026-08-02 · v0.3.2 · runtime DLL 무결성 누락
