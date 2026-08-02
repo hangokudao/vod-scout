@@ -2,6 +2,14 @@
 
 긴 유튜버 VOD에서 쇼츠 후보를 먼저 좁혀 주는 Windows용 오프라인 편집 보조 앱입니다.
 
+## Windows 설치 파일
+
+[**VOD Scout v0.3.2 다운로드 (.exe)**](https://github.com/hangokudao/vod-scout/releases/download/v0.3.2/VOD.Scout_0.3.2_x64-setup.exe)
+
+[변경 내용·SHA-256·서명 파일 보기](https://github.com/hangokudao/vod-scout/releases/tag/v0.3.2)
+
+Windows 코드 서명 인증서가 없어 처음 설치할 때 SmartScreen 경고가 표시될 수 있습니다.
+
 ## 0.3.2에서 되는 것
 
 `로컬 영상 또는 YouTube URL → 로컬 영상 확보 → ffprobe → 10분 오디오 청크 → 한국어 Whisper 전사 → 오디오·발화·채팅 움직임 점수 → 겹치지 않는 후보 → 앱 내 영상 검토`
@@ -30,9 +38,9 @@
 
 채팅 글자를 읽는 OCR, GPU 전사, LLM 재순위, 완성 쇼츠 렌더링은 아직 구현하지 않았습니다. 채팅 움직임은 화면 오른쪽 영역의 변화량이지 채팅 내용 분석이 아닙니다. 비공개·멤버십·로그인 필요 영상과 진행 중인 라이브는 지원하지 않습니다.
 
-## 설치
+## 설치 안내
 
-[Windows x64 설치 파일과 릴리스 노트](https://github.com/hangokudao/vod-scout/releases/latest)
+[최신 버전과 변경 내용 확인](https://github.com/hangokudao/vod-scout/releases/latest)
 
 - Windows 10/11 x64
 - 설치 파일 코드 서명 없음: SmartScreen 경고가 표시될 수 있음
@@ -73,6 +81,7 @@ cargo test --manifest-path src-tauri/fixture-worker/Cargo.toml
 
 - [프로젝트 작업 규칙](AGENTS.md)
 - [변경 이력](CHANGELOG.md)
+- [공개 저장소 다음 작업](docs/PUBLIC-REPOSITORY-NEXT-STEPS.md)
 - [버전업·릴리스 절차](docs/RELEASE-PROCESS.md)
 - [디버깅·장애 기록](docs/DEBUGGING.md)
 - [비공개 Git 저장소 전환 계획](docs/GIT-PRIVATE-REPOSITORY-PLAN.md)

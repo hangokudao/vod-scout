@@ -42,8 +42,8 @@
 - 원인: FFmpeg 다운로드가 이동하는 `latest` 자산을 사용했고, 로컬 빌드가 남겨 둔 sidecar를 깨끗한 runner에서도 존재한다고 가정했다.
 - 수정: FFmpeg를 `autobuild-2026-08-01-13-21`의 불변 URL과 GitHub asset SHA-256에 고정하고, CI 검증 전에 `npm run sidecar`를 실행한다.
 - 추가 수정: Tauri Action의 `VOD.Scout_<version>_x64-setup.exe` 이름을 설치 스모크 workflow가 찾도록 release asset 패턴을 `*_x64-setup.exe`로 맞췄다.
-- 회귀 테스트: 새 archive SHA-256, 재생성한 runtime manifest, 반복 `npm run media-tools`, yt-dlp 검사를 로컬에서 통과했다. public Actions 재실행 결과는 릴리스 문서에 기록한다.
-- 상태: `HOLD`
+- 회귀 테스트: 새 archive SHA-256, 재생성한 runtime manifest, 반복 `npm run media-tools`, yt-dlp 검사를 통과했다. public release run `30754174632`와 설치·재실행 run `30754986062`가 PASS했다.
+- 상태: `PASS`
 
 ## 2026-08-02 · v0.3.2 · runtime DLL 무결성 누락
 

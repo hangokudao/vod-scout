@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "version": "0.3.2",
-  "validatedAt": "2026-08-03T00:07:30+09:00",
+  "validatedAt": "2026-08-03T00:44:18+09:00",
   "environment": {
     "os": "Windows 11 x64",
     "node": "24.18.0",
@@ -41,15 +41,30 @@
   },
   "installerSmoke": {
     "status": "PASS",
-    "githubActionsRun": 30753595845,
+    "githubActionsRun": 30754986062,
     "version": "0.3.2",
     "currentUserAclVerified": true,
     "runtimeHashesVerified": 28,
-    "headlessLaunchSeconds": 8
+    "headlessLaunchSeconds": 8,
+    "restartVerified": true
+  },
+  "publicRelease": {
+    "status": "PASS",
+    "url": "https://github.com/hangokudao/vod-scout/releases/tag/v0.3.2",
+    "releaseWorkflowRun": 30754174632,
+    "tagCommit": "65b2b4c13521bdaf71620e2a0a978bf7b73b49f4",
+    "installer": "VOD.Scout_0.3.2_x64-setup.exe",
+    "installerBytes": 233848505,
+    "installerSha256": "ff9c6f7421793618d8053d6790af8964326e4b8f6b7c99875616c4501c8a5d01",
+    "updaterSignatureVerified": true,
+    "latestManifestVersion": "0.3.2",
+    "checksumsVerified": 4,
+    "sbomPackages": 656
   },
   "holds": [
     "8시간 실제 영상 실시간 회귀는 사용자 마감 승인에 따라 생략",
     "8시간 전체 정밀 분석은 지원 주장 제외",
-    "GPU 전사, 채팅 OCR·자동 ROI, LLM 재순위는 v0.3.2 비범위"
+    "GPU 전사, 채팅 OCR·자동 ROI, LLM 재순위는 v0.3.2 비범위",
+    "v0.3.2가 최초 updater 탑재 버전이어서 이전 서명 버전에서의 실제 인앱 교체는 다음 patch에서 검증"
   ]
 }
