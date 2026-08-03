@@ -110,12 +110,14 @@ flowchart LR
     TRANSCRIPT --> SEGMENTS["주제·사건 경계 세그먼트"]
     INDEX --> SEGMENTS
     SEGMENTS --> STORY["시작·전개·절정·마무리\n이야기 후보 연결"]
-    STORY --> REFINE["상위 후보와 주변 맥락만\n정밀 전사·선별 글자 인식"]
+    STORY --> REFINE["상위 후보와 주변 맥락만\n정밀 음성 인식·선별 글자 인식"]
+    REFINE --> API["선택형 사용자 API\n축약 후보 재정렬"]
+    API --> REVIEW["이야기 후보 + 15~90초 반응 후보\n사람 검토"]
     REFINE --> REVIEW["이야기 후보 + 15~90초 반응 후보\n사람 검토"]
     STORY --> REVIEW
 ```
 
-Ollama와 다른 로컬 AI는 `STORY → REFINE` 사이에서 축약된 후보를 보조 평가할 수 있지만 필수 단계가 아니다. 연결이 없거나 실패하면 규칙 기반 `STORY → REVIEW` 경로로 완료한다.
+외부 AI는 `REFINE → API`에서 사용자가 직접 등록한 API로 축약 후보를 재정렬하는 선택 단계다. API 키·네트워크·사용자 동의가 없거나 호출이 실패하면 규칙 기반 `REFINE → REVIEW` 또는 `STORY → REVIEW` 경로로 완료한다.
 
 ## 자원 사용 계약
 
@@ -136,10 +138,10 @@ jobs/{job-id}/
 ├─ transcript-budget.json   # 전사한 구간과 남은 예산
 ├─ story-candidates.json    # 이야기 후보와 시작·절정·마무리 근거
 ├─ analysis-provenance.json # CPU/GPU, 모델, 설정, 처리 시간
-└─ model-cache/             # 선택 모델이 아닌 작업별 파생 결과만 저장
+└─ api-rerank.json          # 제공처·모델·후보 ID·사용량·결과, API 키 제외
 ```
 
-모델 파일은 작업 폴더마다 복사하지 않고 앱 관리 영역에서 한 번만 보관한다. 사용자 동의 없이 Ollama 모델이나 GPU용 대형 자산을 받지 않는다.
+사용자 API 키는 작업 폴더가 아니라 Windows 보안 저장소에만 보관한다. 작업 기록에는 제공처·모델·전송한 후보 ID·사용 토큰·재정렬 결과만 남기며 인증 헤더는 남기지 않는다. 사용자 동의 없이 외부로 전송하거나 GPU용 대형 자산을 받지 않는다.
 
 ## 이야기 연결 규칙
 
