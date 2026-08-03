@@ -89,6 +89,8 @@ cargo test --manifest-path src-tauri/fixture-worker/Cargo.toml
 - [2026-08-02 보안 점검 인수 기록](docs/SECURITY-AUDIT-2026-08-02.md)
 - [v0.3.2 구현·검증 계획](docs/V0.3.2-PLAN.md)
 - [v0.3.2 릴리스 작업 정본](docs/V0.3.2-RELEASE.md)
+- [v0.3.3 UI·검토 개선 계획](docs/V0.3.3-PLAN.md)
+- [v0.4.0 장시간 최적화·이야기 구간 계획](docs/V0.4.0-PLAN.md)
 - [오픈소스 라이선스 결정 기록](docs/LICENSE-DECISION.md)
 - [제품·개발 계획](docs/PLAN.md)
 - [아키텍처와 상태 모델](docs/ARCHITECTURE.md)
@@ -102,7 +104,9 @@ cargo test --manifest-path src-tauri/fixture-worker/Cargo.toml
 
 ## 다음 순서
 
-1. 서로 다른 레이아웃의 2시간·8시간 실제 한국어 VOD 성능·품질 측정
-2. 채팅 영역을 사용자가 지정하는 ROI 설정
-3. 움직임이 활발한 구간만 선택 OCR
-4. GPU 전사와 채팅 영역 자동 탐색
+1. v0.3.3 후보 정렬·시스템 화면 설정·전후 맥락·UI 정리
+2. 현재 CPU 경로의 처리 시간·메모리·저장 공간 기준선 측정
+3. GPU 시험 전사·CPU 자동 전환과 Whisper 성능 단계
+4. 1~2시간 회귀 뒤 8시간 빠른 분석 검증
+5. 이야기 구간 탐색과 상위 후보 주변 정밀 분석
+6. 채팅 영역 직접 지정·선별 글자 인식·자동 영역 탐색
