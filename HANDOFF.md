@@ -10,7 +10,8 @@
 - 백엔드 커밋: `d5cd518af097d3e2c72f65f5ede9e6c0152b1e0f` 및 맥락 기반 커밋 `e9372144fbcd168be124ea745462d7cb40b9f75e`
 - 통합 결과: 충돌 없이 통합 후 화면·Rust 단위 검증을 실행했다.
 - PR: https://github.com/hangokudao/vod-scout/pull/5 (OPEN, 병합 전)
-- 남은 HOLD: `npm.cmd test` WSL 인용 오류, 실제 미디어·설치본·서명·업데이트 전환·8시간 자원 측정.
+- Sol 통합 검증: Windows `cmd.exe` 경유 `npm.cmd test` 2개 파일·32개 테스트 PASS, `npm.cmd run build` TypeScript·Vite PASS, cargo 핵심 26개 통과·1개 무시 및 fixture-worker 5개 통과.
+- 남은 HOLD: 실제 미디어·설치본·서명·업데이트 전환·8시간 자원 측정.
 
 상세 결과는 `docs/V0.3.3-RELEASE.md`, `BUILD-MANIFEST.md`, `docs/DEBUGGING.md`를 따른다.
 

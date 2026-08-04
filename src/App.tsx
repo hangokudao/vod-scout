@@ -82,7 +82,7 @@ import { CURRENT_RELEASE_NOTES } from "./releaseNotes";
 
 const PIPELINE = [
   { label: "미디어 확인", statuses: ["ACQUIRING", "PROBING"], icon: FileVideo2 },
-  { label: "오디오·전사", statuses: ["EXTRACTING_AUDIO", "TRANSCRIBING"], icon: Mic2 },
+  { label: "오디오·음성 인식", statuses: ["EXTRACTING_AUDIO", "TRANSCRIBING"], icon: Mic2 },
   { label: "반응 신호", statuses: ["AUDIO_SIGNALS", "CHAT_SIGNALS"], icon: Activity },
   { label: "후보 조합", statuses: ["FUSING"], icon: Sparkles },
   { label: "순위 결정", statuses: ["RANKING"], icon: Gauge },
@@ -109,9 +109,9 @@ const SCENARIOS: Array<{ value: Scenario; label: string; detail: string }> = [
 ];
 
 const ANALYSIS_MODES: Array<{ value: AnalysisMode; label: string; detail: string }> = [
-  { value: "quick", label: "빠른 분석", detail: "전체를 훑고 최대 120분만 분산 전사" },
+  { value: "quick", label: "빠른 분석", detail: "전체를 훑고 최대 120분만 분산 음성 인식" },
   { value: "range", label: "구간 지정", detail: "선택한 시작·종료 범위만 정밀 분석" },
-  { value: "full", label: "전체 정밀 분석", detail: "전체 오디오를 10분 청크로 전사" }
+  { value: "full", label: "전체 정밀 분석", detail: "전체 오디오를 10분 단위로 음성 인식" }
 ];
 
 export type CandidateSortKey =
@@ -698,7 +698,7 @@ function App() {
   }
 
   async function removeStoredJob(jobId: string) {
-    if (active || !window.confirm("선택한 작업 폴더와 저장된 영상·전사를 삭제할까요?")) return;
+    if (active || !window.confirm("선택한 작업 폴더와 저장된 영상·음성 인식 결과를 삭제할까요?")) return;
     try {
       await deleteStoredJob(jobId);
       if (job?.id === jobId) {
@@ -712,7 +712,7 @@ function App() {
   }
 
   async function removeAllStoredJobs() {
-    if (active || !window.confirm("저장된 모든 작업과 다운로드 영상·전사를 삭제할까요? 이 작업은 되돌릴 수 없습니다.")) return;
+    if (active || !window.confirm("저장된 모든 작업과 다운로드 영상·음성 인식 결과를 삭제할까요? 이 작업은 되돌릴 수 없습니다.")) return;
     try {
       await deleteAllJobs();
       setJob(null);
@@ -822,7 +822,7 @@ function App() {
         </div>
         <div className="verification-banner">
           <Bot size={15} />
-          <span><strong>오프라인 로컬 분석</strong> · 영상과 전사는 이 PC 밖으로 전송되지 않습니다.</span>
+          <span><strong>오프라인 로컬 분석</strong> · 영상과 음성 인식 결과는 이 PC 밖으로 전송되지 않습니다.</span>
         </div>
         <div className="runtime-state">
           <span className="runtime-dot" aria-hidden="true" />
@@ -900,7 +900,7 @@ function App() {
               <div>
                 <span className="eyebrow">NEW ANALYSIS</span>
                 <h1 id="source-title">어떤 방송을 살펴볼까요?</h1>
-                <p>로컬 영상을 10분 청크로 나눠 전사하고, 오디오 반응과 발화 밀도로 쇼츠 후보를 찾습니다.</p>
+                <p>로컬 영상을 10분 단위로 나눠 음성 인식하고, 오디오 반응과 대화 밀도로 쇼츠 후보를 찾습니다.</p>
               </div>
               <span className="step-count">01 / 03</span>
             </div>
@@ -1200,7 +1200,7 @@ function App() {
                 <article className="checkpoint-board">
                   <div className="panel-heading"><span><CheckCircle2 size={17} /> 저장된 체크포인트</span><span className="safe-label">LOCAL</span></div>
                   <strong>{job.completedUnits}<small> / {job.totalUnits} units</small></strong>
-                  <p>{job.sourceKind === "local" ? "각 10분 청크의 전사와 오디오 신호를 저장합니다. 취소하거나 앱을 닫아도 완료된 청크 다음부터 이어집니다." : job.sourceKind === "youtube" ? "다운로드 임시 파일과 완료 영상, 10분 전사 청크를 저장합니다. 취소하거나 앱을 닫아도 가능한 지점부터 이어집니다." : "각 단위가 끝날 때 작업 상태를 원자적으로 저장합니다. 실패하거나 앱을 닫아도 완료 지점 다음부터 이어집니다."}</p>
+                  <p>{job.sourceKind === "local" ? "각 10분 단위의 음성 인식 결과와 오디오 신호를 저장합니다. 취소하거나 앱을 닫아도 완료된 청크 다음부터 이어집니다." : job.sourceKind === "youtube" ? "다운로드 임시 파일과 완료 영상, 10분 단위 음성 인식 결과를 저장합니다. 취소하거나 앱을 닫아도 가능한 지점부터 이어집니다." : "각 단위가 끝날 때 작업 상태를 원자적으로 저장합니다. 실패하거나 앱을 닫아도 완료 지점 다음부터 이어집니다."}</p>
                   <div className="checkpoint-meta">
                     <span><Clock3 size={14} /> {new Date(job.updatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
                     <span><TerminalSquare size={14} /> {job.scenario}</span>
@@ -1312,7 +1312,7 @@ function App() {
           </div>
 
           <div className="settings-section">
-            <div className="settings-title-row"><div><h3>저장 공간 정리</h3><p>현재 PC에 저장된 다운로드 영상·전사·미리보기입니다.</p></div>{storedJobs.length ? <button className="button danger compact" disabled={active} onClick={() => void removeAllStoredJobs()}><Trash2 size={14} /> 전체 삭제</button> : null}</div>
+            <div className="settings-title-row"><div><h3>저장 공간 정리</h3><p>현재 PC에 저장된 다운로드 영상·음성 인식 결과·미리보기입니다.</p></div>{storedJobs.length ? <button className="button danger compact" disabled={active} onClick={() => void removeAllStoredJobs()}><Trash2 size={14} /> 전체 삭제</button> : null}</div>
             <div className="stored-job-list">
               {storedJobs.length ? storedJobs.map((item) => <div key={item.snapshot.id}><span><strong>{shortSource(item.snapshot.sourceLabel, 42)}</strong><small>{new Date(item.snapshot.updatedAt).toLocaleString("ko-KR")} · {formatBytes(item.sizeBytes)}</small></span><button className="icon-button danger-icon" disabled={active} aria-label="작업 삭제" onClick={() => void removeStoredJob(item.snapshot.id)}><Trash2 size={15} /></button></div>) : <p className="quiet-copy">저장된 작업이 없습니다.</p>}
             </div>
