@@ -405,6 +405,10 @@ fn preview_output_name(cache_key: &str, preview_kind: PreviewKind) -> String {
     format!("{}-{digest:x}.mp4", preview_kind.as_str())
 }
 
+fn preview_temporary_path(output: &Path) -> PathBuf {
+    output.with_extension("tmp.mp4")
+}
+
 pub(crate) fn prepare_candidate_preview(
     state: &Arc<AppState>,
     job_id: &str,
@@ -509,10 +513,7 @@ fn prepare_preview(
     let clip_duration = (clip_end - clip_start).max(1.0);
 
     if !output.is_file() || fs::metadata(&output).map(|value| value.len()).unwrap_or(0) < 1024 {
-        let temporary = preview_dir.join(format!(
-            "{}.tmp",
-            preview_output_name(&cache_key, preview_kind)
-        ));
+        let temporary = preview_temporary_path(&output);
         fs::remove_file(&temporary).ok();
         let never_cancel = AtomicBool::new(false);
         let result = run_command(
@@ -1848,6 +1849,15 @@ mod tests {
         ] {
             assert_ne!(base, variant);
         }
+    }
+
+    #[test]
+    fn preview_temporary_path_keeps_an_mp4_extension_for_ffmpeg() {
+        let output = PathBuf::from("context-cache.mp4");
+        assert_eq!(
+            preview_temporary_path(&output),
+            PathBuf::from("context-cache.tmp.mp4")
+        );
     }
 
     #[test]

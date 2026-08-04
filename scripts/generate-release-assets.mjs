@@ -5,7 +5,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const version = "0.3.2";
+const version = "0.3.3";
 const bundleDir = join(projectRoot, "src-tauri", "target", "release", "bundle", "nsis");
 const releaseDir = join(projectRoot, "release", `v${version}`);
 const builtInstaller = join(bundleDir, `VOD Scout_${version}_x64-setup.exe`);
@@ -30,7 +30,7 @@ await copyFile(builtSignature, join(releaseDir, signatureName));
 await copyFile(join(projectRoot, "SBOM.spdx.json"), join(releaseDir, "SBOM.spdx.json"));
 
 const signature = (await readFile(builtSignature, "utf8")).trim();
-const notes = await readFile(join(projectRoot, "docs", "V0.3.2-UPDATER-NOTES.md"), "utf8");
+const notes = await readFile(join(projectRoot, "docs", "V0.3.3-UPDATER-NOTES.md"), "utf8");
 const latest = {
   version,
   notes,

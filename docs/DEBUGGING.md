@@ -10,12 +10,30 @@
 - 회귀 테스트: 동일 입력에서 ID 재생성 일치, 같은 시작·다른 끝 구간 ID 구분, 맥락 캐시 키 각 필드 구분, 이전 snapshot 맥락 필드 기본값 읽기를 통과했다.
 - 상태: `PASS`
 
-## 2026-08-04 · v0.3.3 · 업데이트·실제 미디어 검증
+## 2026-08-05 · v0.3.3 · 후보·맥락 MP4 임시 이름
 
-- 증상: 해당 버전에서 실제 설치 전환과 실제 미디어 검토를 실행하지 않았다.
-- 원인: PR 생성 단계에서는 v0.3.3 설치본과 승인된 실제 입력이 준비되지 않았다.
-- 수정: 구현하지 않았다. 설치본·서명·업데이트 전환·실제 미디어를 릴리스 전 검증 항목으로 남겼다.
-- 회귀 테스트: 해당 없음.
+- 증상과 재현 조건: 승인된 YouTube `JN3BO9GLuFU`를 빠른 분석해 `REVIEW_READY`에 도달한 뒤 첫 후보의 맥락 영상을 만들면 FFmpeg가 `Unable to choose an output format for '...context-<hash>.mp4.tmp'; use a standard extension for the filename or specify the format manually.`과 `Invalid argument`를 기록하고 플레이어가 준비되지 않았다.
+- 확인한 로그·파일: 수정 전 stderr SHA-256 `DA5DC45BD811B37F9E676D1BFD81E3BA2925FEAD710B2F327981D6E1E45FD982`; 공통 `prepare_preview`가 후보와 맥락 모두에 최종 `.mp4` 이름 뒤 `.tmp`를 붙였다.
+- 원인: FFmpeg는 출력 파일의 마지막 확장자로 컨테이너를 추론하는데 임시 파일이 `.mp4.tmp`라서 MP4 muxer를 선택하지 못했다.
+- 수정: 최종 출력 경로의 확장자를 `tmp.mp4`로 바꿔 임시 파일도 MP4 확장자를 유지하고, 성공한 뒤 기존 최종 `.mp4` 경로로 rename하는 흐름은 유지했다.
+- 회귀 테스트: `preview_temporary_path_keeps_an_mp4_extension_for_ffmpeg` PASS. 실제 입력에서 H.264/AAC 맥락 75초 `21,614,567 bytes`와 후보 49초 `14,123,834 bytes`를 새로 만들고 플레이어 준비 상태를 확인했다.
+- 상태: `PASS`
+
+## 2026-08-05 · v0.3.3 · 측정용 경로의 Asset Protocol 403
+
+- 증상과 재현 조건: 위 MP4 생성 수정 뒤 worktree 아래 측정 폴더에서는 파일이 정상이어도 WebView `<video>`가 `readyState=0`, `networkState=3`, 오류 코드 4였고 `http://asset.localhost/...` 요청이 HTTP 403이었다.
+- 확인한 로그·파일: 맥락 MP4는 H.264 Constrained Baseline·AAC LC·1280×720·75초로 `ffprobe`를 통과했다. `tauri.conf.json`은 `$APPLOCALDATA/jobs/*/review-clips/*.mp4`와 `$APPLOCALDATA/e2e-*/jobs/*/review-clips/*.mp4`만 허용한다.
+- 원인: 제품 미리보기 문제가 아니라 검증 도구가 `VOD_SCOUT_E2E_DATA_DIR`를 허용 범위 밖의 `src-tauri/target/v033-evidence/...`로 지정한 경로 불일치였다.
+- 수정: Asset Protocol 범위를 넓히지 않았다. 실제 사용자 작업과 분리된 `$APPLOCALDATA/e2e-v033-JN3BO9GLuFU`에 1.14 MB의 상태 파일만 복제하고 원본 미디어는 기존 측정 폴더에서 읽어, 허용 경로에 맥락·후보 영상을 새로 만들었다.
+- 회귀 테스트: 같은 앱·작업에서 HTTP 403 없이 후보 8개 검토 화면과 영상 플레이어 준비 상태 PASS. 확인 뒤 관련 자식 프로세스 0개.
+- 상태: `PASS`
+
+## 2026-08-05 · v0.3.3 · 설치·업데이트 전환
+
+- 증상: v0.3.3 설치 EXE와 공개 updater 자산이 아직 없으므로 v0.3.2 설치본에서 실제 업데이트·재실행·작업 보존을 확인할 수 없다.
+- 원인: PR 병합과 릴리스 승인 전에는 설치본·태그·GitHub Release를 만들지 않는 게이트를 적용했다.
+- 수정: 구현 변경 없음. GitHub 저장소의 기존 Tauri signing secret 이름은 확인했지만 로컬 키는 없고, Authenticode 인증서는 CurrentUser·LocalMachine 저장소에서 모두 0개였다.
+- 회귀 테스트: 병합 전 해당 없음.
 - 상태: `HOLD`
 
 ## 기록 형식

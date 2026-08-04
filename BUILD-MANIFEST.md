@@ -2,15 +2,44 @@
 
 ## v0.3.3 PR 단계
 
-상태: **HOLD** — 설치 EXE와 서명된 updater 자산은 PR 생성 뒤 릴리스 승인 단계에서 만든다.
+상태: **HOLD** — 승인된 실제 미디어·8시간대 빠른 분석과 pre-merge 실행 파일은 검증했다. 설치 EXE와 서명된 updater 자산은 PR 병합 승인 뒤 exact merged commit에서 만든다.
 
 - 예정 설치 파일: `VOD.Scout_0.3.3_x64-setup.exe`
 - 크기·SHA-256: 미생성
-- updater 서명·`SHA256SUMS.txt`·SBOM 갱신: 미생성
+- updater 서명·`SHA256SUMS.txt`·SBOM 갱신: 미생성. 현재 `SBOM.spdx.json`은 v0.3.2이므로 v0.3.3 배포 근거로 사용하지 않는다. GitHub Actions secret 이름 2개는 존재하지만 현재 로컬 signing key는 없음
+- Authenticode: CurrentUser·LocalMachine 코드 서명 인증서 0개, `signtool.exe` 미확인, `HOLD`
+- pre-merge no-bundle `vod-scout.exe`: 버전 `0.3.3`, `15,187,456 bytes`, SHA-256 `8F6F052A61773F0963C4460B6AB1922FD4B6AAC0766672A25104BF86DDBDED7E`; 최종 설치본 근거가 아니며 병합 뒤 재생성 필요
 - 프런트 테스트: 2개 파일·32개 PASS
 - TypeScript + Vite: PASS
-- Rust 핵심: 26개 PASS·1개 무시
+- Rust 핵심: 27개 PASS·1개 무시
 - fixture-worker: 5개 PASS
+- archive 안전성: 정상 1개·공격 경로 5개, 총 6개 PASS
+
+### v0.3.3 실제 미디어·자원 측정
+
+| 항목 | 값 |
+|---|---|
+| 입력 | YouTube `JN3BO9GLuFU`, 확인 길이 `32,000초`, 실제 미디어 `31,999.981초`, 1280×720 H.264/Opus |
+| 모드·완료 | 빠른 분석, 음성 인식 예산 `6,400초`, 11/11 구간, 17/17 단계, 후보 8개, `REVIEW_READY` |
+| 시간 | 첫 시작→검토 준비 `2,161.231초`; 두 번의 중단 사이 대기 제외 누적 활성 `2,068.605초` |
+| CPU·RAM | Intel Core i5-8400 6C/6T, RAM `25,709,678,592 bytes` |
+| GPU | NVIDIA GeForce GTX 1060 3GB, driver 560.94; 보드 메모리 기준선 `1,682 MiB`, 최대 `2,012 MiB`, 증가 `330 MiB` |
+| 프로세스 메모리 | 합산 최대 working set `934,158,336 bytes`; 최대 private bytes `1,123,246,080 bytes` |
+| 분석 임시 파일 | WAV 최대 `19,200,078 bytes` |
+| 내려받기 임시 파일 | 닫힌 영상·음성 입력 최소 확인값 `7,070,731,050 bytes`; 병합 중 열린 출력 포함 정확한 순간 최대는 `HOLD` |
+| 최종 작업 데이터 | 원본·상태·로그·후보 49초·맥락 75초 MP4 포함 `7,097,358,568 bytes`, 66 files |
+| 종료 정리 | 관련 자식 프로세스 0개 |
+
+시험 화면 SHA-256: `5CD7F5E36FD05ACFBC0F89EFF169027174F01DEA6D0217A0C93BA3AA9869D148`.
+
+시험용 맥락 MP4: `21,614,567 bytes`, SHA-256 `68216547975653F36E768AA5FA6043D161A25A7E1EA57FCF05628395F97D3576`. 시험용 후보 MP4: `14,123,834 bytes`, SHA-256 `F69F7E28BE257B95CAD45110F238142EE206AE3BCBA2C61D7905F00D01E0E84F`. 두 파일은 배포 자산이 아니다.
+
+### v0.3.3 pre-merge 도구 환경
+
+- Node.js `v24.18.0`, npm `11.16.0`
+- rustc `1.97.1`, cargo `1.97.1`, Tauri CLI `2.11.4`
+- Windows 11 Pro
+- 고정 runtime·모델 SHA-256은 실제 실행이 기록한 `pipeline-provenance.json`과 `src-tauri/resources/media-tools/manifest.json`이 일치했다.
 
 ## 이전 v0.3.2 공개 빌드
 
