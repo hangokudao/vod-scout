@@ -222,7 +222,7 @@ export function resolveTheme(preference: ThemePreference, prefersDark: boolean):
 }
 
 /** worker가 맥락 구간을 보내지 않는 작업에서 사용할 기본 여유 시간. */
-export const DEFAULT_CONTEXT_PADDING_SECONDS = 20;
+export const DEFAULT_CONTEXT_PADDING_SECONDS = 15;
 
 export interface CandidateContext {
   startSeconds: number;
