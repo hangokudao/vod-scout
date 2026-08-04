@@ -126,7 +126,7 @@ export const CANDIDATE_SORTS: Array<{ value: CandidateSortKey; label: string }> 
   { value: "totalScore", label: "종합 점수 높은 순" },
   { value: "startSeconds", label: "원본 영상 시간순" },
   { value: "audioScore", label: "오디오 반응 높은 순" },
-  { value: "dialogueScore", label: "발화 밀도 높은 순" },
+  { value: "dialogueScore", label: "대화 밀도 높은 순" },
   { value: "chatScore", label: "채팅 움직임 높은 순" },
   { value: "decision", label: "채택·보류·제외 상태" }
 ];
@@ -1210,7 +1210,7 @@ function App() {
                 <article className="signal-preview">
                   <div className="panel-heading"><span><Activity size={17} /> Signal Rail 준비 상태</span><span>{audioSignalsReady ? (chatSignalsReady ? "3 / 3" : "2 / 3") : "0 / 3"}</span></div>
                   <div className={`preview-signal ${audioSignalsReady ? "ready" : ""}`}><span>오디오 반응</span><i /><strong>{audioSignalsReady ? "READY" : "WAIT"}</strong></div>
-                  <div className={`preview-signal ${audioSignalsReady ? "ready" : ""}`}><span>발화 밀도</span><i /><strong>{audioSignalsReady ? "READY" : "WAIT"}</strong></div>
+                  <div className={`preview-signal ${audioSignalsReady ? "ready" : ""}`}><span>대화 밀도</span><i /><strong>{audioSignalsReady ? "READY" : "WAIT"}</strong></div>
                   <div className={`preview-signal ${chatSignalsReady ? "ready" : ""}`}><span>채팅 움직임</span><i /><strong>{chatSignalsReady ? "READY" : "WAIT"}</strong></div>
                 </article>
               </section>
