@@ -40,6 +40,17 @@ struct Candidate<'a> {
     chat_score: u8,
     total_score: u8,
     decision: &'a str,
+    context_start_seconds: f64,
+    context_end_seconds: f64,
+    context_transcript: Vec<TranscriptEntry<'a>>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TranscriptEntry<'a> {
+    start_seconds: f64,
+    end_seconds: f64,
+    text: &'a str,
 }
 
 fn emit(event: &WorkerEvent<'_>) {
@@ -133,6 +144,13 @@ fn candidates() -> Vec<Candidate<'static>> {
             chat_score: 95,
             total_score: 91,
             decision: "PENDING",
+            context_start_seconds: 739.0,
+            context_end_seconds: 817.0,
+            context_transcript: vec![TranscriptEntry {
+                start_seconds: 754.0,
+                end_seconds: 802.0,
+                text: "잠깐, 이게 된다고? 아니 진짜 잡았어!",
+            }],
         },
         Candidate {
             id: "candidate-2",
@@ -146,6 +164,13 @@ fn candidates() -> Vec<Candidate<'static>> {
             chat_score: 86,
             total_score: 86,
             decision: "PENDING",
+            context_start_seconds: 1907.0,
+            context_end_seconds: 1975.0,
+            context_transcript: vec![TranscriptEntry {
+                start_seconds: 1922.0,
+                end_seconds: 1960.0,
+                text: "그건 칭찬이 아니잖아. 방금 누가 인정했어?",
+            }],
         },
         Candidate {
             id: "candidate-3",
@@ -159,6 +184,13 @@ fn candidates() -> Vec<Candidate<'static>> {
             chat_score: 79,
             total_score: 84,
             decision: "PENDING",
+            context_start_seconds: 3273.0,
+            context_end_seconds: 3364.0,
+            context_transcript: vec![TranscriptEntry {
+                start_seconds: 3288.0,
+                end_seconds: 3349.0,
+                text: "아 그만, 그만해. 나 진짜 숨 못 쉬겠어.",
+            }],
         },
     ]
 }

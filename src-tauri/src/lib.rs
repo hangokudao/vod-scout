@@ -874,6 +874,20 @@ async fn prepare_candidate_preview(
 }
 
 #[tauri::command]
+async fn prepare_candidate_context_preview(
+    state: State<'_, Arc<AppState>>,
+    job_id: String,
+    candidate_id: String,
+) -> Result<media::PreviewMedia, String> {
+    let state = Arc::clone(state.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        media::prepare_candidate_context_preview(&state, &job_id, &candidate_id)
+    })
+    .await
+    .map_err(|error| format!("맥락 미리보기 작업이 중단됐습니다: {error}"))?
+}
+
+#[tauri::command]
 fn set_candidate_decision(
     app: tauri::AppHandle,
     state: State<'_, Arc<AppState>>,
@@ -973,6 +987,7 @@ pub fn run() {
             delete_all_jobs,
             export_candidates_csv,
             prepare_candidate_preview,
+            prepare_candidate_context_preview,
             set_candidate_decision,
             get_runtime_info
         ])
