@@ -104,6 +104,8 @@ cargo test --manifest-path src-tauri/fixture-worker/Cargo.toml
 
 ## 다음 순서
 
+v0.3.3의 프론트엔드 디자인과 전반적인 UI/UX 설계·구현은 Orca-Claude가 담당한다.
+
 1. v0.3.3 후보 정렬·시스템 화면 설정·전후 맥락·UI 정리
 2. 현재 CPU 경로의 처리 시간·메모리·저장 공간 기준선 측정
 3. GPU 시험 전사·CPU 자동 전환과 Whisper 성능 단계
