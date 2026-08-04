@@ -5,6 +5,7 @@ import {
   Bot,
   Check,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   Circle,
   Copy,
@@ -45,7 +46,7 @@ import {
   getJobStorageInfo,
   listJobs,
   isDesktopRuntime,
-  prepareCandidatePreview,
+  prepareCandidateContextPreview,
   previewMediaUrl,
   saveCandidatesCsv,
   setCandidateDecision,
@@ -55,6 +56,7 @@ import {
 import type {
   Candidate,
   CandidateDecision,
+  ContextLine,
   AnalysisMode,
   JobSnapshot,
   JobStatus,
@@ -80,7 +82,7 @@ import { CURRENT_RELEASE_NOTES } from "./releaseNotes";
 
 const PIPELINE = [
   { label: "미디어 확인", statuses: ["ACQUIRING", "PROBING"], icon: FileVideo2 },
-  { label: "오디오·전사", statuses: ["EXTRACTING_AUDIO", "TRANSCRIBING"], icon: Mic2 },
+  { label: "오디오·음성 인식", statuses: ["EXTRACTING_AUDIO", "TRANSCRIBING"], icon: Mic2 },
   { label: "반응 신호", statuses: ["AUDIO_SIGNALS", "CHAT_SIGNALS"], icon: Activity },
   { label: "후보 조합", statuses: ["FUSING"], icon: Sparkles },
   { label: "순위 결정", statuses: ["RANKING"], icon: Gauge },
@@ -107,10 +109,194 @@ const SCENARIOS: Array<{ value: Scenario; label: string; detail: string }> = [
 ];
 
 const ANALYSIS_MODES: Array<{ value: AnalysisMode; label: string; detail: string }> = [
-  { value: "quick", label: "빠른 분석", detail: "전체를 훑고 최대 120분만 분산 전사" },
+  { value: "quick", label: "빠른 분석", detail: "전체를 훑고 최대 120분만 분산 음성 인식" },
   { value: "range", label: "구간 지정", detail: "선택한 시작·종료 범위만 정밀 분석" },
-  { value: "full", label: "전체 정밀 분석", detail: "전체 오디오를 10분 청크로 전사" }
+  { value: "full", label: "전체 정밀 분석", detail: "전체 오디오를 10분 단위로 음성 인식" }
 ];
+
+export type CandidateSortKey =
+  | "totalScore"
+  | "startSeconds"
+  | "audioScore"
+  | "dialogueScore"
+  | "chatScore"
+  | "decision";
+
+export const CANDIDATE_SORTS: Array<{ value: CandidateSortKey; label: string }> = [
+  { value: "totalScore", label: "종합 점수 높은 순" },
+  { value: "startSeconds", label: "원본 영상 시간순" },
+  { value: "audioScore", label: "오디오 반응 높은 순" },
+  { value: "dialogueScore", label: "대화 밀도 높은 순" },
+  { value: "chatScore", label: "채팅 움직임 높은 순" },
+  { value: "decision", label: "채택·보류·제외 상태" }
+];
+
+const DECISION_SORT_RANK: Record<CandidateDecision, number> = { ACCEPTED: 0, PENDING: 1, REJECTED: 2 };
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function compareByPrimaryKey(a: Candidate, b: Candidate, key: CandidateSortKey) {
+  if (key === "startSeconds") return a.startSeconds - b.startSeconds;
+  if (key === "decision") return DECISION_SORT_RANK[a.decision] - DECISION_SORT_RANK[b.decision];
+  if (key === "chatScore") {
+    // 채팅 신호를 계산하지 못한 후보는 항상 목록 끝에 둔다.
+    if (a.chatScore === null || b.chatScore === null) {
+      if (a.chatScore === b.chatScore) return 0;
+      return a.chatScore === null ? 1 : -1;
+    }
+    return b.chatScore - a.chatScore;
+  }
+  return b[key] - a[key];
+}
+
+/**
+ * 화면에 보이는 순서만 바꾼다. 점수와 판정은 읽기만 하고 원본 배열도 건드리지 않는다.
+ * 같은 입력은 언제나 같은 순서를 만든다. 값이 같으면 원본 시간, 그다음 후보 식별자 순이다.
+ */
+export function sortCandidates(candidates: readonly Candidate[], key: CandidateSortKey): Candidate[] {
+  return [...candidates].sort((a, b) => {
+    const primary = compareByPrimaryKey(a, b, key);
+    if (primary !== 0) return primary;
+    if (a.startSeconds !== b.startSeconds) return a.startSeconds - b.startSeconds;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+}
+
+export type ThemePreference = "system" | "light" | "dark";
+
+export const THEME_OPTIONS: Array<{ value: ThemePreference; label: string }> = [
+  { value: "system", label: "시스템 설정 사용" },
+  { value: "light", label: "밝게" },
+  { value: "dark", label: "어둡게" }
+];
+
+export interface UiSettings {
+  theme: ThemePreference;
+  sortKey: CandidateSortKey;
+}
+
+export const DEFAULT_UI_SETTINGS: UiSettings = { theme: "system", sortKey: "totalScore" };
+
+/** 화면 설정은 앱 전체에서 이 키 하나만 사용한다. */
+export const SETTINGS_STORAGE_KEY = "vod-scout.settings.v1";
+
+/** 선택한 후보는 작업마다 따로 기억한다. 순서가 아니라 후보 식별자를 저장한다. */
+export function selectionStorageKey(jobId: string) {
+  return `vod-scout.selected-candidate.${jobId}`;
+}
+
+function safeStorage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+export function readUiSettings(storage: Storage | null = safeStorage()): UiSettings {
+  try {
+    const raw = storage?.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return DEFAULT_UI_SETTINGS;
+    const parsed = JSON.parse(raw) as Partial<UiSettings>;
+    return {
+      theme: THEME_OPTIONS.some((item) => item.value === parsed.theme) ? parsed.theme! : DEFAULT_UI_SETTINGS.theme,
+      sortKey: CANDIDATE_SORTS.some((item) => item.value === parsed.sortKey) ? parsed.sortKey! : DEFAULT_UI_SETTINGS.sortKey
+    };
+  } catch {
+    return DEFAULT_UI_SETTINGS;
+  }
+}
+
+export function writeUiSettings(settings: UiSettings, storage: Storage | null = safeStorage()) {
+  try {
+    storage?.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // 저장 공간을 쓸 수 없어도 이번 실행 동안의 화면 설정은 그대로 동작해야 한다.
+  }
+}
+
+export function resolveTheme(preference: ThemePreference, prefersDark: boolean): "light" | "dark" {
+  return preference === "system" ? (prefersDark ? "dark" : "light") : preference;
+}
+
+/** worker가 맥락 구간을 보내지 않는 작업에서 사용할 기본 여유 시간. */
+export const DEFAULT_CONTEXT_PADDING_SECONDS = 15;
+
+export interface CandidateContext {
+  startSeconds: number;
+  endSeconds: number;
+  lines: ContextLine[];
+  fromWorker: boolean;
+}
+
+/**
+ * 맥락 구간을 정한다. 원본 시작·끝을 벗어나지 않고 후보 구간을 항상 포함한다.
+ * worker가 보낸 값이 있으면 그 값을 쓰고, 없으면 기본 여유 시간을 적용한다.
+ */
+export function resolveCandidateContext(
+  candidate: Candidate,
+  mediaDurationSeconds: number | null
+): CandidateContext {
+  const requestedStart = candidate.contextStartSeconds ?? candidate.startSeconds - DEFAULT_CONTEXT_PADDING_SECONDS;
+  const requestedEnd = candidate.contextEndSeconds ?? candidate.endSeconds + DEFAULT_CONTEXT_PADDING_SECONDS;
+  const sourceEnd = mediaDurationSeconds && mediaDurationSeconds > 0
+    ? Math.max(mediaDurationSeconds, candidate.endSeconds)
+    : Math.max(requestedEnd, candidate.endSeconds);
+  return {
+    startSeconds: clamp(requestedStart, 0, candidate.startSeconds),
+    endSeconds: clamp(requestedEnd, candidate.endSeconds, sourceEnd),
+    lines: [...(candidate.contextTranscript ?? [])].sort((a, b) => a.startSeconds - b.startSeconds),
+    fromWorker: candidate.contextStartSeconds != null || candidate.contextEndSeconds != null
+  };
+}
+
+export type UpdateStatusKind = "unknown" | "checking" | "current" | "available" | "waiting" | "error";
+
+export interface UpdateStatusView {
+  kind: UpdateStatusKind;
+  label: string;
+  detail: string;
+}
+
+/** 최신 상태, 새 버전, 확인 실패, 분석 종료 후 설치 대기를 서로 다른 상태로 구분한다. */
+export function resolveUpdateStatus(input: {
+  checking: boolean;
+  available: boolean;
+  checkedAt: string | null;
+  failed: boolean;
+  analysisActive: boolean;
+}): UpdateStatusView {
+  if (input.checking) {
+    return { kind: "checking", label: "확인 중", detail: "GitHub Releases에서 최신 안정 버전을 확인하고 있습니다." };
+  }
+  if (input.failed) {
+    return {
+      kind: "error",
+      label: "확인 실패",
+      detail: "업데이트 서버에 연결하지 못했습니다. 로컬 영상 분석과 저장된 작업 검토는 그대로 사용할 수 있습니다."
+    };
+  }
+  if (input.available && input.analysisActive) {
+    return {
+      kind: "waiting",
+      label: "분석 종료 후 설치 대기",
+      detail: "새 버전을 설치할 준비가 됐습니다. 실행 중인 분석을 마치거나 안전하게 취소한 뒤 설치합니다."
+    };
+  }
+  if (input.available) {
+    return { kind: "available", label: "새 버전 있음", detail: "서명된 안정 버전을 지금 설치할 수 있습니다." };
+  }
+  if (input.checkedAt) {
+    return { kind: "current", label: "최신 상태", detail: "현재 최신 안정 버전을 사용 중입니다." };
+  }
+  return {
+    kind: "unknown",
+    label: "확인 전",
+    detail: "앱을 실행하면 자동으로 확인합니다. 연결하지 못해도 로컬 분석은 그대로 사용할 수 있습니다."
+  };
+}
 
 function statusTone(status: JobStatus) {
   if (status === "REVIEW_READY") return "success";
@@ -170,7 +356,11 @@ function App() {
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("quick");
   const [rangeStart, setRangeStart] = useState("00:00:00");
   const [rangeEnd, setRangeEnd] = useState("01:00:00");
-  const [selectedCandidate, setSelectedCandidate] = useState(0);
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const [settings, setSettings] = useState<UiSettings>(() => readUiSettings());
+  const [systemPrefersDark, setSystemPrefersDark] = useState(
+    () => window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false
+  );
   const [storageBytes, setStorageBytes] = useState<number | null>(null);
   const [clock, setClock] = useState(Date.now());
   const [preview, setPreview] = useState<PreviewMedia | null>(null);
@@ -186,6 +376,8 @@ function App() {
   const [updateInstalling, setUpdateInstalling] = useState(false);
   const [updateProgress, setUpdateProgress] = useState<number | null>(null);
   const [updateError, setUpdateError] = useState<string | null>(null);
+  const [updateCheckedAt, setUpdateCheckedAt] = useState<string | null>(null);
+  const [updateInstallError, setUpdateInstallError] = useState<string | null>(null);
   const browserFileInput = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const autoplayPreview = useRef(false);
@@ -227,9 +419,32 @@ function App() {
   }, [loading]);
 
   useEffect(() => {
-    if (!job?.candidates.length) return;
-    setSelectedCandidate((current) => Math.min(current, job.candidates.length - 1));
-  }, [job?.candidates.length]);
+    const query = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!query) return;
+    const onChange = (event: MediaQueryListEvent) => setSystemPrefersDark(event.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+
+  const resolvedTheme = resolveTheme(settings.theme, systemPrefersDark);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = resolvedTheme;
+    document.documentElement.style.colorScheme = resolvedTheme;
+  }, [resolvedTheme]);
+
+  useEffect(() => {
+    writeUiSettings(settings);
+  }, [settings]);
+
+  // 작업을 열 때 저장해 둔 후보 식별자를 되살린다. 목록에 없으면 조용히 버린다.
+  useEffect(() => {
+    if (!job?.id) {
+      setSelectedCandidateId(null);
+      return;
+    }
+    setSelectedCandidateId(safeStorage()?.getItem(selectionStorageKey(job.id)) ?? null);
+  }, [job?.id]);
 
   useEffect(() => {
     if (!job || !ACTIVE_STATUSES.includes(job.status)) return;
@@ -251,7 +466,21 @@ function App() {
 
   const active = job ? ACTIVE_STATUSES.includes(job.status) : false;
   const resumable = job ? RESUMABLE_STATUSES.includes(job.status) : false;
-  const selected = job?.candidates[selectedCandidate] ?? null;
+  const sortedCandidates = useMemo(
+    () => sortCandidates(job?.candidates ?? [], settings.sortKey),
+    [job?.candidates, settings.sortKey]
+  );
+  // 선택은 순서가 아니라 후보 식별자를 따른다. 정렬을 바꿔도 같은 후보가 남는다.
+  const selected = sortedCandidates.find((candidate) => candidate.id === selectedCandidateId) ?? sortedCandidates[0] ?? null;
+  const selectedIndex = selected ? sortedCandidates.findIndex((candidate) => candidate.id === selected.id) : -1;
+  const context = selected ? resolveCandidateContext(selected, job?.mediaDurationSeconds ?? null) : null;
+  const updateStatus = resolveUpdateStatus({
+    checking: updateChecking,
+    available: !!updateInfo?.available,
+    checkedAt: updateCheckedAt,
+    failed: !!updateError && !updateInstalling,
+    analysisActive: active
+  });
   const checkpointPercent = job?.totalUnits ? Math.round((job.completedUnits / job.totalUnits) * 100) : 0;
   const percent = job?.sourceKind === "youtube" && job.status === "ACQUIRING" && job.completedUnits === 0
     ? (job.downloadPercent ?? 0)
@@ -260,6 +489,15 @@ function App() {
   const timing = job ? estimateJobTiming(job, new Date(clock)) : null;
   const audioSignalsReady = !!job && PIPELINE_STATUS_ORDER.indexOf(job.status) >= PIPELINE_STATUS_ORDER.indexOf("AUDIO_SIGNALS");
   const chatSignalsReady = !!job && PIPELINE_STATUS_ORDER.indexOf(job.status) >= PIPELINE_STATUS_ORDER.indexOf("CHAT_SIGNALS");
+
+  useEffect(() => {
+    if (!job?.id || !selected) return;
+    try {
+      safeStorage()?.setItem(selectionStorageKey(job.id), selected.id);
+    } catch {
+      // 저장에 실패해도 이번 실행 동안의 선택은 그대로 유지된다.
+    }
+  }, [job?.id, selected?.id]);
 
   useEffect(() => {
     if (!job || job.status !== "REVIEW_READY" || !selected || !isDesktopRuntime) {
@@ -271,7 +509,7 @@ function App() {
     let disposed = false;
     setPreviewLoading(true);
     setPreviewError(null);
-    void prepareCandidatePreview(job.id, selected.id)
+    void prepareCandidateContextPreview(job.id, selected.id)
       .then((media) => {
         if (disposed) return;
         setPreview(media);
@@ -359,17 +597,38 @@ function App() {
     }
   }
 
-  function chooseCandidate(index: number, play = false) {
-    if (!job?.candidates[index] || previewLoading) return;
+  function chooseCandidate(candidateId: string | undefined, play = false) {
+    const target = sortedCandidates.find((candidate) => candidate.id === candidateId);
+    if (!target || previewLoading) return;
     autoplayPreview.current = play;
-    if (index === selectedCandidate && preview && videoRef.current) {
-      videoRef.current.currentTime = Math.max(0, job.candidates[index].startSeconds - preview.clipStartSeconds);
-      setPlayheadSeconds(job.candidates[index].startSeconds);
+    if (target.id === selected?.id && preview && videoRef.current) {
+      videoRef.current.currentTime = Math.max(0, target.startSeconds - preview.clipStartSeconds);
+      setPlayheadSeconds(target.startSeconds);
       if (play) void videoRef.current.play().catch(() => undefined);
       autoplayPreview.current = false;
       return;
     }
-    setSelectedCandidate(index);
+    setSelectedCandidateId(target.id);
+  }
+
+  function moveSelection(step: number) {
+    if (!sortedCandidates.length) return;
+    const next = clamp(selectedIndex + step, 0, sortedCandidates.length - 1);
+    chooseCandidate(sortedCandidates[next].id);
+  }
+
+  /** 이미 만들어 둔 검토 프록시 안에서만 이동한다. 같은 구간을 다시 만들지 않는다. */
+  function jumpToSource(targetSeconds: number, label: string) {
+    const video = videoRef.current;
+    if (!video || !preview) return;
+    const bounded = clamp(targetSeconds, preview.sourceStartSeconds, preview.sourceEndSeconds);
+    video.currentTime = Math.max(0, bounded - preview.clipStartSeconds);
+    setPlayheadSeconds(bounded);
+    setNotice(
+      Math.abs(bounded - targetSeconds) < 0.5
+        ? `${label} ${formatTime(Math.round(bounded))}로 이동했습니다.`
+        : `${label}가 준비된 재생 구간을 벗어나 ${formatTime(Math.round(bounded))}로 이동했습니다.`
+    );
   }
 
   async function copyTimecode() {
@@ -439,7 +698,7 @@ function App() {
   }
 
   async function removeStoredJob(jobId: string) {
-    if (active || !window.confirm("선택한 작업 폴더와 저장된 영상·전사를 삭제할까요?")) return;
+    if (active || !window.confirm("선택한 작업 폴더와 저장된 영상·음성 인식 결과를 삭제할까요?")) return;
     try {
       await deleteStoredJob(jobId);
       if (job?.id === jobId) {
@@ -453,7 +712,7 @@ function App() {
   }
 
   async function removeAllStoredJobs() {
-    if (active || !window.confirm("저장된 모든 작업과 다운로드 영상·전사를 삭제할까요? 이 작업은 되돌릴 수 없습니다.")) return;
+    if (active || !window.confirm("저장된 모든 작업과 다운로드 영상·음성 인식 결과를 삭제할까요? 이 작업은 되돌릴 수 없습니다.")) return;
     try {
       await deleteAllJobs();
       setJob(null);
@@ -472,10 +731,13 @@ function App() {
     try {
       const info = await checkForAppUpdate();
       setUpdateInfo(info);
+      setUpdateCheckedAt(new Date().toISOString());
       if (manual && !info.available) setNotice("현재 최신 안정 버전을 사용 중입니다.");
       if (info.available) setSettingsOpen(true);
     } catch (error) {
-      if (manual) setUpdateError(`업데이트 서버에 연결하지 못했습니다. 기존 오프라인 기능은 계속 사용할 수 있습니다. ${messageFrom(error)}`);
+      // 업데이트 연결 실패는 분석 실패가 아니다. 작업 화면이 아니라 설정 화면에서만 알린다.
+      setUpdateError(messageFrom(error));
+      setUpdateCheckedAt(new Date().toISOString());
     } finally {
       setUpdateChecking(false);
     }
@@ -483,15 +745,15 @@ function App() {
 
   async function installUpdate() {
     if (active) {
-      setUpdateError("분석 작업을 먼저 완료하거나 안전하게 취소한 뒤 업데이트해 주세요.");
+      setUpdateInstallError("분석 작업을 먼저 완료하거나 안전하게 취소한 뒤 업데이트해 주세요.");
       return;
     }
     setUpdateInstalling(true);
-    setUpdateError(null);
+    setUpdateInstallError(null);
     try {
       await installPendingUpdate(setUpdateProgress);
     } catch (error) {
-      setUpdateError(`업데이트 설치에 실패했습니다. 기존 버전은 유지됩니다. ${messageFrom(error)}`);
+      setUpdateInstallError(`업데이트 설치에 실패했습니다. 기존 버전은 그대로 유지됩니다. ${messageFrom(error)}`);
       setUpdateInstalling(false);
     }
   }
@@ -530,12 +792,8 @@ function App() {
       if (typing) return;
       if (event.key === "Escape" && active) void requestCancel();
       if (event.key.toLowerCase() === "r" && resumable) void runPrimary();
-      if (event.key.toLowerCase() === "j" && job?.candidates.length) {
-        chooseCandidate(Math.min(selectedCandidate + 1, job.candidates.length - 1));
-      }
-      if (event.key.toLowerCase() === "k" && job?.candidates.length) {
-        chooseCandidate(Math.max(selectedCandidate - 1, 0));
-      }
+      if (event.key.toLowerCase() === "j") moveSelection(1);
+      if (event.key.toLowerCase() === "k") moveSelection(-1);
       if (event.key.toLowerCase() === "a" && selected) void decide("ACCEPTED");
       if (event.key.toLowerCase() === "x" && selected) void decide("REJECTED");
     }
@@ -564,7 +822,7 @@ function App() {
         </div>
         <div className="verification-banner">
           <Bot size={15} />
-          <span><strong>오프라인 로컬 분석</strong> · 영상과 전사는 이 PC 밖으로 전송되지 않습니다.</span>
+          <span><strong>오프라인 로컬 분석</strong> · 영상과 음성 인식 결과는 이 PC 밖으로 전송되지 않습니다.</span>
         </div>
         <div className="runtime-state">
           <span className="runtime-dot" aria-hidden="true" />
@@ -642,7 +900,7 @@ function App() {
               <div>
                 <span className="eyebrow">NEW ANALYSIS</span>
                 <h1 id="source-title">어떤 방송을 살펴볼까요?</h1>
-                <p>로컬 영상을 10분 청크로 나눠 전사하고, 오디오 반응과 발화 밀도로 쇼츠 후보를 찾습니다.</p>
+                <p>로컬 영상을 10분 단위로 나눠 음성 인식하고, 오디오 반응과 대화 밀도로 쇼츠 후보를 찾습니다.</p>
               </div>
               <span className="step-count">01 / 03</span>
             </div>
@@ -766,28 +1024,47 @@ function App() {
 
             {job.status === "REVIEW_READY" && selected ? (
               <section className="review-layout">
-                <div className="candidate-list" aria-label="편집 후보 목록">
+                <div className="candidate-list">
                   <div className="panel-heading">
                     <span><ListChecks size={17} /> 후보 큐</span>
                     <strong>{job.candidates.length}</strong>
                   </div>
-                  {job.candidates.map((candidate, index) => (
-                    <button
-                      className={`candidate-row ${selectedCandidate === index ? "selected" : ""}`}
-                      key={candidate.id}
-                      disabled={previewLoading}
-                      onClick={() => chooseCandidate(index, true)}
+                  <div className="candidate-sort">
+                    <label htmlFor="candidate-sort">정렬</label>
+                    <select
+                      id="candidate-sort"
+                      value={settings.sortKey}
+                      onChange={(event) => setSettings((current) => ({ ...current, sortKey: event.target.value as CandidateSortKey }))}
                     >
-                      <span className="candidate-rank">{String(index + 1).padStart(2, "0")}</span>
-                      <span className="candidate-copy">
-                        <span className="candidate-time">{formatTime(candidate.startSeconds)} — {formatTime(candidate.endSeconds)}</span>
-                        <strong>{candidate.title}</strong>
-                        <small>{candidate.summary}</small>
-                      </span>
-                      <span className="candidate-score">{candidate.totalScore}</span>
-                      <DecisionMark decision={candidate.decision} />
-                    </button>
-                  ))}
+                      {CANDIDATE_SORTS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="candidate-sort-note" role="status">
+                    보이는 순서만 바꿉니다. 점수와 채택·보류·제외 상태는 그대로입니다.
+                  </p>
+                  <ul className="candidate-rows" aria-label="편집 후보 목록">
+                    {sortedCandidates.map((candidate, index) => (
+                      <li key={candidate.id}>
+                        <button
+                          className={`candidate-row ${candidate.id === selected.id ? "selected" : ""}`}
+                          disabled={previewLoading}
+                          aria-current={candidate.id === selected.id ? "true" : undefined}
+                          onClick={() => chooseCandidate(candidate.id, true)}
+                        >
+                          <span className="candidate-rank">{String(index + 1).padStart(2, "0")}</span>
+                          <span className="candidate-copy">
+                            <span className="candidate-time">{formatTime(candidate.startSeconds)} — {formatTime(candidate.endSeconds)}</span>
+                            <strong>{candidate.title}</strong>
+                            <small>{candidate.summary}</small>
+                          </span>
+                          <span className="candidate-score">{candidate.totalScore}</span>
+                          <DecisionMark decision={candidate.decision} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
 
                 <article className="candidate-detail">
@@ -821,13 +1098,72 @@ function App() {
                   <div className="detail-content">
                     <div className="detail-title">
                       <div>
-                        <span className="eyebrow">CANDIDATE {String(selectedCandidate + 1).padStart(2, "0")}</span>
+                        <span className="eyebrow">CANDIDATE {String(selectedIndex + 1).padStart(2, "0")}</span>
                         <h2>{selected.title}</h2>
                       </div>
                       <span className="total-score"><small>TOTAL</small>{selected.totalScore}</span>
                     </div>
                     <blockquote>“{selected.transcriptExcerpt}”</blockquote>
                     <SignalRail candidate={selected} />
+                    {context ? (
+                      <section className="context-panel" aria-labelledby="context-title">
+                        <div className="context-heading">
+                          <h3 id="context-title">앞뒤 맥락</h3>
+                          <span className="context-range">
+                            {formatTime(Math.round(context.startSeconds))} — {formatTime(Math.round(context.endSeconds))}
+                          </span>
+                        </div>
+                        <div className="context-jumps" role="group" aria-label="원본 이동">
+                          <button
+                            className="button ghost compact"
+                            disabled={!preview}
+                            onClick={() => jumpToSource(selected.startSeconds, "후보 시작")}
+                          >
+                            <Play size={14} fill="currentColor" /> 후보 시작
+                          </button>
+                          <button
+                            className="button ghost compact"
+                            disabled={!preview}
+                            onClick={() => jumpToSource(context.startSeconds, "맥락 시작")}
+                          >
+                            <ChevronLeft size={14} /> 맥락 시작
+                          </button>
+                          <button
+                            className="button ghost compact"
+                            disabled={!preview}
+                            onClick={() => jumpToSource(context.endSeconds, "맥락 끝")}
+                          >
+                            <ChevronRight size={14} /> 맥락 끝
+                          </button>
+                        </div>
+                        {context.lines.length ? (
+                          <ol className="context-lines">
+                            {context.lines.map((line) => {
+                              const inside = line.startSeconds >= selected.startSeconds && line.startSeconds < selected.endSeconds;
+                              return (
+                                <li className={inside ? "inside" : "outside"} key={`${line.startSeconds}-${line.text}`}>
+                                  <button
+                                    className="context-jump-time"
+                                    disabled={!preview}
+                                    onClick={() => jumpToSource(line.startSeconds, "선택한 문장")}
+                                  >
+                                    {formatTime(Math.round(line.startSeconds))}
+                                  </button>
+                                  <span>{inside ? <span className="context-flag">후보 구간</span> : null}{line.text}</span>
+                                </li>
+                              );
+                            })}
+                          </ol>
+                        ) : (
+                          <p className="context-empty">
+                            이 작업에는 앞뒤 음성 인식 문장이 저장돼 있지 않습니다. 위 이동 버튼으로 원본 앞뒤를 직접 확인할 수 있습니다.
+                          </p>
+                        )}
+                        {!preview ? (
+                          <p className="context-empty">데스크톱 앱에서 원본 구간을 열면 이동 버튼을 사용할 수 있습니다.</p>
+                        ) : null}
+                      </section>
+                    ) : null}
                     <div className="candidate-tools">
                       <button className="button ghost compact" onClick={() => void copyTimecode()}><Copy size={15} /> 타임코드 복사</button>
                       <button className="button ghost compact" disabled={actionBusy} onClick={() => void exportCsv()}><Download size={15} /> CSV 내보내기</button>
@@ -864,7 +1200,7 @@ function App() {
                 <article className="checkpoint-board">
                   <div className="panel-heading"><span><CheckCircle2 size={17} /> 저장된 체크포인트</span><span className="safe-label">LOCAL</span></div>
                   <strong>{job.completedUnits}<small> / {job.totalUnits} units</small></strong>
-                  <p>{job.sourceKind === "local" ? "각 10분 청크의 전사와 오디오 신호를 저장합니다. 취소하거나 앱을 닫아도 완료된 청크 다음부터 이어집니다." : job.sourceKind === "youtube" ? "다운로드 임시 파일과 완료 영상, 10분 전사 청크를 저장합니다. 취소하거나 앱을 닫아도 가능한 지점부터 이어집니다." : "각 단위가 끝날 때 작업 상태를 원자적으로 저장합니다. 실패하거나 앱을 닫아도 완료 지점 다음부터 이어집니다."}</p>
+                  <p>{job.sourceKind === "local" ? "각 10분 단위의 음성 인식 결과와 오디오 신호를 저장합니다. 취소하거나 앱을 닫아도 완료된 청크 다음부터 이어집니다." : job.sourceKind === "youtube" ? "다운로드 임시 파일과 완료 영상, 10분 단위 음성 인식 결과를 저장합니다. 취소하거나 앱을 닫아도 가능한 지점부터 이어집니다." : "각 단위가 끝날 때 작업 상태를 원자적으로 저장합니다. 실패하거나 앱을 닫아도 완료 지점 다음부터 이어집니다."}</p>
                   <div className="checkpoint-meta">
                     <span><Clock3 size={14} /> {new Date(job.updatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
                     <span><TerminalSquare size={14} /> {job.scenario}</span>
@@ -874,7 +1210,7 @@ function App() {
                 <article className="signal-preview">
                   <div className="panel-heading"><span><Activity size={17} /> Signal Rail 준비 상태</span><span>{audioSignalsReady ? (chatSignalsReady ? "3 / 3" : "2 / 3") : "0 / 3"}</span></div>
                   <div className={`preview-signal ${audioSignalsReady ? "ready" : ""}`}><span>오디오 반응</span><i /><strong>{audioSignalsReady ? "READY" : "WAIT"}</strong></div>
-                  <div className={`preview-signal ${audioSignalsReady ? "ready" : ""}`}><span>발화 밀도</span><i /><strong>{audioSignalsReady ? "READY" : "WAIT"}</strong></div>
+                  <div className={`preview-signal ${audioSignalsReady ? "ready" : ""}`}><span>대화 밀도</span><i /><strong>{audioSignalsReady ? "READY" : "WAIT"}</strong></div>
                   <div className={`preview-signal ${chatSignalsReady ? "ready" : ""}`}><span>채팅 움직임</span><i /><strong>{chatSignalsReady ? "READY" : "WAIT"}</strong></div>
                 </article>
               </section>
@@ -919,13 +1255,49 @@ function App() {
           </header>
 
           <div className="settings-section">
+            <div className="settings-title-row">
+              <div><h3>화면 밝기</h3><p>기본값은 Windows의 밝은 화면·어두운 화면 설정을 따릅니다.</p></div>
+            </div>
+            <div className="theme-options" role="radiogroup" aria-label="화면 밝기">
+              {THEME_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  role="radio"
+                  aria-checked={settings.theme === option.value}
+                  className={settings.theme === option.value ? "selected" : ""}
+                  onClick={() => setSettings((current) => ({ ...current, theme: option.value }))}
+                >
+                  {settings.theme === option.value ? <Check size={14} /> : <Circle size={10} />}
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <p className="quiet-copy">
+              지금 적용된 화면: {resolvedTheme === "dark" ? "어둡게" : "밝게"}
+              {settings.theme === "system" ? " · 시스템 설정을 따르는 중" : ""}
+            </p>
+          </div>
+
+          <div className="settings-section">
             <div className="settings-title-row"><div><h3>자동 업데이트</h3><p>GitHub Releases의 서명된 안정 버전만 설치합니다.</p></div><button className="button ghost compact" disabled={updateChecking || updateInstalling} onClick={() => void refreshUpdate(true)}><RefreshCw size={14} /> {updateChecking ? "확인 중…" : "업데이트 확인"}</button></div>
+            <div className={`update-status ${updateStatus.kind}`} role="status">
+              <span className="update-status-label">
+                {updateStatus.kind === "error" ? <AlertTriangle size={14} /> : updateStatus.kind === "current" ? <CheckCircle2 size={14} /> : updateStatus.kind === "checking" ? <RefreshCw size={14} /> : <Download size={14} />}
+                {updateStatus.label}
+              </span>
+              <p>{updateStatus.detail}</p>
+              <dl>
+                <div><dt>현재 버전</dt><dd>v{runtime?.appVersion ?? "-"}</dd></div>
+                <div><dt>마지막 확인</dt><dd>{updateCheckedAt ? new Date(updateCheckedAt).toLocaleString("ko-KR") : "아직 확인하지 않음"}</dd></div>
+              </dl>
+            </div>
             {updateInfo?.available ? <div className="update-available">
               <strong>v{updateInfo.version} 사용 가능</strong>
               <pre>{updateInfo.notes}</pre>
               <button className="button primary" disabled={active || updateInstalling} onClick={() => void installUpdate()}><Download size={16} /> {updateInstalling ? (updateProgress === null ? "다운로드 중…" : `업데이트 ${updateProgress}%`) : active ? "분석 종료 후 업데이트" : "지금 업데이트"}</button>
-            </div> : <p className="quiet-copy">{updateChecking ? "최신 안정 버전을 확인하고 있습니다." : "앱 실행 시 자동으로 확인하며, 연결 실패는 로컬 분석을 막지 않습니다."}</p>}
-            {updateError ? <p className="settings-error">{updateError}</p> : null}
+            </div> : null}
+            {updateError ? <p className="settings-error">연결 오류 상세: {updateError}</p> : null}
+            {updateInstallError ? <p className="settings-error">{updateInstallError}</p> : null}
           </div>
 
           <div className="settings-section release-notes">
@@ -940,7 +1312,7 @@ function App() {
           </div>
 
           <div className="settings-section">
-            <div className="settings-title-row"><div><h3>저장 공간 정리</h3><p>현재 PC에 저장된 다운로드 영상·전사·미리보기입니다.</p></div>{storedJobs.length ? <button className="button danger compact" disabled={active} onClick={() => void removeAllStoredJobs()}><Trash2 size={14} /> 전체 삭제</button> : null}</div>
+            <div className="settings-title-row"><div><h3>저장 공간 정리</h3><p>현재 PC에 저장된 다운로드 영상·음성 인식 결과·미리보기입니다.</p></div>{storedJobs.length ? <button className="button danger compact" disabled={active} onClick={() => void removeAllStoredJobs()}><Trash2 size={14} /> 전체 삭제</button> : null}</div>
             <div className="stored-job-list">
               {storedJobs.length ? storedJobs.map((item) => <div key={item.snapshot.id}><span><strong>{shortSource(item.snapshot.sourceLabel, 42)}</strong><small>{new Date(item.snapshot.updatedAt).toLocaleString("ko-KR")} · {formatBytes(item.sizeBytes)}</small></span><button className="icon-button danger-icon" disabled={active} aria-label="작업 삭제" onClick={() => void removeStoredJob(item.snapshot.id)}><Trash2 size={15} /></button></div>) : <p className="quiet-copy">저장된 작업이 없습니다.</p>}
             </div>

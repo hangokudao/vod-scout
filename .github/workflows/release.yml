@@ -41,7 +41,7 @@ jobs:
         shell: pwsh
         run: |
           "body<<VOD_SCOUT_RELEASE_NOTES" >> $env:GITHUB_OUTPUT
-          Get-Content -LiteralPath docs/V0.3.2-RELEASE.md -Encoding utf8 >> $env:GITHUB_OUTPUT
+          Get-Content -LiteralPath docs/V0.3.3-RELEASE.md -Encoding utf8 >> $env:GITHUB_OUTPUT
           "VOD_SCOUT_RELEASE_NOTES" >> $env:GITHUB_OUTPUT
       - name: Build signed updater and publish release
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5

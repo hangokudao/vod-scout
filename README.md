@@ -4,13 +4,13 @@
 
 ## Windows 설치 파일
 
-[**VOD Scout v0.3.2 다운로드 (.exe)**](https://github.com/hangokudao/vod-scout/releases/download/v0.3.2/VOD.Scout_0.3.2_x64-setup.exe)
+[**VOD Scout v0.3.3 다운로드 (.exe)**](https://github.com/hangokudao/vod-scout/releases/download/v0.3.3/VOD.Scout_0.3.3_x64-setup.exe)
 
-[변경 내용·SHA-256·서명 파일 보기](https://github.com/hangokudao/vod-scout/releases/tag/v0.3.2)
+[변경 내용·SHA-256·서명 파일 보기](https://github.com/hangokudao/vod-scout/releases/tag/v0.3.3)
 
 Windows 코드 서명 인증서가 없어 처음 설치할 때 SmartScreen 경고가 표시될 수 있습니다.
 
-## 0.3.2에서 되는 것
+## 0.3.3에서 되는 것
 
 `로컬 영상 또는 YouTube URL → 로컬 영상 확보 → ffprobe → 10분 오디오 청크 → 한국어 Whisper 전사 → 오디오·발화·채팅 움직임 점수 → 겹치지 않는 후보 → 앱 내 영상 검토`
 
@@ -34,6 +34,9 @@ Windows 코드 서명 인증서가 없어 처음 설치할 때 SmartScreen 경�
 - 저장된 전체 작업 목록과 선택·전체 삭제
 - 선택 후보 타임코드 복사와 UTF-8 BOM CSV 내보내기
 - GitHub Releases의 서명된 안정 버전 확인·설치와 다운그레이드 차단
+- 후보를 종합 점수·원본 시간·오디오 반응·발화 밀도·채팅 움직임·판정 상태로 정렬하고 선택 후보 유지
+- Windows 화면 설정을 따르는 밝은 화면·어두운 화면 전환과 설정 저장
+- 후보 앞뒤 영상 구간과 음성 인식 문장을 원본 타임코드로 확인하고 바로 이동
 - 실제 미디어와 별개인 결정론적 실패/충돌/무응답 데모
 
 채팅 글자를 읽는 OCR, GPU 전사, LLM 재순위, 완성 쇼츠 렌더링은 아직 구현하지 않았습니다. 채팅 움직임은 화면 오른쪽 영역의 변화량이지 채팅 내용 분석이 아닙니다. 비공개·멤버십·로그인 필요 영상과 진행 중인 라이브는 지원하지 않습니다.
@@ -89,6 +92,7 @@ cargo test --manifest-path src-tauri/fixture-worker/Cargo.toml
 - [2026-08-02 보안 점검 인수 기록](docs/SECURITY-AUDIT-2026-08-02.md)
 - [v0.3.2 구현·검증 계획](docs/V0.3.2-PLAN.md)
 - [v0.3.2 릴리스 작업 정본](docs/V0.3.2-RELEASE.md)
+- [v0.3.3 릴리스 작업 정본](docs/V0.3.3-RELEASE.md)
 - [v0.3.3 UI·검토 개선 계획](docs/V0.3.3-PLAN.md)
 - [v0.4.0 장시간 최적화·이야기 구간 계획](docs/V0.4.0-PLAN.md)
 - [오픈소스 라이선스 결정 기록](docs/LICENSE-DECISION.md)

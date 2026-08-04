@@ -20,6 +20,13 @@ export type JobStatus =
 
 export type CandidateDecision = "PENDING" | "ACCEPTED" | "REJECTED";
 
+/** 후보 앞뒤 맥락을 이루는 음성 인식 문장 한 줄. 타임코드는 원본 기준이다. */
+export interface ContextLine {
+  startSeconds: number;
+  endSeconds: number | null;
+  text: string;
+}
+
 export interface Candidate {
   id: string;
   startSeconds: number;
@@ -32,6 +39,13 @@ export interface Candidate {
   chatScore: number | null;
   totalScore: number;
   decision: CandidateDecision;
+  /**
+   * 맥락 구간. worker가 아직 보내지 않는 작업도 열 수 있어야 하므로 선택 항목이다.
+   * 값이 없으면 화면에서 기본 여유 구간을 계산해 사용한다.
+   */
+  contextStartSeconds?: number | null;
+  contextEndSeconds?: number | null;
+  contextTranscript?: ContextLine[] | null;
 }
 
 export interface ActivityEvent {
@@ -87,6 +101,7 @@ export interface PreviewMedia {
   clipStartSeconds: number;
   sourceStartSeconds: number;
   sourceEndSeconds: number;
+  previewKind: "candidate" | "context";
 }
 
 export interface CreateJobInput {
