@@ -152,6 +152,14 @@ pub enum CandidateDecision {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ContextTranscriptEntry {
+    pub start_seconds: f64,
+    pub end_seconds: f64,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Candidate {
     pub id: String,
     pub start_seconds: u32,
@@ -164,6 +172,12 @@ pub struct Candidate {
     pub chat_score: Option<u8>,
     pub total_score: u8,
     pub decision: CandidateDecision,
+    #[serde(default)]
+    pub context_start_seconds: f64,
+    #[serde(default)]
+    pub context_end_seconds: f64,
+    #[serde(default)]
+    pub context_transcript: Vec<ContextTranscriptEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -354,5 +368,51 @@ mod tests {
             .apply_progress(3, JobStatus::Probing, "미디어 확인".into(), "건너뜀".into())
             .is_err());
         assert_eq!(job.completed_units, 1);
+    }
+
+    #[test]
+    fn candidate_context_fields_round_trip_and_old_snapshots_still_deserialize() {
+        let candidate = Candidate {
+            id: "candidate-1".into(),
+            start_seconds: 20,
+            end_seconds: 40,
+            title: "title".into(),
+            summary: "summary".into(),
+            transcript_excerpt: "excerpt".into(),
+            audio_score: 80,
+            dialogue_score: 70,
+            chat_score: None,
+            total_score: 75,
+            decision: CandidateDecision::Pending,
+            context_start_seconds: 5.0,
+            context_end_seconds: 55.0,
+            context_transcript: vec![ContextTranscriptEntry {
+                start_seconds: 21.5,
+                end_seconds: 24.0,
+                text: "timestamped".into(),
+            }],
+        };
+        let encoded = serde_json::to_value(&candidate).unwrap();
+        assert_eq!(encoded["contextStartSeconds"], 5.0);
+        assert_eq!(encoded["contextEndSeconds"], 55.0);
+        assert_eq!(encoded["contextTranscript"][0]["startSeconds"], 21.5);
+        assert_eq!(serde_json::from_value::<Candidate>(encoded).unwrap().id, "candidate-1");
+
+        let old = serde_json::json!({
+            "id": "legacy",
+            "startSeconds": 1,
+            "endSeconds": 2,
+            "title": "title",
+            "summary": "summary",
+            "transcriptExcerpt": "excerpt",
+            "audioScore": 1,
+            "dialogueScore": 2,
+            "chatScore": null,
+            "totalScore": 2,
+            "decision": "PENDING"
+        });
+        let legacy = serde_json::from_value::<Candidate>(old).unwrap();
+        assert_eq!(legacy.context_start_seconds, 0.0);
+        assert!(legacy.context_transcript.is_empty());
     }
 }

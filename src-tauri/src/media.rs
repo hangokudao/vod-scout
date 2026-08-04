@@ -1,7 +1,10 @@
 use super::{mutate_job, AppState};
-use crate::domain::{AnalysisMode, Candidate, CandidateDecision, JobStatus, SourceKind};
+use crate::domain::{
+    AnalysisMode, Candidate, CandidateDecision, ContextTranscriptEntry, JobStatus, SourceKind,
+};
 use crate::integrity::{runtime_hashes, source_fingerprint, verify_runtime_bundle};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::cmp::Ordering as CmpOrdering;
 use std::fs::{self, File};
 use std::io::{BufReader, Read};
@@ -27,6 +30,7 @@ const CHUNK_SECONDS: f64 = 600.0;
 const CHAT_SAMPLE_SECONDS: f64 = 5.0;
 const QUICK_CHAT_SAMPLE_SECONDS: f64 = 15.0;
 const CHAT_FRAME_SIDE: usize = 64;
+const CONTEXT_PADDING_SECONDS: f64 = 15.0;
 pub(crate) const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[cfg(windows)]
@@ -272,6 +276,21 @@ struct WindowScore {
     excerpt: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PreviewKind {
+    Candidate,
+    Context,
+}
+
+impl PreviewKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Candidate => "candidate",
+            Self::Context => "context",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PreviewMedia {
@@ -279,6 +298,16 @@ pub(crate) struct PreviewMedia {
     pub clip_start_seconds: f64,
     pub source_start_seconds: u32,
     pub source_end_seconds: u32,
+    pub preview_kind: PreviewKind,
+}
+
+impl Serialize for PreviewKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
 }
 
 pub fn run_media_pipeline<R: tauri::Runtime>(
@@ -357,15 +386,51 @@ pub fn run_media_pipeline<R: tauri::Runtime>(
     state.running.store(false, Ordering::SeqCst);
 }
 
+pub(crate) fn preview_cache_key(
+    job_id: &str,
+    candidate_id: &str,
+    source_fingerprint: &str,
+    context_start_seconds: f64,
+    context_end_seconds: f64,
+    preview_kind: PreviewKind,
+) -> String {
+    format!(
+        "job={job_id}|candidate={candidate_id}|source={source_fingerprint}|contextStart={context_start_seconds:.3}|contextEnd={context_end_seconds:.3}|kind={}",
+        preview_kind.as_str()
+    )
+}
+
+fn preview_output_name(cache_key: &str, preview_kind: PreviewKind) -> String {
+    let digest = Sha256::digest(cache_key.as_bytes());
+    format!("{}-{digest:x}.mp4", preview_kind.as_str())
+}
+
 pub(crate) fn prepare_candidate_preview(
     state: &Arc<AppState>,
     job_id: &str,
     candidate_id: &str,
 ) -> Result<PreviewMedia, String> {
+    prepare_preview(state, job_id, candidate_id, PreviewKind::Candidate)
+}
+
+pub(crate) fn prepare_candidate_context_preview(
+    state: &Arc<AppState>,
+    job_id: &str,
+    candidate_id: &str,
+) -> Result<PreviewMedia, String> {
+    prepare_preview(state, job_id, candidate_id, PreviewKind::Context)
+}
+
+fn prepare_preview(
+    state: &Arc<AppState>,
+    job_id: &str,
+    candidate_id: &str,
+    preview_kind: PreviewKind,
+) -> Result<PreviewMedia, String> {
     if state.running.load(Ordering::SeqCst) {
         return Err("분석이 끝난 뒤 후보 영상을 준비할 수 있습니다.".into());
     }
-    let (source_path, candidate, candidate_index) = {
+    let (source_path, candidate, media_duration_seconds) = {
         let guard = state
             .job
             .lock()
@@ -376,39 +441,75 @@ pub(crate) fn prepare_candidate_preview(
         if job.id != job_id || job.status != JobStatus::ReviewReady {
             return Err("검토 준비가 끝난 현재 작업에서만 영상을 재생할 수 있습니다.".into());
         }
-        let candidate_index = job
+        let candidate = job
             .candidates
             .iter()
-            .position(|candidate| candidate.id == candidate_id)
+            .find(|candidate| candidate.id == candidate_id)
+            .cloned()
             .ok_or_else(|| "후보를 찾을 수 없습니다.".to_string())?;
         let source_path = job
             .acquired_media_path
             .clone()
             .unwrap_or_else(|| job.source_label.clone());
-        (
-            source_path,
-            job.candidates[candidate_index].clone(),
-            candidate_index,
-        )
+        (source_path, candidate, job.media_duration_seconds)
     };
 
     let source = PathBuf::from(source_path);
     if !source.is_file() {
         return Err("후보의 원본 영상 파일을 찾을 수 없습니다.".into());
     }
+    let source_fingerprint = source_fingerprint(&source)
+        .map_err(|error| format!("후보 원본 fingerprint를 계산하지 못했습니다: {error}"))?
+        .0;
     let tools = locate_tools(&state.resource_dir).map_err(|error| match error {
         PipelineError::Cancelled => "미리보기 준비가 취소됐습니다.".to_string(),
         PipelineError::Message(message) => message,
     })?;
     let preview_dir = state.store.job_dir(job_id).join("review-clips");
     fs::create_dir_all(&preview_dir).map_err(|error| error.to_string())?;
-    let output = preview_dir.join(format!("candidate-{:02}.mp4", candidate_index + 1));
-    let clip_start = candidate.start_seconds.saturating_sub(2) as f64;
-    let clip_end = candidate.end_seconds.saturating_add(2) as f64;
+    let (context_start, context_end) = if preview_kind == PreviewKind::Context
+        && candidate.context_end_seconds > candidate.context_start_seconds
+    {
+        (
+            candidate.context_start_seconds,
+            candidate.context_end_seconds,
+        )
+    } else {
+        context_bounds(
+            candidate.start_seconds,
+            candidate.end_seconds,
+            candidate
+                .context_end_seconds
+                .max(media_duration_seconds.unwrap_or(candidate.end_seconds as f64)),
+        )
+    };
+    let (clip_start, clip_end, source_start, source_end) = match preview_kind {
+        PreviewKind::Candidate => (
+            candidate.start_seconds.saturating_sub(2) as f64,
+            candidate.end_seconds.saturating_add(2) as f64,
+            candidate.start_seconds,
+            candidate.end_seconds,
+        ),
+        PreviewKind::Context => (
+            context_start,
+            context_end,
+            context_start.round().max(0.0) as u32,
+            context_end.round().max(0.0) as u32,
+        ),
+    };
+    let cache_key = preview_cache_key(
+        job_id,
+        candidate_id,
+        &source_fingerprint,
+        context_start,
+        context_end,
+        preview_kind,
+    );
+    let output = preview_dir.join(preview_output_name(&cache_key, preview_kind));
     let clip_duration = (clip_end - clip_start).max(1.0);
 
     if !output.is_file() || fs::metadata(&output).map(|value| value.len()).unwrap_or(0) < 1024 {
-        let temporary = preview_dir.join(format!("candidate-{:02}.tmp.mp4", candidate_index + 1));
+        let temporary = preview_dir.join(format!("{}.tmp", preview_output_name(&cache_key, preview_kind)));
         fs::remove_file(&temporary).ok();
         let never_cancel = AtomicBool::new(false);
         let result = run_command(
@@ -452,8 +553,8 @@ pub(crate) fn prepare_candidate_preview(
                 "+faststart".into(),
                 temporary.as_os_str().into(),
             ],
-            &preview_dir.join(format!("candidate-{:02}.stdout.log", candidate_index + 1)),
-            &preview_dir.join(format!("candidate-{:02}.stderr.log", candidate_index + 1)),
+            &preview_dir.join(format!("{}.stdout.log", cache_key_hash(&cache_key))),
+            &preview_dir.join(format!("{}.stderr.log", cache_key_hash(&cache_key))),
         );
         if let Err(error) = result {
             fs::remove_file(&temporary).ok();
@@ -471,9 +572,14 @@ pub(crate) fn prepare_candidate_preview(
     Ok(PreviewMedia {
         path: output.display().to_string(),
         clip_start_seconds: clip_start,
-        source_start_seconds: candidate.start_seconds,
-        source_end_seconds: candidate.end_seconds,
+        source_start_seconds: source_start,
+        source_end_seconds: source_end,
+        preview_kind,
     })
+}
+
+fn cache_key_hash(cache_key: &str) -> String {
+    format!("{:x}", Sha256::digest(cache_key.as_bytes()))
 }
 
 fn run<R: tauri::Runtime>(
@@ -1501,18 +1607,21 @@ fn build_candidates(
     });
     selected
         .into_iter()
-        .enumerate()
-        .map(|(index, (window, audio, dialogue, chat, total))| {
+        .map(|(window, audio, dialogue, chat, total)| {
             let excerpt = truncate_chars(window.excerpt.trim(), 140);
             let title = if excerpt.is_empty() {
                 "오디오 반응이 컸던 구간".into()
             } else {
                 truncate_chars(&excerpt, 28)
             };
+            let start_seconds = window.start.floor().max(0.0) as u32;
+            let end_seconds = window.end.ceil().max(1.0) as u32;
+            let (context_start_seconds, context_end_seconds) =
+                context_bounds(start_seconds, end_seconds, duration);
             Candidate {
-                id: format!("local-candidate-{}", index + 1),
-                start_seconds: window.start.floor().max(0.0) as u32,
-                end_seconds: window.end.ceil().max(1.0) as u32,
+                id: format!("local-candidate-{start_seconds:06}"),
+                start_seconds,
+                end_seconds,
                 title,
                 summary: if let Some(chat) = chat {
                     format!("오디오 반응 {audio} · 발화 밀도 {dialogue} · 채팅 움직임 {chat}")
@@ -1529,6 +1638,13 @@ fn build_candidates(
                 chat_score: chat,
                 total_score: total,
                 decision: CandidateDecision::Pending,
+                context_start_seconds,
+                context_end_seconds,
+                context_transcript: context_transcript(
+                    segments,
+                    context_start_seconds,
+                    context_end_seconds,
+                ),
             }
         })
         .collect()
@@ -1557,6 +1673,51 @@ fn transcript_similarity(left: &str, right: &str) -> f64 {
     }
 }
 
+pub(crate) fn context_bounds(
+    candidate_start_seconds: u32,
+    candidate_end_seconds: u32,
+    media_duration_seconds: f64,
+) -> (f64, f64) {
+    let duration = if media_duration_seconds.is_finite() {
+        media_duration_seconds.max(0.0)
+    } else {
+        0.0
+    };
+    let start = (candidate_start_seconds as f64 - CONTEXT_PADDING_SECONDS)
+        .max(0.0)
+        .min(duration);
+    let end = (candidate_end_seconds as f64 + CONTEXT_PADDING_SECONDS)
+        .max(start)
+        .min(duration);
+    (start, end)
+}
+
+fn context_transcript(
+    segments: &[TranscriptSegment],
+    context_start_seconds: f64,
+    context_end_seconds: f64,
+) -> Vec<ContextTranscriptEntry> {
+    let mut entries = segments
+        .iter()
+        .filter(|segment| {
+            segment.start_seconds < context_end_seconds
+                && segment.end_seconds > context_start_seconds
+        })
+        .map(|segment| ContextTranscriptEntry {
+            start_seconds: segment.start_seconds,
+            end_seconds: segment.end_seconds,
+            text: segment.text.clone(),
+        })
+        .collect::<Vec<_>>();
+    entries.sort_by(|left, right| {
+        left.start_seconds
+            .total_cmp(&right.start_seconds)
+            .then_with(|| left.end_seconds.total_cmp(&right.end_seconds))
+            .then_with(|| left.text.cmp(&right.text))
+    });
+    entries
+}
+
 fn normalized_score(value: f64, max: f64) -> u8 {
     if max <= f64::EPSILON {
         0
@@ -1581,6 +1742,36 @@ mod tests {
     #[test]
     fn parses_srt_timestamp() {
         assert_eq!(parse_srt_time("01:02:03,500"), Some(3723.5));
+    }
+
+    #[test]
+    fn context_bounds_are_deterministic_and_clamped_to_media_duration() {
+        assert_eq!(context_bounds(4, 20, 120.0), (0.0, 35.0));
+        assert_eq!(context_bounds(100, 119, 120.0), (85.0, 120.0));
+        assert_eq!(context_bounds(30, 40, f64::NAN), (0.0, 0.0));
+        assert_eq!(context_bounds(30, 40, 35.0), (15.0, 35.0));
+    }
+
+    #[test]
+    fn preview_cache_key_distinguishes_every_context_dimension() {
+        let base = preview_cache_key(
+            "job-1",
+            "candidate-1",
+            "source-a",
+            10.0,
+            50.0,
+            PreviewKind::Context,
+        );
+        for variant in [
+            preview_cache_key("job-2", "candidate-1", "source-a", 10.0, 50.0, PreviewKind::Context),
+            preview_cache_key("job-1", "candidate-2", "source-a", 10.0, 50.0, PreviewKind::Context),
+            preview_cache_key("job-1", "candidate-1", "source-b", 10.0, 50.0, PreviewKind::Context),
+            preview_cache_key("job-1", "candidate-1", "source-a", 11.0, 50.0, PreviewKind::Context),
+            preview_cache_key("job-1", "candidate-1", "source-a", 10.0, 51.0, PreviewKind::Context),
+            preview_cache_key("job-1", "candidate-1", "source-a", 10.0, 50.0, PreviewKind::Candidate),
+        ] {
+            assert_ne!(base, variant);
+        }
     }
 
     #[test]
