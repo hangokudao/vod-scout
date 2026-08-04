@@ -46,7 +46,7 @@ import {
   getJobStorageInfo,
   listJobs,
   isDesktopRuntime,
-  prepareCandidatePreview,
+  prepareCandidateContextPreview,
   previewMediaUrl,
   saveCandidatesCsv,
   setCandidateDecision,
@@ -509,7 +509,7 @@ function App() {
     let disposed = false;
     setPreviewLoading(true);
     setPreviewError(null);
-    void prepareCandidatePreview(job.id, selected.id)
+    void prepareCandidateContextPreview(job.id, selected.id)
       .then((media) => {
         if (disposed) return;
         setPreview(media);

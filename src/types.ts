@@ -101,6 +101,7 @@ export interface PreviewMedia {
   clipStartSeconds: number;
   sourceStartSeconds: number;
   sourceEndSeconds: number;
+  previewKind: "candidate" | "context";
 }
 
 export interface CreateJobInput {

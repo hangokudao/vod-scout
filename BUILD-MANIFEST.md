@@ -1,4 +1,18 @@
-# VOD Scout 0.3.2 빌드 명세
+# VOD Scout 빌드 명세
+
+## v0.3.3 PR 단계
+
+상태: **HOLD** — 설치 EXE와 서명된 updater 자산은 PR 생성 뒤 릴리스 승인 단계에서 만든다.
+
+- 예정 설치 파일: `VOD.Scout_0.3.3_x64-setup.exe`
+- 크기·SHA-256: 미생성
+- updater 서명·`SHA256SUMS.txt`·SBOM 갱신: 미생성
+- 프런트 테스트: 2개 파일·32개 PASS
+- TypeScript + Vite: PASS
+- Rust 핵심: 26개 PASS·1개 무시
+- fixture-worker: 5개 PASS
+
+## 이전 v0.3.2 공개 빌드
 
 빌드 일자: 2026-08-02 (Asia/Seoul)  
 대상: Windows x64  

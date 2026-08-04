@@ -1,4 +1,19 @@
-# VOD Scout v0.3.2 공개 배포 인계서
+# VOD Scout v0.3.3 PR 준비 인계서
+
+현재 게이트: **v0.3.3 구현·단위 검증 PASS · 설치본·실제 미디어·업데이트 전환 HOLD · PR 병합 전**
+
+## v0.3.3 작업 상태
+
+- 통합 브랜치: `hangokudao/codex-v0.3.3-sol-r2`
+- 기준: `origin/main` `833054017b9977958b923b413a9640d6241b76d6`
+- 프런트 커밋: `d65b74c0532e71003f64afa6107150edee76276a`
+- 백엔드 커밋: `d5cd518af097d3e2c72f65f5ede9e6c0152b1e0f` 및 맥락 기반 커밋 `e9372144fbcd168be124ea745462d7cb40b9f75e`
+- 통합 결과: 충돌 없이 통합 후 화면·Rust 단위 검증을 실행했다.
+- 남은 HOLD: `npm.cmd test` WSL 인용 오류, 실제 미디어·설치본·서명·업데이트 전환·8시간 자원 측정.
+
+상세 결과는 `docs/V0.3.3-RELEASE.md`, `BUILD-MANIFEST.md`, `docs/DEBUGGING.md`를 따른다.
+
+## 이전 v0.3.2 공개 배포 상태
 
 현재 게이트: **공개 배포·보안·설치 PASS · 8시간 실제 영상 검사는 HOLD**
 

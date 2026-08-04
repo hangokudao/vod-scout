@@ -316,6 +316,11 @@ export async function prepareCandidatePreview(jobId: string, candidateId: string
   return invoke("prepare_candidate_preview", { jobId, candidateId });
 }
 
+export async function prepareCandidateContextPreview(jobId: string, candidateId: string): Promise<PreviewMedia> {
+  if (!tauriAvailable) throw new Error("브라우저 미리보기에는 로컬 영상이 연결되지 않습니다.");
+  return invoke("prepare_candidate_context_preview", { jobId, candidateId });
+}
+
 export function previewMediaUrl(path: string): string {
   return tauriAvailable ? convertFileSrc(path) : path;
 }
