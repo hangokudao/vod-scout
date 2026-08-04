@@ -30,7 +30,16 @@ const mockCandidates: Candidate[] = [
     dialogueScore: 81,
     chatScore: 95,
     totalScore: 91,
-    decision: "PENDING"
+    decision: "PENDING",
+    contextStartSeconds: 730,
+    contextEndSeconds: 828,
+    contextTranscript: [
+      { startSeconds: 730, endSeconds: 742, text: "체력이 거의 안 남았는데 한 번만 더 해볼게요." },
+      { startSeconds: 742, endSeconds: 754, text: "이 패턴만 피하면 되는데 계속 맞네." },
+      { startSeconds: 754, endSeconds: 780, text: "잠깐, 이게 된다고? 아니 진짜 잡았어!" },
+      { startSeconds: 780, endSeconds: 802, text: "손이 아직도 떨려요. 방금 그거 보셨죠?" },
+      { startSeconds: 802, endSeconds: 828, text: "일단 저장부터 하고 다음 구역으로 갈게요." }
+    ]
   },
   {
     id: "candidate-2",
@@ -43,7 +52,16 @@ const mockCandidates: Candidate[] = [
     dialogueScore: 94,
     chatScore: 86,
     totalScore: 86,
-    decision: "PENDING"
+    decision: "PENDING",
+    contextStartSeconds: 1900,
+    contextEndSeconds: 1984,
+    contextTranscript: [
+      { startSeconds: 1900, endSeconds: 1912, text: "오늘 채팅 반응이 유난히 빠르네요." },
+      { startSeconds: 1912, endSeconds: 1922, text: "아니 그걸 그렇게 받아치면 어떡해요." },
+      { startSeconds: 1922, endSeconds: 1946, text: "그건 칭찬이 아니잖아. 방금 누가 인정했어?" },
+      { startSeconds: 1946, endSeconds: 1960, text: "지금 이거 다시 보기로 남는 거 아시죠?" },
+      { startSeconds: 1960, endSeconds: 1984, text: "자, 진정하고 다음 판 준비할게요." }
+    ]
   },
   {
     id: "candidate-3",
@@ -56,7 +74,16 @@ const mockCandidates: Candidate[] = [
     dialogueScore: 72,
     chatScore: 79,
     totalScore: 84,
-    decision: "PENDING"
+    decision: "PENDING",
+    contextStartSeconds: 3266,
+    contextEndSeconds: 3372,
+    contextTranscript: [
+      { startSeconds: 3266, endSeconds: 3278, text: "잠깐만요, 지금 이름을 뭐라고 지으셨어요?" },
+      { startSeconds: 3278, endSeconds: 3288, text: "그걸 진짜로 등록했다고요?" },
+      { startSeconds: 3288, endSeconds: 3320, text: "아 그만, 그만해. 나 진짜 숨 못 쉬겠어." },
+      { startSeconds: 3320, endSeconds: 3349, text: "눈물 나서 화면이 안 보여요 지금." },
+      { startSeconds: 3349, endSeconds: 3372, text: "휴, 정리하고 원래 하던 거 마저 할게요." }
+    ]
   }
 ];
 

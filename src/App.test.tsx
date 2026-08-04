@@ -1,0 +1,245 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import {
+  CANDIDATE_SORTS,
+  DEFAULT_CONTEXT_PADDING_SECONDS,
+  DEFAULT_UI_SETTINGS,
+  SETTINGS_STORAGE_KEY,
+  readUiSettings,
+  resolveCandidateContext,
+  resolveTheme,
+  resolveUpdateStatus,
+  selectionStorageKey,
+  sortCandidates,
+  writeUiSettings,
+  type CandidateSortKey
+} from "./App";
+import type { Candidate } from "./types";
+
+function candidate(overrides: Partial<Candidate> & { id: string }): Candidate {
+  return {
+    startSeconds: 0,
+    endSeconds: 30,
+    title: "후보",
+    summary: "요약",
+    transcriptExcerpt: "인용",
+    audioScore: 50,
+    dialogueScore: 50,
+    chatScore: 50,
+    totalScore: 50,
+    decision: "PENDING",
+    ...overrides
+  };
+}
+
+const SAMPLE: Candidate[] = [
+  candidate({ id: "c", startSeconds: 300, endSeconds: 340, totalScore: 80, audioScore: 40, dialogueScore: 91, chatScore: null, decision: "REJECTED" }),
+  candidate({ id: "a", startSeconds: 100, endSeconds: 140, totalScore: 90, audioScore: 70, dialogueScore: 60, chatScore: 30, decision: "PENDING" }),
+  candidate({ id: "b", startSeconds: 200, endSeconds: 240, totalScore: 90, audioScore: 95, dialogueScore: 60, chatScore: 88, decision: "ACCEPTED" })
+];
+
+const ids = (list: Candidate[]) => list.map((item) => item.id);
+
+describe("sortCandidates", () => {
+  it("puts the highest total score first by default", () => {
+    expect(ids(sortCandidates(SAMPLE, "totalScore"))).toEqual(["a", "b", "c"]);
+  });
+
+  it("breaks ties by source time and then by candidate id", () => {
+    const tied = [
+      candidate({ id: "z", startSeconds: 500, totalScore: 70 }),
+      candidate({ id: "m", startSeconds: 100, totalScore: 70 }),
+      candidate({ id: "d", startSeconds: 100, totalScore: 70 })
+    ];
+    expect(ids(sortCandidates(tied, "totalScore"))).toEqual(["d", "m", "z"]);
+  });
+
+  it("orders by source time, audio, and dialogue", () => {
+    expect(ids(sortCandidates(SAMPLE, "startSeconds"))).toEqual(["a", "b", "c"]);
+    expect(ids(sortCandidates(SAMPLE, "audioScore"))).toEqual(["b", "a", "c"]);
+    expect(ids(sortCandidates(SAMPLE, "dialogueScore"))).toEqual(["c", "a", "b"]);
+  });
+
+  it("sorts candidates without a chat signal last", () => {
+    expect(ids(sortCandidates(SAMPLE, "chatScore"))).toEqual(["b", "a", "c"]);
+  });
+
+  it("orders decisions as accepted, pending, then rejected", () => {
+    expect(ids(sortCandidates(SAMPLE, "decision"))).toEqual(["b", "a", "c"]);
+  });
+
+  it("is deterministic and never mutates the input", () => {
+    const original = [...SAMPLE];
+    for (const sort of CANDIDATE_SORTS) {
+      const first = sortCandidates(SAMPLE, sort.value);
+      const second = sortCandidates([...SAMPLE].reverse(), sort.value);
+      expect(ids(first)).toEqual(ids(second));
+    }
+    expect(SAMPLE).toEqual(original);
+  });
+
+  it("keeps every candidate and its scores untouched across sorts", () => {
+    const sorted = sortCandidates(SAMPLE, "audioScore");
+    expect(sorted).toHaveLength(SAMPLE.length);
+    for (const item of SAMPLE) {
+      expect(sorted.find((entry) => entry.id === item.id)).toEqual(item);
+    }
+  });
+});
+
+describe("selection stays with the candidate id across a reorder", () => {
+  it("finds the same candidate in every sort order", () => {
+    const selectedId = "b";
+    for (const sort of CANDIDATE_SORTS) {
+      const sorted = sortCandidates(SAMPLE, sort.value);
+      const selected = sorted.find((item) => item.id === selectedId);
+      expect(selected?.id).toBe(selectedId);
+      expect(selected?.startSeconds).toBe(200);
+      expect(selected?.decision).toBe("ACCEPTED");
+    }
+  });
+
+  it("changes which position holds the selection without changing the candidate", () => {
+    const byTotal = sortCandidates(SAMPLE, "totalScore");
+    const byDialogue = sortCandidates(SAMPLE, "dialogueScore");
+    expect(byTotal.findIndex((item) => item.id === "b")).toBe(1);
+    expect(byDialogue.findIndex((item) => item.id === "b")).toBe(2);
+  });
+
+  it("scopes the stored selection key to a job", () => {
+    expect(selectionStorageKey("job-1")).toBe("vod-scout.selected-candidate.job-1");
+    expect(selectionStorageKey("job-2")).not.toBe(selectionStorageKey("job-1"));
+  });
+});
+
+describe("ui settings persistence", () => {
+  beforeEach(() => window.localStorage.clear());
+
+  it("falls back to the system theme and the total score sort", () => {
+    expect(readUiSettings()).toEqual(DEFAULT_UI_SETTINGS);
+    expect(DEFAULT_UI_SETTINGS.theme).toBe("system");
+  });
+
+  it("stores every setting under a single namespaced key", () => {
+    writeUiSettings({ theme: "dark", sortKey: "startSeconds" });
+    expect(window.localStorage.getItem(SETTINGS_STORAGE_KEY)).toContain("dark");
+    expect(Object.keys(window.localStorage)).toEqual([SETTINGS_STORAGE_KEY]);
+  });
+
+  it("reads back a saved theme so it survives a restart", () => {
+    writeUiSettings({ theme: "light", sortKey: "chatScore" });
+    expect(readUiSettings()).toEqual({ theme: "light", sortKey: "chatScore" });
+  });
+
+  it("ignores damaged or unknown stored values", () => {
+    window.localStorage.setItem(SETTINGS_STORAGE_KEY, "{not json");
+    expect(readUiSettings()).toEqual(DEFAULT_UI_SETTINGS);
+    writeUiSettings({ theme: "sepia" as never, sortKey: "loudness" as unknown as CandidateSortKey });
+    expect(readUiSettings()).toEqual(DEFAULT_UI_SETTINGS);
+  });
+});
+
+describe("resolveTheme", () => {
+  it("follows the system setting by default", () => {
+    expect(resolveTheme("system", true)).toBe("dark");
+    expect(resolveTheme("system", false)).toBe("light");
+  });
+
+  it("lets an explicit choice win over the system setting", () => {
+    expect(resolveTheme("light", true)).toBe("light");
+    expect(resolveTheme("dark", false)).toBe("dark");
+  });
+});
+
+describe("resolveCandidateContext", () => {
+  const base = candidate({ id: "x", startSeconds: 600, endSeconds: 660 });
+
+  it("uses the range the worker sent", () => {
+    const context = resolveCandidateContext({ ...base, contextStartSeconds: 560, contextEndSeconds: 700 }, 7200);
+    expect(context.startSeconds).toBe(560);
+    expect(context.endSeconds).toBe(700);
+    expect(context.fromWorker).toBe(true);
+  });
+
+  it("falls back to a default padding when the worker sent nothing", () => {
+    const context = resolveCandidateContext(base, 7200);
+    expect(context.startSeconds).toBe(600 - DEFAULT_CONTEXT_PADDING_SECONDS);
+    expect(context.endSeconds).toBe(660 + DEFAULT_CONTEXT_PADDING_SECONDS);
+    expect(context.fromWorker).toBe(false);
+  });
+
+  it("never runs past the start or the end of the source", () => {
+    const early = resolveCandidateContext(candidate({ id: "e", startSeconds: 5, endSeconds: 40 }), 3600);
+    expect(early.startSeconds).toBe(0);
+
+    const late = resolveCandidateContext(candidate({ id: "l", startSeconds: 3500, endSeconds: 3590 }), 3600);
+    expect(late.endSeconds).toBe(3600);
+  });
+
+  it("always contains the candidate itself", () => {
+    const context = resolveCandidateContext({ ...base, contextStartSeconds: 640, contextEndSeconds: 610 }, 7200);
+    expect(context.startSeconds).toBeLessThanOrEqual(base.startSeconds);
+    expect(context.endSeconds).toBeGreaterThanOrEqual(base.endSeconds);
+  });
+
+  it("returns context lines in source time order", () => {
+    const context = resolveCandidateContext(
+      {
+        ...base,
+        contextTranscript: [
+          { startSeconds: 700, endSeconds: 720, text: "뒤" },
+          { startSeconds: 580, endSeconds: 600, text: "앞" }
+        ]
+      },
+      7200
+    );
+    expect(context.lines.map((line) => line.text)).toEqual(["앞", "뒤"]);
+  });
+
+  it("returns no lines when the job has none stored", () => {
+    expect(resolveCandidateContext(base, 7200).lines).toEqual([]);
+  });
+});
+
+describe("resolveUpdateStatus", () => {
+  const base = { checking: false, available: false, checkedAt: null, failed: false, analysisActive: false };
+
+  it("separates the states a person needs to tell apart", () => {
+    expect(resolveUpdateStatus({ ...base }).kind).toBe("unknown");
+    expect(resolveUpdateStatus({ ...base, checking: true }).kind).toBe("checking");
+    expect(resolveUpdateStatus({ ...base, checkedAt: "2026-08-04T00:00:00.000Z" }).kind).toBe("current");
+    expect(resolveUpdateStatus({ ...base, available: true }).kind).toBe("available");
+    expect(resolveUpdateStatus({ ...base, available: true, analysisActive: true }).kind).toBe("waiting");
+    expect(resolveUpdateStatus({ ...base, failed: true }).kind).toBe("error");
+  });
+
+  it("does not describe a connection failure as an analysis failure", () => {
+    const status = resolveUpdateStatus({ ...base, failed: true });
+    expect(status.label).toBe("확인 실패");
+    expect(status.detail).toContain("로컬 영상 분석");
+    expect(status.detail).not.toContain("분석에 실패");
+  });
+
+  it("explains that an install waits for the running analysis", () => {
+    expect(resolveUpdateStatus({ ...base, available: true, analysisActive: true }).label).toBe("분석 종료 후 설치 대기");
+  });
+});
+
+describe("user facing wording", () => {
+  it("avoids the wording the project bans for people-facing text", () => {
+    const wording = [
+      ...CANDIDATE_SORTS.map((item) => item.label),
+      ...["unknown", "checking", "current", "available", "waiting", "error"].flatMap((kind) => {
+        const status = resolveUpdateStatus({
+          checking: kind === "checking",
+          available: kind === "available" || kind === "waiting",
+          checkedAt: kind === "current" ? "2026-08-04T00:00:00.000Z" : null,
+          failed: kind === "error",
+          analysisActive: kind === "waiting"
+        });
+        return [status.label, status.detail];
+      })
+    ].join(" ");
+    expect(wording).not.toMatch(/고아/);
+    expect(wording).not.toMatch(/전사/);
+  });
+});
