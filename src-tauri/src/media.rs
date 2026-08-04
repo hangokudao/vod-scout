@@ -509,7 +509,10 @@ fn prepare_preview(
     let clip_duration = (clip_end - clip_start).max(1.0);
 
     if !output.is_file() || fs::metadata(&output).map(|value| value.len()).unwrap_or(0) < 1024 {
-        let temporary = preview_dir.join(format!("{}.tmp", preview_output_name(&cache_key, preview_kind)));
+        let temporary = preview_dir.join(format!(
+            "{}.tmp",
+            preview_output_name(&cache_key, preview_kind)
+        ));
         fs::remove_file(&temporary).ok();
         let never_cancel = AtomicBool::new(false);
         let result = run_command(
@@ -1619,7 +1622,7 @@ fn build_candidates(
             let (context_start_seconds, context_end_seconds) =
                 context_bounds(start_seconds, end_seconds, duration);
             Candidate {
-                id: format!("local-candidate-{start_seconds:06}"),
+                id: stable_candidate_id(start_seconds, end_seconds),
                 start_seconds,
                 end_seconds,
                 title,
@@ -1648,6 +1651,10 @@ fn build_candidates(
             }
         })
         .collect()
+}
+
+fn stable_candidate_id(start_seconds: u32, end_seconds: u32) -> String {
+    format!("local-candidate-{start_seconds:06}-{end_seconds:06}")
 }
 
 fn transcript_similarity(left: &str, right: &str) -> f64 {
@@ -1753,6 +1760,33 @@ mod tests {
     }
 
     #[test]
+    fn candidate_ids_are_stable_for_same_input_and_distinguish_end_times() {
+        let segments = vec![TranscriptSegment {
+            start_seconds: 20.0,
+            end_seconds: 24.0,
+            text: "같은 입력".into(),
+        }];
+        let energy = (0..60)
+            .map(|second| EnergyPoint {
+                start_seconds: second as f64,
+                rms: if (15..45).contains(&second) { 0.8 } else { 0.1 },
+            })
+            .collect::<Vec<_>>();
+        let first = build_candidates(60.0, &segments, &energy, &[]);
+        let regenerated = build_candidates(60.0, &segments, &energy, &[]);
+        let first_ids = first
+            .iter()
+            .map(|candidate| &candidate.id)
+            .collect::<Vec<_>>();
+        let regenerated_ids = regenerated
+            .iter()
+            .map(|candidate| &candidate.id)
+            .collect::<Vec<_>>();
+        assert_eq!(first_ids, regenerated_ids);
+        assert_ne!(stable_candidate_id(15, 45), stable_candidate_id(15, 46));
+    }
+
+    #[test]
     fn preview_cache_key_distinguishes_every_context_dimension() {
         let base = preview_cache_key(
             "job-1",
@@ -1763,12 +1797,54 @@ mod tests {
             PreviewKind::Context,
         );
         for variant in [
-            preview_cache_key("job-2", "candidate-1", "source-a", 10.0, 50.0, PreviewKind::Context),
-            preview_cache_key("job-1", "candidate-2", "source-a", 10.0, 50.0, PreviewKind::Context),
-            preview_cache_key("job-1", "candidate-1", "source-b", 10.0, 50.0, PreviewKind::Context),
-            preview_cache_key("job-1", "candidate-1", "source-a", 11.0, 50.0, PreviewKind::Context),
-            preview_cache_key("job-1", "candidate-1", "source-a", 10.0, 51.0, PreviewKind::Context),
-            preview_cache_key("job-1", "candidate-1", "source-a", 10.0, 50.0, PreviewKind::Candidate),
+            preview_cache_key(
+                "job-2",
+                "candidate-1",
+                "source-a",
+                10.0,
+                50.0,
+                PreviewKind::Context,
+            ),
+            preview_cache_key(
+                "job-1",
+                "candidate-2",
+                "source-a",
+                10.0,
+                50.0,
+                PreviewKind::Context,
+            ),
+            preview_cache_key(
+                "job-1",
+                "candidate-1",
+                "source-b",
+                10.0,
+                50.0,
+                PreviewKind::Context,
+            ),
+            preview_cache_key(
+                "job-1",
+                "candidate-1",
+                "source-a",
+                11.0,
+                50.0,
+                PreviewKind::Context,
+            ),
+            preview_cache_key(
+                "job-1",
+                "candidate-1",
+                "source-a",
+                10.0,
+                51.0,
+                PreviewKind::Context,
+            ),
+            preview_cache_key(
+                "job-1",
+                "candidate-1",
+                "source-a",
+                10.0,
+                50.0,
+                PreviewKind::Candidate,
+            ),
         ] {
             assert_ne!(base, variant);
         }

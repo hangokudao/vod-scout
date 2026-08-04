@@ -396,7 +396,10 @@ mod tests {
         assert_eq!(encoded["contextStartSeconds"], 5.0);
         assert_eq!(encoded["contextEndSeconds"], 55.0);
         assert_eq!(encoded["contextTranscript"][0]["startSeconds"], 21.5);
-        assert_eq!(serde_json::from_value::<Candidate>(encoded).unwrap().id, "candidate-1");
+        assert_eq!(
+            serde_json::from_value::<Candidate>(encoded).unwrap().id,
+            "candidate-1"
+        );
 
         let old = serde_json::json!({
             "id": "legacy",
