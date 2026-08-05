@@ -4,15 +4,17 @@
 
 ## Windows 설치 파일
 
-[**VOD Scout v0.3.3 다운로드 (.exe)**](https://github.com/hangokudao/vod-scout/releases/download/v0.3.3/VOD.Scout_0.3.3_x64-setup.exe)
+[**VOD Scout v0.3.4 다운로드 (.exe)**](https://github.com/hangokudao/vod-scout/releases/download/v0.3.4/VOD.Scout_0.3.4_x64-setup.exe)
 
-[변경 내용·SHA-256·서명 파일 보기](https://github.com/hangokudao/vod-scout/releases/tag/v0.3.3)
+[변경 내용·SHA-256·서명 파일 보기](https://github.com/hangokudao/vod-scout/releases/tag/v0.3.4)
 
-Windows 코드 서명 인증서가 없어 처음 설치할 때 SmartScreen 경고가 표시될 수 있습니다.
+Windows 코드 서명 인증서가 없어 처음 설치할 때 SmartScreen 경고가 표시될 수 있습니다. v0.3.4 공개 설치 파일은 패키징·Release 검증 전까지 내려받을 수 없습니다.
 
-## 0.3.3에서 되는 것
+## 0.3.4에서 되는 것
 
 `로컬 영상 또는 YouTube URL → 로컬 영상 확보 → ffprobe → 10분 오디오 청크 → 한국어 Whisper 음성 인식 → 오디오·발화·채팅 움직임 점수 → 겹치지 않는 후보 → 앱 내 영상 검토`
+
+v0.3.3 기능에 더해 설정 진입점 가시성, 어두운 화면 입력 카드 대비, 취소 완료 감독, 내려받기 임시 용량 측정 도구를 보완합니다.
 
 - MP4, MKV, WebM, MOV, AVI, FLV 로컬 파일 선택
 - 공개 YouTube 단일 영상을 `yt-dlp`로 최대 720p 다운로드
@@ -95,7 +97,7 @@ cargo test --manifest-path src-tauri/fixture-worker/Cargo.toml
 - [v0.3.3 릴리스 작업 정본](docs/V0.3.3-RELEASE.md)
 - [v0.3.3 UI·검토 개선 계획](docs/V0.3.3-PLAN.md)
 - [v0.3.4 안정성·접근성 후속 패치 계획](docs/V0.3.4-PLAN.md)
-- [v0.3.4 릴리스 기록 초안](docs/V0.3.4-RELEASE.md)
+- [v0.3.4 릴리스 기록](docs/V0.3.4-RELEASE.md)
 - [v0.4.0 장시간 최적화·이야기 구간 계획](docs/V0.4.0-PLAN.md)
 - [v0.4.0 Oracle 설계 검토 기록](docs/V0.4.0-ORACLE-REVIEW.md)
 - [v0.4.0 릴리스 기록 초안](docs/V0.4.0-RELEASE.md)
@@ -112,7 +114,7 @@ cargo test --manifest-path src-tauri/fixture-worker/Cargo.toml
 
 ## 다음 순서
 
-1. v0.3.4 설정·다크 모드·취소·updater 버전 표시 후속 패치
+1. v0.3.4 패키징·설치·updater·DisplayVersion·실제 YouTube 취소 회귀 검증
 2. v0.4.0 P0 체크포인트·범위·취소·저장 공간 정확성
 3. YouTube 자막 확보·품질 검사·검색과 전체 저비용 시간축
 4. 이야기 구간 탐색과 필요한 Whisper의 GPU 우선·CPU 자동 전환

@@ -1,25 +1,97 @@
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+/**
+ * Local packaging helper aligned with the public v0.3.4 artifact contract:
+ * - Installer / updater: VOD.Scout_<version>_x64-setup.exe (+ .sig)
+ * - Optional NSIS updater zip public name: VOD.Scout_<version>_x64-setup.nsis.zip
+ * - latest.json, SHA256SUMS.txt, SBOM.spdx.json
+ *
+ * Bundle lookup is exact and version-scoped. Accepts only the known Tauri
+ * product basename variants (dotted public name and space-containing local
+ * productName) for 0.3.4. Never picks an arbitrary *.nsis.zip.
+ * Fails closed on missing or ambiguous expected assets.
+ * Preserves updater signature embedding and checksum/SBOM copies.
+ * Does not invent Authenticode signing or delete files.
+ */
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const version = "0.3.3";
+const version = "0.3.4";
 const bundleDir = join(projectRoot, "src-tauri", "target", "release", "bundle", "nsis");
 const releaseDir = join(projectRoot, "release", `v${version}`);
-const builtInstaller = join(bundleDir, `VOD Scout_${version}_x64-setup.exe`);
+const publicInstallerName = `VOD.Scout_${version}_x64-setup.exe`;
+const publicUpdaterZipName = `VOD.Scout_${version}_x64-setup.nsis.zip`;
+
+/** Exact Tauri NSIS basenames for this version only (public dotted + local productName). */
+const installerCandidates = [
+  publicInstallerName,
+  `VOD Scout_${version}_x64-setup.exe`
+];
+const nsisZipCandidates = [
+  publicUpdaterZipName,
+  `VOD Scout_${version}_x64-setup.nsis.zip`
+];
+
+/**
+ * @param {Set<string>} present
+ * @param {string[]} candidates
+ * @param {string} label
+ * @returns {string | null}
+ */
+function pickExactOne(present, candidates, label) {
+  const matches = candidates.filter((name) => present.has(name));
+  if (matches.length === 0) return null;
+  if (matches.length > 1) {
+    throw new Error(
+      `Ambiguous ${label} for v${version}: found ${matches.join(", ")}. Expected at most one of: ${candidates.join(", ")}`
+    );
+  }
+  return matches[0];
+}
+
+if (!existsSync(bundleDir)) {
+  throw new Error(`NSIS bundle directory not found: ${bundleDir}`);
+}
+
 const bundleFiles = await readdir(bundleDir);
-const updaterName = bundleFiles.find((name) => name.endsWith(".nsis.zip"))
-  ?? bundleFiles.find((name) => name === `VOD Scout_${version}_x64-setup.exe` && bundleFiles.includes(`${name}.sig`));
-if (!updaterName) throw new Error("Tauri updater 패키지를 찾지 못했습니다.");
+const present = new Set(bundleFiles);
+
+const builtInstallerName = pickExactOne(present, installerCandidates, "NSIS installer");
+if (!builtInstallerName) {
+  throw new Error(
+    `Tauri NSIS installer not found for v${version}. Expected exactly one of: ${installerCandidates.join(", ")}`
+  );
+}
+const builtInstaller = join(bundleDir, builtInstallerName);
+
+// Version-scoped updater body: exact .nsis.zip for this version, else installer + .sig
+// (public v0.3.3 shipped setup.exe + .sig without a separate .nsis.zip).
+const builtNsisZipName = pickExactOne(present, nsisZipCandidates, "NSIS updater zip");
+let updaterName;
+if (builtNsisZipName) {
+  updaterName = builtNsisZipName;
+} else if (present.has(`${builtInstallerName}.sig`)) {
+  updaterName = builtInstallerName;
+} else {
+  throw new Error(
+    `Tauri updater package or signature not found for v${version}. ` +
+      `Expected one of: ${nsisZipCandidates.join(", ")} (+ .sig), ` +
+      `or ${builtInstallerName}.sig when no version-scoped .nsis.zip is present.`
+  );
+}
+
 const builtUpdater = join(bundleDir, updaterName);
 const builtSignature = `${builtUpdater}.sig`;
+if (!existsSync(builtSignature)) {
+  throw new Error(`Updater signature missing: ${builtSignature}`);
+}
 
 await mkdir(releaseDir, { recursive: true });
-const installerName = `VOD-Scout-${version}-windows-x64-setup.exe`;
+const installerName = publicInstallerName;
 const updaterAssetName = updaterName.endsWith(".nsis.zip")
-  ? `VOD-Scout-${version}-windows-x64-setup.nsis.zip`
+  ? publicUpdaterZipName
   : installerName;
 const signatureName = `${updaterAssetName}.sig`;
 await copyFile(builtInstaller, join(releaseDir, installerName));
@@ -30,7 +102,7 @@ await copyFile(builtSignature, join(releaseDir, signatureName));
 await copyFile(join(projectRoot, "SBOM.spdx.json"), join(releaseDir, "SBOM.spdx.json"));
 
 const signature = (await readFile(builtSignature, "utf8")).trim();
-const notes = await readFile(join(projectRoot, "docs", "V0.3.3-UPDATER-NOTES.md"), "utf8");
+const notes = await readFile(join(projectRoot, "docs", "V0.3.4-UPDATER-NOTES.md"), "utf8");
 const latest = {
   version,
   notes,

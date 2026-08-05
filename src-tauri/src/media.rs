@@ -9,11 +9,11 @@ use std::cmp::Ordering as CmpOrdering;
 use std::fs::{self, File};
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[cfg(windows)]
 use std::os::windows::io::AsRawHandle;
@@ -22,7 +22,7 @@ use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
 #[cfg(windows)]
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
-    SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+    SetInformationJobObject, TerminateJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
     JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
 
@@ -31,6 +31,10 @@ const CHAT_SAMPLE_SECONDS: f64 = 5.0;
 const QUICK_CHAT_SAMPLE_SECONDS: f64 = 15.0;
 const CHAT_FRAME_SIDE: usize = 64;
 const CONTEXT_PADDING_SECONDS: f64 = 15.0;
+/// Soft wait after kill before forcing the whole owned process tree.
+pub(crate) const CHILD_TERMINATE_GRACE: Duration = Duration::from_secs(3);
+/// Hard cap so cancel never blocks the pipeline on a stuck wait/join.
+pub(crate) const CHILD_TERMINATE_HARD_CAP: Duration = Duration::from_secs(8);
 pub(crate) const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[cfg(windows)]
@@ -38,7 +42,7 @@ pub(crate) struct KillOnCloseJob(HANDLE);
 
 #[cfg(windows)]
 impl KillOnCloseJob {
-    pub(crate) fn attach(child: &std::process::Child) -> Result<Self, std::io::Error> {
+    pub(crate) fn attach(child: &Child) -> Result<Self, std::io::Error> {
         unsafe {
             let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
             if job.is_null() {
@@ -65,6 +69,13 @@ impl KillOnCloseJob {
             Ok(Self(job))
         }
     }
+
+    /// Force-terminate every process currently assigned to this job object.
+    pub(crate) fn terminate_all(&self) {
+        unsafe {
+            let _ = TerminateJobObject(self.0, 1);
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -72,6 +83,56 @@ impl Drop for KillOnCloseJob {
     fn drop(&mut self) {
         unsafe {
             CloseHandle(self.0);
+        }
+    }
+}
+
+/// Kill the direct child, wait with a grace period, then force the owned job tree.
+/// Never blocks longer than [`CHILD_TERMINATE_HARD_CAP`].
+///
+/// On Windows, when a job object is provided, `TerminateJobObject` always runs
+/// after the soft kill. A quick parent exit alone does not prove the tree is
+/// gone — descendants can outlive `child.kill()`.
+pub(crate) fn terminate_child_tree(
+    child: &mut Child,
+    #[cfg(windows)] job: Option<&KillOnCloseJob>,
+) {
+    let started = Instant::now();
+    let _ = child.kill();
+
+    let parent_reaped = wait_child_until(child, CHILD_TERMINATE_GRACE);
+
+    #[cfg(windows)]
+    if let Some(job) = job {
+        job.terminate_all();
+    } else if parent_reaped {
+        return;
+    }
+
+    #[cfg(not(windows))]
+    if parent_reaped {
+        return;
+    }
+
+    let _ = child.kill();
+    let remaining = CHILD_TERMINATE_HARD_CAP.saturating_sub(started.elapsed());
+    let _ = wait_child_until(child, remaining);
+}
+
+/// Wait until the child is reaped or `limit` elapses.
+/// Returns `true` only when `try_wait` reports an exited status. An I/O error
+/// is **not** treated as reaped — callers must still run the force-terminate
+/// path (job object / second kill) which remains capped by
+/// [`CHILD_TERMINATE_HARD_CAP`].
+fn wait_child_until(child: &mut Child, limit: Duration) -> bool {
+    let deadline = Instant::now() + limit;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => return true,
+            Ok(None) if Instant::now() >= deadline => return false,
+            Ok(None) => thread::sleep(Duration::from_millis(50)),
+            // try_wait failure is not proof the process tree is gone.
+            Err(_) => return false,
         }
     }
 }
@@ -1127,11 +1188,10 @@ where
         PipelineError::Message(format!("{} 실행 실패: {error}", executable.display()))
     })?;
     #[cfg(windows)]
-    let _job_guard = match KillOnCloseJob::attach(&child) {
-        Ok(job) => job,
+    let job_guard = match KillOnCloseJob::attach(&child) {
+        Ok(job) => Some(job),
         Err(error) => {
-            child.kill().ok();
-            child.wait().ok();
+            terminate_child_tree(&mut child, None);
             return Err(PipelineError::Message(format!(
                 "{}에 강제 종료 보호를 설정하지 못했습니다: {error}",
                 executable.file_name().unwrap_or_default().to_string_lossy()
@@ -1140,8 +1200,10 @@ where
     };
     loop {
         if cancel_requested.load(Ordering::SeqCst) {
-            child.kill().ok();
-            child.wait().ok();
+            #[cfg(windows)]
+            terminate_child_tree(&mut child, job_guard.as_ref());
+            #[cfg(not(windows))]
+            terminate_child_tree(&mut child);
             return Err(PipelineError::Cancelled);
         }
         if let Some(status) = child.try_wait()? {
@@ -1746,10 +1808,248 @@ fn truncate_chars(value: &str, maximum: usize) -> String {
 mod tests {
     use super::*;
     use std::env;
+    use std::process::Stdio as ProcessStdio;
 
     #[test]
     fn parses_srt_timestamp() {
         assert_eq!(parse_srt_time("01:02:03,500"), Some(3723.5));
+    }
+
+    fn long_running_command() -> (PathBuf, Vec<std::ffi::OsString>) {
+        #[cfg(windows)]
+        {
+            (
+                PathBuf::from("ping.exe"),
+                vec!["-n".into(), "60".into(), "127.0.0.1".into()],
+            )
+        }
+        #[cfg(not(windows))]
+        {
+            (PathBuf::from("sleep"), vec!["60".into()])
+        }
+    }
+
+    #[test]
+    fn run_command_cancel_reaches_cancelled_under_five_seconds() {
+        let temp = tempfile::tempdir().unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let cancel_flag = Arc::clone(&cancel);
+        let stdout = temp.path().join("cancel-stdout.log");
+        let stderr = temp.path().join("cancel-stderr.log");
+        let (executable, args) = long_running_command();
+        let cwd = temp.path().to_path_buf();
+        let worker = thread::spawn(move || {
+            run_command(&cancel_flag, &executable, &cwd, args, &stdout, &stderr)
+        });
+
+        thread::sleep(Duration::from_millis(400));
+        let started = Instant::now();
+        cancel.store(true, Ordering::SeqCst);
+        let result = worker.join().expect("cancel worker join");
+        let elapsed = started.elapsed();
+        assert!(
+            matches!(result, Err(PipelineError::Cancelled)),
+            "expected Cancelled, got {result:?}"
+        );
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "cancel took {elapsed:?}, expected under 5s"
+        );
+    }
+
+    #[test]
+    fn terminate_child_tree_reaps_hanging_child_under_five_seconds() {
+        let (executable, args) = long_running_command();
+        let mut command = Command::new(&executable);
+        command
+            .args(args)
+            .stdin(ProcessStdio::null())
+            .stdout(ProcessStdio::null())
+            .stderr(ProcessStdio::null());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+        let mut child = command.spawn().expect("spawn hanging child");
+        #[cfg(windows)]
+        let job = KillOnCloseJob::attach(&child).ok();
+        thread::sleep(Duration::from_millis(200));
+        let started = Instant::now();
+        #[cfg(windows)]
+        terminate_child_tree(&mut child, job.as_ref());
+        #[cfg(not(windows))]
+        terminate_child_tree(&mut child);
+        let elapsed = started.elapsed();
+        assert!(
+            matches!(child.try_wait(), Ok(Some(_))),
+            "child should be reaped after terminate_child_tree"
+        );
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "terminate_child_tree took {elapsed:?}"
+        );
+    }
+
+    #[cfg(windows)]
+    fn windows_process_still_active(pid: u32) -> bool {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+        const STILL_ACTIVE: u32 = 259;
+        unsafe {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if handle.is_null() {
+                return false;
+            }
+            let mut code = 0u32;
+            let ok = GetExitCodeProcess(handle, &mut code);
+            CloseHandle(handle);
+            ok != 0 && code == STILL_ACTIVE
+        }
+    }
+
+    #[cfg(windows)]
+    fn windows_child_pids(parent_pid: u32) -> Vec<u32> {
+        let output = Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-Command",
+                &format!(
+                    "Get-CimInstance Win32_Process -Filter \"ParentProcessId={parent_pid}\" | ForEach-Object {{ $_.ProcessId }}"
+                ),
+            ])
+            .output()
+            .expect("query child processes");
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter_map(|line| line.trim().parse::<u32>().ok())
+            .collect()
+    }
+
+    /// Owns the exact job object and direct child. On Drop, terminates via the
+    /// job + direct child only — never mutates a numeric PID (no taskkill).
+    #[cfg(windows)]
+    struct WindowsTreeCleanup {
+        // Drop impl terminates the job tree then reaps/takes parent; remaining fields follow declaration-order drop.
+        job: Option<KillOnCloseJob>,
+        parent: Option<Child>,
+    }
+
+    #[cfg(windows)]
+    impl Drop for WindowsTreeCleanup {
+        fn drop(&mut self) {
+            if let Some(job) = self.job.as_ref() {
+                job.terminate_all();
+            }
+            if let Some(mut parent) = self.parent.take() {
+                let _ = parent.kill();
+                let _ = parent.wait();
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn terminate_child_tree_kills_owned_cmd_ping_process_tree() {
+        // Pre-spawn delay so KillOnCloseJob::attach assigns the parent before
+        // the long-lived ping descendant is created (job membership race).
+        let mut command = Command::new("cmd.exe");
+        command
+            .args([
+                "/C",
+                "ping.exe -n 3 127.0.0.1 >NUL && ping.exe -n 60 127.0.0.1 >NUL",
+            ])
+            .stdin(ProcessStdio::null())
+            .stdout(ProcessStdio::null())
+            .stderr(ProcessStdio::null());
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+        let child = command.spawn().expect("spawn tree parent");
+        let parent_pid = child.id();
+        let job = match KillOnCloseJob::attach(&child) {
+            Ok(job) => job,
+            Err(error) => {
+                let mut child = child;
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("attach job object: {error}");
+            }
+        };
+
+        // Cleanup owns job + child; Drop uses terminate_all + kill/wait only.
+        let mut cleanup = WindowsTreeCleanup {
+            job: Some(job),
+            parent: Some(child),
+        };
+
+        // Wait out the short delay ping so discovery targets the long-lived
+        // ping that started after job assignment (read-only PID use only).
+        thread::sleep(Duration::from_millis(2500));
+        let mut descendant_pid = None;
+        for _ in 0..40 {
+            thread::sleep(Duration::from_millis(50));
+            if let Some(pid) = windows_child_pids(parent_pid)
+                .into_iter()
+                .find(|pid| *pid != parent_pid && windows_process_still_active(*pid))
+            {
+                descendant_pid = Some(pid);
+                break;
+            }
+        }
+        let descendant_pid =
+            descendant_pid.expect("cmd should have spawned a live descendant (ping)");
+        assert!(
+            windows_process_still_active(descendant_pid),
+            "precondition: descendant {descendant_pid} must be alive before terminate"
+        );
+
+        let started = Instant::now();
+        let mut parent = cleanup.parent.take().expect("parent child");
+        let job = cleanup.job.as_ref().expect("job object");
+        terminate_child_tree(&mut parent, Some(job));
+        let elapsed = started.elapsed();
+        cleanup.parent = Some(parent);
+
+        let parent_reaped = matches!(
+            cleanup
+                .parent
+                .as_mut()
+                .map(|c| c.try_wait())
+                .transpose()
+                .expect("try_wait parent"),
+            Some(Some(_))
+        );
+        assert!(
+            parent_reaped || !windows_process_still_active(parent_pid),
+            "parent should exit after job termination"
+        );
+        assert!(
+            !windows_process_still_active(descendant_pid),
+            "descendant pid {descendant_pid} must not remain after terminate_child_tree"
+        );
+        // Descendant-zero: no live children of the parent after tree terminate.
+        let live_descendants: Vec<u32> = windows_child_pids(parent_pid)
+            .into_iter()
+            .filter(|pid| windows_process_still_active(*pid))
+            .collect();
+        assert!(
+            live_descendants.is_empty(),
+            "expected zero live descendants after terminate, found {live_descendants:?}"
+        );
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "tree terminate took {elapsed:?}"
+        );
+
+        // Success path: reap parent; Drop still owns job for any residual.
+        if let Some(mut parent) = cleanup.parent.take() {
+            let _ = parent.wait();
+        }
+        let _ = cleanup.job.take();
     }
 
     #[test]

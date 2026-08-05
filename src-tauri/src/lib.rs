@@ -602,25 +602,50 @@ async fn start_job(
     Ok(snapshot)
 }
 
+/// Validate `job_id` against the active job, then set `cancel_requested`.
+/// Mismatched IDs must not arm the global cancel flag. The check+set stays
+/// under the job lock and never touches disk, so tool loops can stop before
+/// `mutate_job` persistence work.
+fn arm_cancel_signal(state: &AppState, job_id: &str) -> Result<(), String> {
+    if !state.running.load(Ordering::SeqCst) {
+        return Err("현재 실행 중인 작업이 없습니다.".into());
+    }
+    let guard = state
+        .job
+        .lock()
+        .map_err(|_| "작업 상태 잠금이 손상됐습니다.".to_string())?;
+    let job = guard
+        .as_ref()
+        .ok_or_else(|| "현재 작업이 없습니다.".to_string())?;
+    if job.id != job_id {
+        return Err("현재 작업과 요청한 작업이 다릅니다.".into());
+    }
+    // Signal tool loops before disk I/O so yt-dlp/ffmpeg/whisper can stop immediately.
+    state.cancel_requested.store(true, Ordering::SeqCst);
+    Ok(())
+}
+
 #[tauri::command]
 fn cancel_job(
     app: tauri::AppHandle,
     state: State<'_, Arc<AppState>>,
     job_id: String,
 ) -> Result<JobSnapshot, String> {
-    if !state.running.load(Ordering::SeqCst) {
-        return Err("현재 실행 중인 작업이 없습니다.".into());
-    }
+    arm_cancel_signal(&state, &job_id)?;
     let snapshot = mutate_job(&app, &state, |job| {
         if job.id != job_id {
             return Err("현재 작업과 요청한 작업이 다릅니다.".into());
         }
-        job.transition(JobStatus::Cancelling)?;
-        job.current_stage_label = "worker 종료 요청".into();
-        job.push_activity("cancel", "안전한 지점에서 작업을 취소하고 있습니다.");
+        if job.status != JobStatus::Cancelling {
+            job.transition(JobStatus::Cancelling)?;
+        }
+        job.current_stage_label = "실행 중 도구 종료 중".into();
+        job.push_activity(
+            "cancel",
+            "작업을 취소합니다. 관련 도구 프로세스를 종료하는 중입니다.",
+        );
         Ok(())
     })?;
-    state.cancel_requested.store(true, Ordering::SeqCst);
     Ok(snapshot)
 }
 
@@ -929,6 +954,7 @@ fn get_runtime_info(state: State<'_, Arc<AppState>>) -> RuntimeInfo {
 #[allow(clippy::items_after_test_module)]
 mod tests {
     use super::*;
+    use crate::domain::{AnalysisMode, Scenario, SourceKind};
 
     #[test]
     fn csv_fields_neutralize_spreadsheet_formulas() {
@@ -938,6 +964,74 @@ mod tests {
         }
         assert_eq!(csv_field("normal"), "\"normal\"");
         assert!(!csv_field("a\0b").contains('\0'));
+    }
+
+    /// Holds AppState and its temp data dir. Field order matters: Rust drops
+    /// struct fields in declaration order, so `state` is declared first and
+    /// drops before `_temp` is removed.
+    struct TestAppState {
+        state: AppState,
+        _temp: tempfile::TempDir,
+    }
+
+    impl std::ops::Deref for TestAppState {
+        type Target = AppState;
+
+        fn deref(&self) -> &Self::Target {
+            &self.state
+        }
+    }
+
+    fn test_state_with_running_job(job_id: &str) -> TestAppState {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let data_dir = temp.path().to_path_buf();
+        let state = AppState::new(data_dir.clone(), data_dir).expect("AppState");
+        let mut job = JobSnapshot::new(
+            job_id.to_string(),
+            SourceKind::Demo,
+            "fixture".into(),
+            Scenario::Normal,
+            AnalysisMode::Full,
+            None,
+            None,
+        );
+        job.transition(JobStatus::Acquiring).expect("active status");
+        *state.job.lock().expect("job lock") = Some(job);
+        state.running.store(true, Ordering::SeqCst);
+        TestAppState { state, _temp: temp }
+    }
+
+    #[test]
+    fn mismatched_cancel_job_id_leaves_cancel_requested_false() {
+        let active_id = Uuid::new_v4().to_string();
+        let state = test_state_with_running_job(&active_id);
+        let other_id = Uuid::new_v4().to_string();
+
+        let err = arm_cancel_signal(&state, &other_id).expect_err("mismatch must fail");
+        assert!(err.contains("다릅니다"), "unexpected error message: {err}");
+        assert!(
+            !state.cancel_requested.load(Ordering::SeqCst),
+            "wrong job id must not arm global cancel_requested"
+        );
+    }
+
+    #[test]
+    fn matching_cancel_job_id_arms_cancel_before_disk_work() {
+        let active_id = Uuid::new_v4().to_string();
+        let state = test_state_with_running_job(&active_id);
+
+        let started = Instant::now();
+        arm_cancel_signal(&state, &active_id).expect("matching id must arm cancel");
+        let elapsed = started.elapsed();
+
+        assert!(
+            state.cancel_requested.load(Ordering::SeqCst),
+            "matching job id must set cancel_requested"
+        );
+        assert!(
+            elapsed < Duration::from_millis(500),
+            "arm_cancel_signal must stay in-memory and return quickly, took {elapsed:?}"
+        );
     }
 }
 

@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import {
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import App, {
   CANDIDATE_SORTS,
   DEFAULT_CONTEXT_PADDING_SECONDS,
   DEFAULT_UI_SETTINGS,
@@ -241,5 +242,31 @@ describe("user facing wording", () => {
     ].join(" ");
     expect(wording).not.toMatch(/고아/);
     expect(wording).not.toMatch(/전사/);
+  });
+});
+
+describe("settings entry visibility", () => {
+  afterEach(() => {
+    cleanup();
+    window.localStorage.clear();
+  });
+
+  it("keeps a labelled settings control reachable after the app loads", async () => {
+    render(<App />);
+    const settings = await screen.findByRole("button", { name: "설정·업데이트 열기" });
+    expect(settings).toBeVisible();
+    expect(settings).toHaveClass("settings-entry");
+    expect(settings.textContent).toContain("설정");
+    expect(settings.textContent).toMatch(/v\d/);
+    expect(settings.querySelector(".settings-entry-label")?.textContent).toBe("설정");
+    expect(settings.querySelector(".settings-entry-version")?.textContent).toMatch(/^v/);
+  });
+
+  it("opens the settings dialog from the topbar control", async () => {
+    render(<App />);
+    const settings = await screen.findByRole("button", { name: "설정·업데이트 열기" });
+    fireEvent.click(settings);
+    expect(await screen.findByRole("dialog", { name: "설정·업데이트" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "설정·업데이트" })).toBeVisible();
   });
 });
