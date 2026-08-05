@@ -30,7 +30,7 @@ jobs:
         shell: pwsh
         run: |
           npm ci
-          npm run sidecar
+          npm run sidecar -- --release
           npm run media-tools
           npm run check:yt-dlp
           npm test
@@ -43,7 +43,7 @@ jobs:
           "body<<VOD_SCOUT_RELEASE_NOTES" >> $env:GITHUB_OUTPUT
           Get-Content -LiteralPath docs/V0.3.3-RELEASE.md -Encoding utf8 >> $env:GITHUB_OUTPUT
           "VOD_SCOUT_RELEASE_NOTES" >> $env:GITHUB_OUTPUT
-      - name: Build signed updater and publish release
+      - name: Build signed updater and create draft release
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -53,7 +53,7 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "VOD Scout ${{ github.ref_name }}"
           releaseBody: ${{ steps.release_notes.outputs.body }}
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
