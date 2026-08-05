@@ -14,6 +14,7 @@ use std::thread;
 use std::time::Duration;
 use url::Url;
 
+use crate::media::terminate_child_tree;
 #[cfg(windows)]
 use crate::media::{KillOnCloseJob, CREATE_NO_WINDOW};
 
@@ -359,11 +360,10 @@ fn run_yt_dlp<R: tauri::Runtime>(
         .spawn()
         .map_err(|error| AcquisitionError::Message(format!("yt-dlp 실행 실패: {error}")))?;
     #[cfg(windows)]
-    let _job_guard = match KillOnCloseJob::attach(&child) {
-        Ok(job) => job,
+    let job_guard = match KillOnCloseJob::attach(&child) {
+        Ok(job) => Some(job),
         Err(error) => {
-            child.kill().ok();
-            child.wait().ok();
+            terminate_child_tree(&mut child, None);
             return Err(AcquisitionError::Message(format!(
                 "yt-dlp에 강제 종료 보호를 설정하지 못했습니다: {error}"
             )));
@@ -399,10 +399,13 @@ fn run_yt_dlp<R: tauri::Runtime>(
             &mut progress_tracker,
         )?;
         if state.cancel_requested.load(Ordering::SeqCst) {
-            child.kill().ok();
-            child.wait().ok();
-            let _ = stdout_reader.join();
-            let _ = stderr_reader.join();
+            #[cfg(windows)]
+            terminate_child_tree(&mut child, job_guard.as_ref());
+            #[cfg(not(windows))]
+            terminate_child_tree(&mut child);
+            // Detach log readers so a stuck pipe cannot block Cancelled.
+            drop(stdout_reader);
+            drop(stderr_reader);
             return Err(AcquisitionError::Cancelled);
         }
         if let Some(status) = child.try_wait()? {

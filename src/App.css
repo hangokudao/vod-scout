@@ -324,6 +324,50 @@ summary:focus-visible {
   font-size: 10px;
 }
 
+/* 상단 설정 진입점: 아이콘·「설정」·버전을 항상 구분 가능하게 둔다. */
+.settings-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--console-line-strong);
+  border-radius: 7px;
+  background: var(--console-raised);
+  color: var(--console-text-bright);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1.2;
+}
+
+.settings-entry:hover {
+  background: var(--console-elevated);
+  border-color: var(--console-node-bright);
+}
+
+.settings-entry:active {
+  background: var(--console-node);
+}
+
+.settings-entry:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.settings-entry-label {
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.settings-entry-version {
+  color: var(--console-muted);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 10px;
+}
+
 .stage-sidebar {
   display: flex;
   flex-direction: column;
@@ -596,14 +640,15 @@ kbd {
   min-height: 78px;
   padding: 13px;
   text-align: left;
-  background: rgba(255, 255, 255, 0.58);
+  color: var(--ink);
+  background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
 }
 
 .source-tabs button > svg {
-  color: var(--slate-500);
+  color: var(--text-soft);
 }
 
 .source-tabs button span {
@@ -618,14 +663,19 @@ kbd {
 }
 
 .source-tabs small {
-  color: var(--slate-500);
+  color: var(--muted);
   font-size: 10px;
   line-height: 1.35;
 }
 
 .source-tabs button:hover {
-  background: var(--white);
+  background: var(--hover-bg);
   border-color: var(--border-strong);
+}
+
+.source-tabs button:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .source-tabs button.selected {
@@ -637,6 +687,15 @@ kbd {
 .source-tabs button.selected > svg,
 .source-tabs button.selected strong {
   color: var(--purple-dark);
+}
+
+.source-tabs button:disabled,
+.source-tabs button[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  color: var(--muted);
+  background: var(--surface-sunken);
+  border-color: var(--border);
 }
 
 .source-entry {
@@ -694,7 +753,7 @@ kbd {
 
 .scenario-panel {
   margin-top: 12px;
-  background: rgba(255, 255, 255, 0.45);
+  background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
 }
@@ -1842,9 +1901,18 @@ kbd {
 }
 
 @media (max-width: 560px) {
-  .brand-lockup span,
-  .version {
+  .brand-lockup span {
     display: none;
+  }
+
+  /* 좁은 폭에서도 설정 진입점은 유지하고, 버전 문자열만 접는다. */
+  .settings-entry-version {
+    display: none;
+  }
+
+  .settings-entry {
+    padding: 5px 8px;
+    gap: 5px;
   }
 
   .runtime-state {
@@ -1898,8 +1966,6 @@ kbd {
   }
 }
 
-.version-button { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; padding: 4px 6px; border-radius: 6px; }
-.version-button:hover, .version-button:focus-visible { background: rgba(255, 255, 255, 0.08); outline: none; }
 .analysis-mode-panel { margin-top: 18px; border: 1px solid var(--line); border-radius: 10px; padding: 16px; background: var(--panel); }
 .analysis-mode-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
 .analysis-mode-options button { text-align: left; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: var(--paper); color: var(--ink); cursor: pointer; }

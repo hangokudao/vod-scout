@@ -827,8 +827,16 @@ function App() {
         <div className="runtime-state">
           <span className="runtime-dot" aria-hidden="true" />
           {isDesktopRuntime ? "Windows 로컬" : "브라우저 미리보기"}
-          <button className="version version-button" onClick={() => void openSettings()} title="설정·업데이트 내역 열기">
-            <Settings2 size={13} /> v{runtime?.appVersion ?? "0.1.0"}
+          <button
+            type="button"
+            className="settings-entry"
+            onClick={() => void openSettings()}
+            title="설정·업데이트 내역 열기"
+            aria-label="설정·업데이트 열기"
+          >
+            <Settings2 size={14} aria-hidden="true" />
+            <span className="settings-entry-label">설정</span>
+            <span className="settings-entry-version">v{runtime?.appVersion ?? "0.1.0"}</span>
           </button>
         </div>
       </header>
