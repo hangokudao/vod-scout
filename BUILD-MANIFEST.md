@@ -1,19 +1,49 @@
 # VOD Scout 빌드 명세
 
-## v0.3.3 PR 단계
+## v0.3.3 공개 빌드
 
-상태: **HOLD** — 승인된 실제 미디어·8시간대 빠른 분석과 pre-merge 실행 파일은 검증했다. 설치 EXE와 서명된 updater 자산은 PR 병합 승인 뒤 exact merged commit에서 만든다.
+상태: **PASS** — exact merge commit에서 테스트·패키징하고 공개 자산의 해시·updater 서명·실제 v0.3.2 업데이트·기존 작업 보존을 확인했다. Authenticode는 승인된 예외로 `HOLD`다.
 
-- 예정 설치 파일: `VOD.Scout_0.3.3_x64-setup.exe`
-- 크기·SHA-256: 미생성
-- updater 서명·`SHA256SUMS.txt`·SBOM 갱신: 미생성. 현재 `SBOM.spdx.json`은 v0.3.2이므로 v0.3.3 배포 근거로 사용하지 않는다. GitHub Actions secret 이름 2개는 존재하지만 현재 로컬 signing key는 없음
-- Authenticode: CurrentUser·LocalMachine 코드 서명 인증서 0개, `signtool.exe` 미확인, `HOLD`
-- pre-merge no-bundle `vod-scout.exe`: 버전 `0.3.3`, `15,187,456 bytes`, SHA-256 `8F6F052A61773F0963C4460B6AB1922FD4B6AAC0766672A25104BF86DDBDED7E`; 최종 설치본 근거가 아니며 병합 뒤 재생성 필요
+- exact commit: `5f756af7390325a99f2820a424f7d4ef05334d14`
+- 태그·Release: `v0.3.3`, https://github.com/hangokudao/vod-scout/releases/tag/v0.3.3
+- GitHub Actions: run `30963107742`, PASS
+- 버전 정본: `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, README 설치 링크와 설치 파일명 모두 `0.3.3`
 - 프런트 테스트: 2개 파일·32개 PASS
-- TypeScript + Vite: PASS
+- TypeScript + Vite: 1,793 modules PASS
 - Rust 핵심: 27개 PASS·1개 무시
 - fixture-worker: 5개 PASS
 - archive 안전성: 정상 1개·공격 경로 5개, 총 6개 PASS
+- npm audit: 취약점 0개
+
+### 공개 자산
+
+| 자산 | 크기 | SHA-256 |
+|---|---:|---|
+| `VOD.Scout_0.3.3_x64-setup.exe` | 233,845,158 | `53070183C2DE64F61480355A550924A0A89F28C6E83323F262ADC7926251ACF6` |
+| `VOD.Scout_0.3.3_x64-setup.exe.sig` | 420 | `485708031741E6B65DD79C58DA858B0CCF757E08217F71E917F7D502DA8B7C46` |
+| `latest.json` | 9,513 | `36D7AB3457E9D639569BD2FF79F4285394D425387CCAB4071A441FE41ED4FD70` |
+| `SHA256SUMS.txt` | 355 | `CEAF00234AE46A2A19483AEC59D6799AA47AB5E79EF1A1094360A7ECDBECE5C4` |
+| `SBOM.spdx.json` | 615,471 | `EC96DF1B4EE28DA16225AC31754D4CBC993DB61D8A0BAB856D05F828CC14C044` |
+
+- GitHub asset digest와 재다운로드 SHA-256 일치: 5/5 PASS
+- 공개 직접 다운로드: 5/5 HTTP 200
+- `SHA256SUMS.txt`: 포함된 4개 자산 재계산 PASS
+- SBOM: SPDX 2.3, 루트 `vod-scout 0.3.3`, 총 656 packages
+- updater 서명: `latest.json`과 `.sig` 일치, 공개키로 독립 `minisign-verify 0.2.5` 검증 PASS
+- Authenticode: 설치 EXE와 설치된 앱 `NotSigned`. 인증서가 없어 `HOLD`
+
+### 설치된 핵심 바이너리
+
+| 파일 | 크기 | SHA-256 |
+|---|---:|---|
+| `D:\VOD Scout\vod-scout.exe` | 15,180,800 | `7ED1484CEF507CBE4851E6E5F326FD754BAC71133E9CF713F8449B1D714079C5` |
+| `D:\VOD Scout\fixture-worker.exe` | 180,224 | `682E828EA9F57085B6506EECBD0FE01C6A3C5976C6F524426E709772B2F47DFC` |
+| `resources/media-tools/yt-dlp/yt-dlp.exe` | 18,226,085 | `52FE3C26DCF71FBDC85B528589020BB0B8E383155CFA81B64DD447BBE35E24B8` |
+| `resources/media-tools/deno/deno.exe` | 97,175,328 | `4A2757FE99AFC2C62C46500C8221CFA0189AC4BFB7064141875AD9C0F04B60EF` |
+| `resources/media-tools/models/ggml-base.bin` | 147,951,465 | `60ED5BC3DD14EEA856493D334349B405782DDCAF0028D4B5DF4088345FBA2EFE` |
+| `resources/media-tools/manifest.json` | 5,185 | `9F86BB181F7942D385534002218A09BC1C144AC310E4B83FDD4D32136D777931` |
+
+runtime manifest schema 5가 열거한 28개 파일을 설치 폴더에서 다시 계산해 28/28 일치를 확인했다.
 
 ### v0.3.3 실제 미디어·자원 측정
 
@@ -34,12 +64,21 @@
 
 시험용 맥락 MP4: `21,614,567 bytes`, SHA-256 `68216547975653F36E768AA5FA6043D161A25A7E1EA57FCF05628395F97D3576`. 시험용 후보 MP4: `14,123,834 bytes`, SHA-256 `F69F7E28BE257B95CAD45110F238142EE206AE3BCBA2C61D7905F00D01E0E84F`. 두 파일은 배포 자산이 아니다.
 
-### v0.3.3 pre-merge 도구 환경
+### v0.3.3 도구 환경
 
 - Node.js `v24.18.0`, npm `11.16.0`
 - rustc `1.97.1`, cargo `1.97.1`, Tauri CLI `2.11.4`
 - Windows 11 Pro
-- 고정 runtime·모델 SHA-256은 실제 실행이 기록한 `pipeline-provenance.json`과 `src-tauri/resources/media-tools/manifest.json`이 일치했다.
+- 고정 runtime·모델 SHA-256은 실제 실행이 기록한 `pipeline-provenance.json`, 빌드 manifest, 설치 폴더 재계산 결과가 일치했다.
+
+### 실제 업데이트 결과
+
+- 시작 상태: 공개 v0.3.2, `D:\VOD Scout\vod-scout.exe` 제품 버전 `0.3.2`
+- 완료 상태: 앱·실행 파일 `v0.3.3`, 설정 화면 `최신 상태`, 재실행 PASS
+- 데이터 보존: 기존 작업 14개와 현재 작업 `#92bbf85a`, 후보 8개 복원
+- 체크포인트 보존: `current-job.json`, `media-checkpoint.json`, `pipeline-provenance.json`, `transcript.json`, `chat-motion.json`의 업데이트 전후 SHA-256 일치
+- 검토 시 새로 생성된 파일: `review-clips` 로그 2개와 맥락 MP4 1개. 기존 상태·체크포인트를 덮어쓰지 않았다.
+- HOLD: HKCU 제거 프로그램 레지스트리의 `DisplayVersion`은 `0.3.2`로 남았지만 실행 파일과 `uninstall.exe`는 `0.3.3`이다.
 
 ## 이전 v0.3.2 공개 빌드
 

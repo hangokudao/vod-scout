@@ -30,10 +30,19 @@
 
 ## 2026-08-05 · v0.3.3 · 설치·업데이트 전환
 
-- 증상: v0.3.3 설치 EXE와 공개 updater 자산이 아직 없으므로 v0.3.2 설치본에서 실제 업데이트·재실행·작업 보존을 확인할 수 없다.
-- 원인: PR 병합과 릴리스 승인 전에는 설치본·태그·GitHub Release를 만들지 않는 게이트를 적용했다.
-- 수정: 구현 변경 없음. GitHub 저장소의 기존 Tauri signing secret 이름은 확인했지만 로컬 키는 없고, Authenticode 인증서는 CurrentUser·LocalMachine 저장소에서 모두 0개였다.
-- 회귀 테스트: 병합 전 해당 없음.
+- 증상과 재현 조건: 설치된 공개 v0.3.2에서 GitHub Release의 v0.3.3을 발견해 `지금 업데이트`를 실행했다.
+- 확인한 결과: 앱이 다시 실행됐고 화면·설정·`D:\VOD Scout\vod-scout.exe`의 제품·파일 버전이 모두 `0.3.3`이었다. 설정 화면은 `최신 상태`를 표시했다. 기존 작업 14개, 현재 작업 `#92bbf85a`, 후보 8개와 실행 기록을 다시 열었다.
+- 패키지 검증: 설치 EXE의 공개 재다운로드 SHA-256은 `53070183C2DE64F61480355A550924A0A89F28C6E83323F262ADC7926251ACF6`이고, updater 공개키와 `.sig`를 사용한 독립 minisign 검증을 통과했다. 설치된 runtime manifest 28개 파일도 전부 해시가 일치했다.
+- 데이터 보존: `current-job.json`, 현재 작업의 `media-checkpoint.json`, `pipeline-provenance.json`, `transcript.json`, `chat-motion.json` SHA-256이 업데이트 전과 모두 같았다. 검토 화면을 열 때 기존 파일을 덮어쓰지 않고 `review-clips` 캐시 3개만 새로 생성됐다.
+- 수정: 구현 변경 없음. 공개 패키지와 기존 updater 경로를 그대로 검증했다.
+- 상태: `PASS`
+
+## 2026-08-05 · v0.3.3 · 업데이트 뒤 제거 프로그램 레지스트리 버전
+
+- 증상과 재현 조건: 위 업데이트와 재실행 뒤 `D:\VOD Scout\vod-scout.exe`와 `uninstall.exe`는 `0.3.3`이지만 `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall`의 VOD Scout `DisplayVersion`은 `0.3.2`였다.
+- 영향 확인: 앱 화면과 updater의 현재 버전은 `v0.3.3`이며 다시 확인했을 때 `최신 상태`였다. 제품 실행과 다음 업데이트 확인은 정상이나 Windows 앱 목록의 버전 표시가 오래된 값일 수 있다.
+- 원인: 확정하지 않았다. 레지스트리를 임의 수정하지 않았다.
+- 수정: 없음. 후속 패치에서 NSIS updater가 기존 current-user 설치의 `DisplayVersion`을 갱신하는지 재현해야 한다.
 - 상태: `HOLD`
 
 ## 기록 형식
