@@ -2,6 +2,16 @@
 
 실제로 재현하거나 로그로 확인한 문제만 기록한다. 원인이 확정되지 않은 항목은 `HOLD`로 표시한다.
 
+## 2026-08-07 · v0.4.0-P0 · PR #13 신선 YouTube full — 메타·공간 점검 후 HTTP 403 (BLOCKED)
+
+- 증상과 재현 조건: PR #13 고정 HEAD `4597010c99bf8432f1fe15ba34269fd63d5daa7c`(draft/open/unmerged), 검증용 `tauri build --no-bundle` release `vod-scout.exe` 메타 **0.3.4** · 크기 **15,270,400** · SHA-256 **`2914E618F4F99A075C91E8CC888BD2E277ACFF57CEB34ED2F324519AE49B7D98`**(설치·릴리스 자산 아님). 승인 URL `JN3BO9GLuFU`, `analysisMode=full`, 데이터 루트 `D:\vod-scout-p0-evidence-20260807-023415-pr13-4597010`. 유일한 제품 작업 `fd8c1cc5-3bfc-4e02-b97a-036ff1009f5e`에서 `create_job`+`start_job` 1회.
+- 확인한 로그·파일: 활동 3 `YouTube 영상 정보를 확인하고 저장 공간을 점검한 뒤 최대 720p로 다운로드합니다.` → `tool-logs/yt-dlp.metadata.json` (748,069 bytes) · 길이 32,000 s · 스트림 합 7,070,731,050 · 피크 추정 15,555,608,310 bytes (~15.56 GB / ~14.49 GiB). 전송 시작 후 `source.f298.mp4.part` **10,033,007** bytes(~10 MB). stderr: `ERROR: unable to download video data: HTTP Error 403: Forbidden`. status `FAILED` · `YouTube 영상을 다운로드하지 못했습니다.` · 단계 `YouTube 다운로드 실패`. 재시도·재개 없음. 증거 인덱스 `reports/evidence-index.json` · 보고 `reports/P0-validation-report-ko.md` · 독립 재리뷰 `reports/PR13-rereview-4597010.md` (SHA-256 `E5F285F19A6ACEC2FAED90639930A45088F9069D6AB4622D59B8640303885091`).
+- 원인: 메타데이터·저장 공간 점검 이후 **미디어 바이트 전송 단계**에서 YouTube가 HTTP 403으로 거부. 제품 내부 디스크 가드 실패로 분류하지 않음. Python 3.10 deprecation 경고는 stderr에 동반됐으나 403 자체 원인으로 확정하지 않음 → 네트워크·제공측 거부 쪽 **HOLD**(제품 코드 결함 단정 금지).
+- 수정: 제품 코드 변경 없음(이 기록 세션은 문서만). 검증 정책상 같은 작업 재개·두 번째 다운로드 없음.
+- 회귀 테스트 / 게이트: 독립 재리뷰 PASS · 정규(canonical) 6개 명령 PASS (`fixedHeadCodeReview` / `gates`) · 메타·공간 점검 PASS · full download **BLOCKED** · 장시간 무중단 분석 **BLOCKED** · low-space E2E **HOLD** · 자원 요약 **HOLD** · `D:\VOD Scout` 전후 동일 PASS · WebView 캐시·jobs before-after **HOLD**. 종합 **BLOCKED**.
+- 상태: 문서화 `PASS` · 실제 full 경로 `BLOCKED` · P0 마감·PR 병합·v0.4 릴리스 계획 **보류**
+- 참고: 과거 H8–H11(main `cca7a9e`) overall 결과는 **역사적 맥락**이며 이번 원샷 PASS로 승격하지 않는다.
+
 ## 2026-08-06 · v0.4.0-P0 · 비호환 체크포인트 폐기 후 재개 하드 실패 (H5 / H5F)
 
 - 증상과 재현 조건: schema 3 또는 지문·도구·언어·ranker 불일치로 미디어 체크포인트가 호환 실패하면 `load_checkpoint`가 `None`을 반환하고 빈 체크포인트(`completed_chunks = 0`)를 만든다. 작업 스냅샷 `completed_units`가 이미 probe 이후(예: 5)이면 정렬이 `0 < snapshot_chunks`를 무결성 오류로 보고 하드 실패했다. 메시지: `작업 스냅샷보다 미디어 체크포인트가 뒤에 있어 자동 재개할 수 없습니다.`

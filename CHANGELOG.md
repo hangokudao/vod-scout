@@ -4,35 +4,44 @@
 
 ## Unreleased
 
-### v0.4.0 P0 (main 병합 · 제품 버전 0.3.4 유지 · 릴리스 아님)
+### v0.4.0 P0 (개발 경로 · 제품 버전 0.3.4 유지 · 릴리스 아님 · 병합 보류)
 
-P0 코드는 공개 `main` `cca7a9e…`(PR #11)에 들어갔으나 **버전 정본·설치 EXE·태그·배포는 0.3.4 그대로**다. v0.4.0 공개 릴리스로 읽지 않는다.
+공개 제품 버전 정본·설치 EXE·태그·배포는 **0.3.4 그대로**다. v0.4.0 공개 릴리스로 읽지 않는다.
+**모든 P0가 PASS가 아니므로 코드 PR과 문서 PR을 병합하지 않으며, v0.4.0 버전·설치·배포 계획을 확정하거나 포함하지 않았다.**
 
-#### Fixed
+#### Fixed (main · PR #11 이미 병합)
 
-- 호환되지 않는 미디어 체크포인트(schema 3·입력 지문·도구/모델 해시·언어·후보 계산 버전 불일치)를 버린 뒤 작업 진행 단위가 이미 앞서 있으면, “작업 스냅샷보다 미디어 체크포인트가 뒤에 있어…”로 재개가 멈추던 문제를 수정했다. 미디어 중간 결과만 다시 계산하고 작업 id·소스·분석 설정은 유지한다 (H5F / PR #11 `d13b864`).
+- 호환되지 않는 미디어 체크포인트(schema 3·입력 지문·도구/모델 해시·언어·후보 계산 버전 불일치)를 버린 뒤 작업 진행 단위가 이미 앞서 있으면, “작업 스냅샷보다 미디어 체크포인트가 뒤에 있어…”로 재개가 멈추던 문제를 수정했다. 미디어 중간 결과만 다시 계산하고 작업 id·소스·분석 설정은 유지한다 (H5F / PR #11 `d13b864` · main `cca7a9e…`).
 
 #### Added (개발 경로 · 미배포)
 
-- 체크포인트 schema 4: 입력 지문·바이트·런타임 SHA-256·언어·`rules-v0.4.0-p0` 후보 계산 버전.
-- 범위 지정 후보를 분석 구간 안으로 제한하고 음량·발화 근거 없는 창 제외.
-- 체크포인트·스냅샷 등의 마지막 정상 세대(`.prev`) 보존 후 교체.
-- 분석 시작 전 작업 폴더 볼륨 여유 공간 검사(부족 시 한국어 설명). YouTube 다운로드 직전 검사는 아직 없다.
+- (main) 체크포인트 schema 4: 입력 지문·바이트·런타임 SHA-256·언어·`rules-v0.4.0-p0` 후보 계산 버전.
+- (main) 범위 지정 후보를 분석 구간 안으로 제한하고 음량·발화 근거 없는 창 제외.
+- (main) 체크포인트·스냅샷 등의 마지막 정상 세대(`.prev`) 보존 후 교체.
+- (main) 분석 시작 전 작업 폴더 볼륨 여유 공간 검사(부족 시 한국어 설명).
+- (**PR #13 draft/open/unmerged**, 고정 HEAD `4597010c99bf8432f1fe15ba34269fd63d5daa7c`) YouTube 다운로드 경로 저장 공간 가드·메타데이터 점검 노출 정리. **main 미병합.**
 
-#### Validation (2026-08-06 · main `cca7a9e`)
+#### Validation (2026-08-07 · PR #13 HEAD `4597010…` · 현재 정본)
 
-- 단위·정적 6/6 PASS (H7B): npm 34 · build · cargo 41/1 ignored · fixture 5 · security 6 · `git diff --check`.
-- H8 실제 범위 분석 overall PASS ([60,360] · 후보 5 · 소스 31999.981 s). 신선 전체 재다운로드 재현 **HOLD**.
-- H9 디스크 가드 단위/정적 PASS. live low-disk **`HOLD: safe low-space E2E environment unavailable`**.
-- H10 실제 취소·재개 PASS (CANCELLED 242 ms · 재개 3/8 · REVIEW_READY 후보 8).
-- H11 실제 full overall PASS (54/54 · 후보 8 · RAM peak ~507 MB). 무중단 single-shot **HOLD** (검증용 샘플러 파일 잠금; 제품 결함 아님).
+증거: `D:\vod-scout-p0-evidence-20260807-023415-pr13-4597010\reports\P0-validation-report-ko.md` · `evidence-index.json`.
+
+- PR #13: **draft · open · unmerged**. 독립 재리뷰 **PASS** · 정규(canonical) 6개 명령 **PASS** (`D:\vod-scout-p0-evidence-20260807-023415-pr13-4597010\reports\PR13-rereview-4597010.md` · SHA-256 `E5F285F19A6ACEC2FAED90639930A45088F9069D6AB4622D59B8640303885091` · `evidence-index.json` `fixedHeadCodeReview` / `gates`).
+- 실제 low-space(저용량) E2E: **HOLD** (`safe low-space E2E environment unavailable`).
+- 유일한 신규 제품 작업 `fd8c1cc5-3bfc-4e02-b97a-036ff1009f5e`: 메타데이터·저장 공간 점검 **PASS** → 부분 전송 약 **10 MB** 후 YouTube **HTTP 403** → 전체 신선 내려받기 **BLOCKED** · 중단 없는 장시간 분석 **BLOCKED**. 재시도·재개 없음.
+- 자원 메트릭 요약: **HOLD**. 설치 폴더 `D:\VOD Scout` 전후 동일 **PASS**. WebView 캐시·사용자 jobs before-after 증거 부족 **HOLD**.
+- 검증용 release `vod-scout.exe` 크기 **15,270,400** · SHA-256 **`2914E618F4F99A075C91E8CC888BD2E277ACFF57CEB34ED2F324519AE49B7D98`** — **설치본·공개 릴리스 자산이 아님** (`tauri build --no-bundle` 검증 전용).
+- 종합 판정: **BLOCKED**.
+
+#### Historical note (H8–H11 · 원샷 PASS 근거 아님)
+
+- 2026-08-06 main `cca7a9e` 시점 H8 범위 overall PASS, H10 취소·재개 PASS, H11 full 재개 overall PASS 등은 **과거 기록**이다. 이번 PR #13 원샷 실제 미디어 PASS나 P0 마감 근거로 승격하지 않는다.
 
 #### Known issues (P0 잔여)
 
-- live 저용량 E2E·acquisition 사전 free-space·H8 재다운로드 재현·H11 무중단 single-shot이 PASS가 될 때까지 **v0.4.0 버전·설치 배포 계획을 진행하지 않는다**.
+- full download·무중단 장시간 분석 **BLOCKED**, live low-space·자원 요약·사용자 데이터 before-after **HOLD**가 해소될 때까지 **PR 병합·v0.4.0 버전·설치 배포 계획을 진행하지 않는다**.
 - Authenticode/SmartScreen 및 P1–P7은 기존과 같이 HOLD.
 
-### v0.4.0 이후 계획 (P1~)
+### v0.4.0 이후 계획 (P1~ · P0 완료 후)
 
 - YouTube 원문 자막 우선 혼합 분석, 검색과 원본 시각 이동, 이야기 후보를 구현한다.
 - 필요한 Whisper 음성 인식은 실제 시험을 통과한 GPU를 우선 사용하고 실패한 청크만 CPU로 처리한다.
