@@ -5,6 +5,66 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 use uuid::Uuid;
 
+/// Sibling path used while writing: `name.ext` → `name.ext.tmp`.
+pub(crate) fn temporary_generation_path(path: &Path) -> PathBuf {
+    generation_sidecar(path, ".tmp")
+}
+
+/// Last known-good generation kept beside the live file: `name.ext` → `name.ext.prev`.
+pub(crate) fn previous_generation_path(path: &Path) -> PathBuf {
+    generation_sidecar(path, ".prev")
+}
+
+fn generation_sidecar(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path
+        .file_name()
+        .unwrap_or_default()
+        .to_os_string();
+    name.push(suffix);
+    path.with_file_name(name)
+}
+
+/// Write `bytes` to `path` while keeping the previous good file as `path`+`.prev`.
+///
+/// Crash between moving the live file aside and promoting the temp file leaves
+/// `.prev` intact so the next load can recover the last good generation.
+pub(crate) fn replace_file_preserving_previous(
+    path: &Path,
+    bytes: &[u8],
+) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let temporary = temporary_generation_path(path);
+    let previous = previous_generation_path(path);
+    fs::write(&temporary, bytes)?;
+    if path.exists() {
+        if previous.exists() {
+            fs::remove_file(&previous)?;
+        }
+        fs::rename(path, &previous)?;
+    }
+    fs::rename(&temporary, path)?;
+    Ok(())
+}
+
+/// Read `path`, or if missing/unreadable empty, the `.prev` generation.
+pub(crate) fn read_bytes_preferring_previous(path: &Path) -> std::io::Result<Option<Vec<u8>>> {
+    let previous = previous_generation_path(path);
+    for candidate in [path, previous.as_path()] {
+        if !candidate.is_file() {
+            continue;
+        }
+        match fs::read(candidate) {
+            Ok(bytes) if !bytes.is_empty() => return Ok(Some(bytes)),
+            Ok(_) => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(None)
+}
+
 #[derive(Debug, Error)]
 pub enum StoreError {
     #[error("작업 저장소를 읽거나 쓸 수 없습니다: {0}")]
@@ -105,9 +165,11 @@ impl JobStore {
                 continue;
             }
             let snapshot = entry.path().join("snapshot.json");
-            let previous = entry.path().join("snapshot.prev.json");
-            if let Ok(job) =
-                Self::read_snapshot(&snapshot).or_else(|_| Self::read_snapshot(&previous))
+            let previous = previous_generation_path(&snapshot);
+            let legacy_previous = entry.path().join("snapshot.prev.json");
+            if let Ok(job) = Self::read_snapshot(&snapshot)
+                .or_else(|_| Self::read_snapshot(&previous))
+                .or_else(|_| Self::read_snapshot(&legacy_previous))
             {
                 if job.id == id {
                     snapshots.push(job);
@@ -139,18 +201,9 @@ impl JobStore {
         let dir = self.job_dir(&job.id);
         fs::create_dir_all(&dir)?;
         let snapshot = dir.join("snapshot.json");
-        let previous = dir.join("snapshot.prev.json");
-        let temporary = dir.join("snapshot.tmp");
         let bytes = serde_json::to_vec_pretty(job)?;
-
-        fs::write(&temporary, bytes)?;
-        if snapshot.exists() {
-            if previous.exists() {
-                fs::remove_file(&previous)?;
-            }
-            fs::rename(&snapshot, &previous)?;
-        }
-        fs::rename(&temporary, &snapshot)?;
+        // Keep snapshot.json.prev as the last good generation (same contract as media checkpoints).
+        replace_file_preserving_previous(&snapshot, &bytes)?;
         self.write_current_id(&job.id)?;
         Ok(())
     }
@@ -185,7 +238,13 @@ impl JobStore {
         let snapshot = dir.join("snapshot.json");
         match Self::read_snapshot(&snapshot) {
             Ok(job) => Ok(job),
-            Err(_) => Self::read_snapshot(&dir.join("snapshot.prev.json")),
+            Err(_) => {
+                // Prefer the generation sidecar written by replace_file_preserving_previous,
+                // then the historical snapshot.prev.json name from older builds.
+                Self::read_snapshot(&previous_generation_path(&snapshot)).or_else(|_| {
+                    Self::read_snapshot(&dir.join("snapshot.prev.json"))
+                })
+            }
         }
     }
 
@@ -270,6 +329,22 @@ mod tests {
         assert!(store.delete_job("../outside.txt").is_err());
         assert!(store.job_size_bytes("../outside.txt").is_err());
         assert_eq!(fs::read(&outside).unwrap(), b"keep");
+    }
+
+    #[test]
+    fn replace_file_preserving_previous_keeps_last_good_generation() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("media-checkpoint.json");
+        replace_file_preserving_previous(&path, b"{\"v\":1}").unwrap();
+        replace_file_preserving_previous(&path, b"{\"v\":2}").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"{\"v\":2}");
+        assert_eq!(
+            fs::read(previous_generation_path(&path)).unwrap(),
+            b"{\"v\":1}"
+        );
+        fs::remove_file(&path).unwrap();
+        let recovered = read_bytes_preferring_previous(&path).unwrap().unwrap();
+        assert_eq!(recovered, b"{\"v\":1}");
     }
 
     #[test]

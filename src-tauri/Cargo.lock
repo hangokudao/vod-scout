@@ -4201,6 +4201,7 @@ version = "0.3.4"
 dependencies = [
  "chrono",
  "hound",
+ "libc",
  "serde",
  "serde_json",
  "sha2",

@@ -2,10 +2,17 @@ use super::{mutate_job, AppState};
 use crate::domain::{
     AnalysisMode, Candidate, CandidateDecision, ContextTranscriptEntry, JobStatus, SourceKind,
 };
-use crate::integrity::{runtime_hashes, source_fingerprint, verify_runtime_bundle};
+use crate::integrity::{
+    format_bytes_for_message, free_disk_space_bytes, runtime_hashes, source_fingerprint,
+    verify_runtime_bundle,
+};
+use crate::storage::{
+    previous_generation_path, replace_file_preserving_previous,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering as CmpOrdering;
+use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -31,6 +38,12 @@ const CHAT_SAMPLE_SECONDS: f64 = 5.0;
 const QUICK_CHAT_SAMPLE_SECONDS: f64 = 15.0;
 const CHAT_FRAME_SIDE: usize = 64;
 const CONTEXT_PADDING_SECONDS: f64 = 15.0;
+/// Media checkpoint schema for P0 compatibility fields (fingerprint/tools/ranker).
+const MEDIA_CHECKPOINT_SCHEMA: u8 = 4;
+/// Candidate scoring contract recorded in checkpoints and provenance.
+const RANKER_VERSION: &str = "rules-v0.4.0-p0";
+const TRANSCRIPTION_LANGUAGE: &str = "ko";
+const MIB: u64 = 1024 * 1024;
 /// Soft wait after kill before forcing the whole owned process tree.
 pub(crate) const CHILD_TERMINATE_GRACE: Duration = Duration::from_secs(3);
 /// Hard cap so cancel never blocks the pipeline on a stuck wait/join.
@@ -201,7 +214,7 @@ struct PlannedChunk {
     length_seconds: f64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct MediaCheckpoint {
     schema_version: u8,
@@ -211,6 +224,19 @@ struct MediaCheckpoint {
     analysis_mode: AnalysisMode,
     analysis_start_seconds: u32,
     analysis_end_seconds: u32,
+    /// Input content fingerprint; required for resume compatibility (P0).
+    #[serde(default)]
+    input_fingerprint: String,
+    #[serde(default)]
+    input_bytes: u64,
+    /// FFmpeg/Whisper/model (and other runtime) SHA-256 map from the integrity manifest.
+    #[serde(default)]
+    runtime_sha256: HashMap<String, String>,
+    /// Missing fields deserialize empty and fail compatibility (must not invent defaults).
+    #[serde(default)]
+    language: String,
+    #[serde(default)]
+    ranker_version: String,
     planned_chunks: Vec<PlannedChunk>,
     completed_chunks: u32,
     segments: Vec<TranscriptSegment>,
@@ -229,15 +255,23 @@ impl MediaCheckpoint {
         analysis_start_seconds: u32,
         analysis_end_seconds: u32,
         planned_chunks: Vec<PlannedChunk>,
+        input_fingerprint: String,
+        input_bytes: u64,
+        runtime_sha256: HashMap<String, String>,
     ) -> Self {
         Self {
-            schema_version: 3,
+            schema_version: MEDIA_CHECKPOINT_SCHEMA,
             source_path: source_path.into(),
             duration_seconds,
             chunk_seconds: CHUNK_SECONDS,
             analysis_mode,
             analysis_start_seconds,
             analysis_end_seconds,
+            input_fingerprint,
+            input_bytes,
+            runtime_sha256,
+            language: TRANSCRIPTION_LANGUAGE.into(),
+            ranker_version: RANKER_VERSION.into(),
             planned_chunks,
             completed_chunks: 0,
             segments: Vec::new(),
@@ -327,6 +361,62 @@ fn is_in_completed_chunks(seconds: f64, chunks: &[PlannedChunk]) -> bool {
     })
 }
 
+/// How media checkpoint progress was reconciled with the job snapshot's units.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CheckpointAlignResult {
+    /// Checkpoint and snapshot already agree on completed media chunks.
+    Aligned,
+    /// Checkpoint was ahead of the snapshot; intermediate media state was rewound.
+    Rewound,
+    /// Snapshot claimed more media progress than the checkpoint. Allowed only when
+    /// incompatible media intermediates were discarded and rebuilt (schema/fingerprint/etc.).
+    RestartMediaFromScratch,
+}
+
+/// Align checkpoint chunk progress with `job.completed_units`.
+///
+/// Job units encode media as: 0/1 acquire+tools, 2 probe, then one unit per completed chunk.
+/// When media intermediates were rebuilt (`media_intermediates_rebuilt`), lagging behind the
+/// snapshot must restart media work rather than hard-fail — the snapshot's advanced units are
+/// stale relative to the discarded checkpoint, not proof of durable media progress.
+fn align_checkpoint_with_job_units(
+    checkpoint: &mut MediaCheckpoint,
+    job_completed_units: u32,
+    media_intermediates_rebuilt: bool,
+) -> Result<CheckpointAlignResult, String> {
+    let chunk_count = checkpoint.planned_chunks.len().max(1) as u32;
+    let snapshot_chunks = job_completed_units.saturating_sub(2).min(chunk_count);
+    if checkpoint.completed_chunks > snapshot_chunks {
+        let completed = &checkpoint.planned_chunks[..snapshot_chunks as usize];
+        checkpoint
+            .segments
+            .retain(|segment| is_in_completed_chunks(segment.start_seconds, completed));
+        checkpoint
+            .energy
+            .retain(|point| is_in_completed_chunks(point.start_seconds, completed));
+        checkpoint.completed_chunks = snapshot_chunks;
+        checkpoint.chat_motion_completed = false;
+        checkpoint.chat_motion.clear();
+        Ok(CheckpointAlignResult::Rewound)
+    } else if checkpoint.completed_chunks < snapshot_chunks {
+        if media_intermediates_rebuilt {
+            Ok(CheckpointAlignResult::RestartMediaFromScratch)
+        } else {
+            Err(
+                "작업 스냅샷보다 미디어 체크포인트가 뒤에 있어 자동 재개할 수 없습니다."
+                    .into(),
+            )
+        }
+    } else {
+        Ok(CheckpointAlignResult::Aligned)
+    }
+}
+
+/// Job progress units after media intermediates were rebuilt (probe-complete + any chunks kept).
+fn job_units_after_media_restart(checkpoint: &MediaCheckpoint) -> u32 {
+    2 + checkpoint.completed_chunks
+}
+
 #[derive(Debug)]
 struct WindowScore {
     start: f64,
@@ -403,9 +493,16 @@ pub fn run_media_pipeline<R: tauri::Runtime>(
             });
         }
         Err(PipelineError::Cancelled) => {
+            // Child terminate already finished inside run_command before Cancelled bubbles up.
+            // Do not invent a wall-clock here; hard-cap/grace are enforced at terminate sites.
             let _ = mutate_job(&app, &state, |job| {
                 if job.status != JobStatus::Cancelling && job.status.is_active() {
                     job.transition(JobStatus::Cancelling)?;
+                    job.current_stage_label = "실행 중 도구 종료 중".into();
+                    job.push_activity(
+                        "cancel",
+                        "취소 요청을 반영했습니다. 관련 도구 프로세스를 종료하는 중입니다.",
+                    );
                 }
                 job.transition(JobStatus::Cancelled)?;
                 job.current_stage_label = "사용자가 취소함".into();
@@ -576,9 +673,9 @@ fn prepare_preview(
     if !output.is_file() || fs::metadata(&output).map(|value| value.len()).unwrap_or(0) < 1024 {
         let temporary = preview_temporary_path(&output);
         fs::remove_file(&temporary).ok();
-        let never_cancel = AtomicBool::new(false);
+        // Preview FFmpeg must honor the same job cancel flag as analysis tools.
         let result = run_command(
-            &never_cancel,
+            &state.cancel_requested,
             &tools.ffmpeg,
             tools.ffmpeg_dir.as_path(),
             [
@@ -700,6 +797,10 @@ fn run<R: tauri::Runtime>(
     }
     check_cancel(state)?;
 
+    let (input_fingerprint, input_bytes) =
+        source_fingerprint(&source).map_err(PipelineError::Message)?;
+    let runtime_sha256 = runtime_hashes().map_err(PipelineError::Message)?;
+
     let checkpoint_path = job_dir.join("media-checkpoint.json");
     let mut checkpoint = load_checkpoint(
         &checkpoint_path,
@@ -707,8 +808,15 @@ fn run<R: tauri::Runtime>(
         analysis_mode,
         requested_start,
         requested_end,
+        &input_fingerprint,
+        input_bytes,
+        &runtime_sha256,
     )?;
+    // load_checkpoint returns None for missing, corrupt, or incompatible (schema/fingerprint/tools/ranker).
+    // In those cases we rebuild a fresh media checkpoint and must recompute intermediates only.
+    let mut media_intermediates_rebuilt = false;
     if checkpoint.is_none() {
+        media_intermediates_rebuilt = true;
         let probe_json = job_dir.join("ffprobe.json");
         run_command(
             &state.cancel_requested,
@@ -757,28 +865,52 @@ fn run<R: tauri::Runtime>(
             analysis_start,
             analysis_end,
             planned_chunks,
+            input_fingerprint.clone(),
+            input_bytes,
+            runtime_sha256.clone(),
         ));
     }
     let mut checkpoint = checkpoint.expect("checkpoint initialized");
     let chunk_count = checkpoint.planned_chunks.len().max(1) as u32;
     let total_units = chunk_count + 6;
 
-    let snapshot_chunks = completed_units.saturating_sub(2).min(chunk_count);
-    if checkpoint.completed_chunks > snapshot_chunks {
-        let completed = &checkpoint.planned_chunks[..snapshot_chunks as usize];
-        checkpoint
-            .segments
-            .retain(|segment| is_in_completed_chunks(segment.start_seconds, completed));
-        checkpoint
-            .energy
-            .retain(|point| is_in_completed_chunks(point.start_seconds, completed));
-        checkpoint.completed_chunks = snapshot_chunks;
-        checkpoint.chat_motion_completed = false;
-        checkpoint.chat_motion.clear();
-    } else if checkpoint.completed_chunks < snapshot_chunks {
-        return Err(PipelineError::Message(
-            "작업 스냅샷보다 미디어 체크포인트가 뒤에 있어 자동 재개할 수 없습니다.".into(),
-        ));
+    // Block analysis start when free space cannot cover active WAV, checkpoint growth,
+    // chat-motion temp frames, and preview headroom for the selected source.
+    ensure_analysis_disk_space(&job_dir, input_bytes, checkpoint.duration_seconds)?;
+
+    let align = align_checkpoint_with_job_units(
+        &mut checkpoint,
+        completed_units,
+        media_intermediates_rebuilt,
+    )
+    .map_err(PipelineError::Message)?;
+
+    // After an incompatible discard, clamp job media progress to the rebuilt checkpoint so
+    // sequential progress updates work and a later mid-recompute resume does not hard-fail.
+    // Job id, source, and analysis settings are preserved; user data is not deleted.
+    let mut completed_units = completed_units;
+    if align == CheckpointAlignResult::RestartMediaFromScratch {
+        completed_units = job_units_after_media_restart(&checkpoint);
+        let duration = checkpoint.duration_seconds;
+        let _ = mutate_job(app, state, |job| {
+            job.total_units = total_units;
+            job.media_duration_seconds = Some(duration);
+            if job.completed_units > completed_units {
+                job.completed_units = completed_units;
+                job.candidates.clear();
+                job.current_stage_label = format!("미디어 확인 · {}개 청크", chunk_count);
+                job.error_message = None;
+                job.error_detail = None;
+                // Reverse media restart is not a normal forward transition (e.g. Transcribing→Probing).
+                job.status = JobStatus::Probing;
+                job.push_activity(
+                    "progress",
+                    "호환되지 않는 미디어 중간 결과를 버리고 음성 인식부터 다시 계산합니다.",
+                );
+            }
+            Ok(())
+        })
+        .map_err(PipelineError::Message)?;
     }
 
     if completed_units < 2 {
@@ -791,7 +923,7 @@ fn run<R: tauri::Runtime>(
                 JobStatus::Probing,
                 format!("미디어 확인 · {}개 청크", chunk_count),
                 format!(
-                    "{} 범위 {}초를 전사 청크 {}개로 계획했습니다.",
+                    "{} 범위 {}초를 음성 인식 청크 {}개로 계획했습니다.",
                     analysis_mode.label(),
                     checkpoint
                         .planned_chunks
@@ -804,7 +936,7 @@ fn run<R: tauri::Runtime>(
             )
         })
         .map_err(PipelineError::Message)?;
-    } else {
+    } else if align != CheckpointAlignResult::RestartMediaFromScratch {
         let duration = checkpoint.duration_seconds;
         let _ = mutate_job(app, state, |job| {
             job.total_units = total_units;
@@ -902,9 +1034,9 @@ fn run<R: tauri::Runtime>(
             state,
             chunk_index + 3,
             JobStatus::Transcribing,
-            &format!("전사 {}/{}", chunk_index + 1, chunk_count),
+            &format!("음성 인식 {}/{}", chunk_index + 1, chunk_count),
             &format!(
-                "오디오 청크 {}/{}를 추출하고 전사했습니다.",
+                "오디오 청크 {}/{}를 추출하고 음성 인식했습니다.",
                 chunk_index + 1,
                 chunk_count
             ),
@@ -912,7 +1044,9 @@ fn run<R: tauri::Runtime>(
     }
 
     checkpoint.segments = sanitize_transcript_segments(std::mem::take(&mut checkpoint.segments));
-    checkpoint.schema_version = 3;
+    checkpoint.schema_version = MEDIA_CHECKPOINT_SCHEMA;
+    checkpoint.language = TRANSCRIPTION_LANGUAGE.into();
+    checkpoint.ranker_version = RANKER_VERSION.into();
     save_checkpoint(&checkpoint_path, &checkpoint)?;
     write_transcript(&job_dir.join("transcript.json"), &checkpoint.segments)?;
 
@@ -986,6 +1120,8 @@ fn run<R: tauri::Runtime>(
     )?;
     let candidates = build_candidates(
         checkpoint.duration_seconds,
+        checkpoint.analysis_start_seconds as f64,
+        checkpoint.analysis_end_seconds as f64,
         &checkpoint.segments,
         &checkpoint.energy,
         &checkpoint.chat_motion,
@@ -1109,16 +1245,65 @@ fn write_pipeline_provenance(
                 CHAT_SAMPLE_SECONDS
             }
         },
-        "rankerVersion": "rules-v0.3.2"
+        "rankerVersion": RANKER_VERSION
     });
     let path = job_dir.join("pipeline-provenance.json");
-    let temporary = job_dir.join("pipeline-provenance.json.tmp");
-    fs::write(&temporary, serde_json::to_vec_pretty(&provenance)?)?;
-    if path.exists() {
-        fs::remove_file(&path)?;
-    }
-    fs::rename(temporary, path)?;
+    replace_file_preserving_previous(&path, &serde_json::to_vec_pretty(&provenance)?)?;
     Ok(())
+}
+
+/// Working-set estimate for media analysis after the source file is already on disk.
+/// Includes one active WAV chunk, checkpoint/transcript growth, chat-motion temp frames,
+/// and preview headroom. Source bytes are not re-counted.
+pub(crate) fn estimate_analysis_workspace_bytes(
+    source_bytes: u64,
+    duration_seconds: f64,
+) -> u64 {
+    let _ = source_bytes; // retained for call-site clarity and future stream-size fusion
+    const ACTIVE_WAV: u64 = 20 * MIB; // ~10 min mono PCM + margin
+    const CHECKPOINT_HEADROOM: u64 = 256 * MIB;
+    const PREVIEW_HEADROOM: u64 = 512 * MIB;
+    const CHAT_MOTION_TEMP: u64 = 512 * MIB;
+    // Finite positive duration only; non-finite/negative collapse to one hour floor.
+    let hours = if duration_seconds.is_finite() && duration_seconds > 0.0 {
+        (duration_seconds / 3600.0).ceil().max(1.0) as u64
+    } else {
+        1
+    };
+    let transcript_growth = hours.saturating_mul(32 * MIB);
+    let base = ACTIVE_WAV
+        .saturating_add(CHECKPOINT_HEADROOM)
+        .saturating_add(PREVIEW_HEADROOM)
+        .saturating_add(CHAT_MOTION_TEMP)
+        .saturating_add(transcript_growth);
+    // ~10% safety margin (filesystem TOCTOU / fragmentation); not a YouTube stream estimate.
+    base.saturating_add(base / 10)
+}
+
+pub(crate) fn ensure_sufficient_disk_space(
+    available_bytes: u64,
+    required_bytes: u64,
+) -> Result<(), String> {
+    if available_bytes < required_bytes {
+        let shortfall = required_bytes - available_bytes;
+        return Err(format!(
+            "저장 공간이 부족합니다. 분석에 약 {}이 필요하지만 현재 여유 공간은 {}입니다. 약 {}을 확보한 뒤 다시 시작해 주세요.",
+            format_bytes_for_message(required_bytes),
+            format_bytes_for_message(available_bytes),
+            format_bytes_for_message(shortfall)
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_analysis_disk_space(
+    job_dir: &Path,
+    source_bytes: u64,
+    duration_seconds: f64,
+) -> Result<(), PipelineError> {
+    let required = estimate_analysis_workspace_bytes(source_bytes, duration_seconds);
+    let available = free_disk_space_bytes(job_dir).map_err(PipelineError::Message)?;
+    ensure_sufficient_disk_space(available, required).map_err(PipelineError::Message)
 }
 
 fn progress<R: tauri::Runtime>(
@@ -1269,51 +1454,100 @@ fn load_checkpoint(
     analysis_mode: AnalysisMode,
     requested_start: Option<u32>,
     requested_end: Option<u32>,
+    expected_fingerprint: &str,
+    expected_input_bytes: u64,
+    expected_runtime: &HashMap<String, String>,
 ) -> Result<Option<MediaCheckpoint>, PipelineError> {
-    if !path.is_file() {
-        return Ok(None);
-    }
-    let checkpoint: MediaCheckpoint = serde_json::from_slice(&fs::read(path)?)?;
     let requested_start = requested_start.unwrap_or(0);
-    if checkpoint.schema_version != 3
-        || checkpoint.source_path != source_path
+    let previous = previous_generation_path(path);
+    // Live first, then .prev. Corrupt/unreadable live falls through; valid-but-incompatible
+    // live must not resume from a prior generation (different fingerprint/tools/ranker run).
+    for (is_live, candidate) in [(true, path), (false, previous.as_path())] {
+        if !candidate.is_file() {
+            continue;
+        }
+        let bytes = match fs::read(candidate) {
+            Ok(bytes) if !bytes.is_empty() => bytes,
+            Ok(_) => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        };
+        let checkpoint: MediaCheckpoint = match serde_json::from_slice(&bytes) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        if checkpoint_is_compatible(
+            &checkpoint,
+            source_path,
+            analysis_mode,
+            requested_start,
+            requested_end,
+            expected_fingerprint,
+            expected_input_bytes,
+            expected_runtime,
+        ) {
+            return Ok(Some(checkpoint));
+        }
+        if is_live {
+            return Ok(None);
+        }
+    }
+    Ok(None)
+}
+
+fn checkpoint_is_compatible(
+    checkpoint: &MediaCheckpoint,
+    source_path: &str,
+    analysis_mode: AnalysisMode,
+    requested_start: u32,
+    requested_end: Option<u32>,
+    expected_fingerprint: &str,
+    expected_input_bytes: u64,
+    expected_runtime: &HashMap<String, String>,
+) -> bool {
+    if checkpoint.schema_version != MEDIA_CHECKPOINT_SCHEMA {
+        return false;
+    }
+    if checkpoint.source_path != source_path
         || checkpoint.analysis_mode != analysis_mode
         || checkpoint.analysis_start_seconds != requested_start
         || (analysis_mode == AnalysisMode::Range
             && Some(checkpoint.analysis_end_seconds) != requested_end)
     {
-        return Ok(None);
+        return false;
     }
-    Ok(Some(checkpoint))
+    if checkpoint.input_fingerprint.is_empty()
+        || checkpoint.input_fingerprint != expected_fingerprint
+        || checkpoint.input_bytes != expected_input_bytes
+    {
+        return false;
+    }
+    if checkpoint.language != TRANSCRIPTION_LANGUAGE
+        || checkpoint.ranker_version != RANKER_VERSION
+    {
+        return false;
+    }
+    if checkpoint.runtime_sha256 != *expected_runtime {
+        return false;
+    }
+    if !checkpoint.duration_seconds.is_finite() || checkpoint.duration_seconds <= 0.0 {
+        return false;
+    }
+    true
 }
 
 fn save_checkpoint(path: &Path, checkpoint: &MediaCheckpoint) -> Result<(), PipelineError> {
-    let temporary = path.with_extension("tmp");
-    fs::write(&temporary, serde_json::to_vec_pretty(checkpoint)?)?;
-    if path.exists() {
-        fs::remove_file(path)?;
-    }
-    fs::rename(temporary, path)?;
+    replace_file_preserving_previous(path, &serde_json::to_vec_pretty(checkpoint)?)?;
     Ok(())
 }
 
 fn write_transcript(path: &Path, segments: &[TranscriptSegment]) -> Result<(), PipelineError> {
-    let temporary = path.with_extension("tmp");
-    fs::write(&temporary, serde_json::to_vec_pretty(segments)?)?;
-    if path.exists() {
-        fs::remove_file(path)?;
-    }
-    fs::rename(temporary, path)?;
+    replace_file_preserving_previous(path, &serde_json::to_vec_pretty(segments)?)?;
     Ok(())
 }
 
 fn write_chat_motion(path: &Path, points: &[ChatMotionPoint]) -> Result<(), PipelineError> {
-    let temporary = path.with_extension("tmp");
-    fs::write(&temporary, serde_json::to_vec_pretty(points)?)?;
-    if path.exists() {
-        fs::remove_file(path)?;
-    }
-    fs::rename(temporary, path)?;
+    replace_file_preserving_previous(path, &serde_json::to_vec_pretty(points)?)?;
     Ok(())
 }
 
@@ -1559,28 +1793,57 @@ fn parse_srt_time(value: &str) -> Option<f64> {
 
 fn build_candidates(
     duration: f64,
+    range_start_seconds: f64,
+    range_end_seconds: f64,
     segments: &[TranscriptSegment],
     energy: &[EnergyPoint],
     chat_motion: &[ChatMotionPoint],
 ) -> Vec<Candidate> {
-    let window_size = duration.clamp(1.0, 45.0);
+    let range_start = range_start_seconds.clamp(0.0, duration.max(0.0));
+    let range_end = range_end_seconds
+        .max(range_start)
+        .min(if duration.is_finite() {
+            duration.max(range_start)
+        } else {
+            range_start
+        });
+    let span = (range_end - range_start).max(0.0);
+    if span <= f64::EPSILON {
+        return Vec::new();
+    }
+    let window_size = span.clamp(1.0, 45.0).min(span.max(1.0));
     let mut windows = Vec::new();
-    let mut start = 0.0;
+    let mut start = range_start;
     loop {
-        let end = (start + window_size).min(duration);
+        let end = (start + window_size).min(range_end);
+        if end - start <= f64::EPSILON {
+            break;
+        }
         let points = energy
             .iter()
             .filter(|point| point.start_seconds >= start && point.start_seconds < end)
             .collect::<Vec<_>>();
+        let spoken = segments
+            .iter()
+            .filter(|segment| segment.end_seconds > start && segment.start_seconds < end)
+            .collect::<Vec<_>>();
+        // P0: drop windows with neither audio energy samples nor dialogue text.
+        // Chat-motion alone is not enough evidence to rank a candidate.
+        if points.is_empty() && spoken.is_empty() {
+            if end >= range_end - f64::EPSILON {
+                break;
+            }
+            start += 15.0;
+            if start >= range_end {
+                break;
+            }
+            continue;
+        }
         let audio_raw = if points.is_empty() {
             0.0
         } else {
             points.iter().map(|point| point.rms).sum::<f64>() / points.len() as f64
         };
-        let spoken = segments
-            .iter()
-            .filter(|segment| segment.end_seconds > start && segment.start_seconds < end)
-            .collect::<Vec<_>>();
         let characters = spoken
             .iter()
             .map(|segment| segment.text.chars().count())
@@ -1613,10 +1876,13 @@ fn build_candidates(
             chat_raw,
             excerpt,
         });
-        if end >= duration {
+        if end >= range_end - f64::EPSILON {
             break;
         }
         start += 15.0;
+        if start >= range_end {
+            break;
+        }
     }
 
     let max_audio = windows
@@ -2073,8 +2339,8 @@ mod tests {
                 rms: if (15..45).contains(&second) { 0.8 } else { 0.1 },
             })
             .collect::<Vec<_>>();
-        let first = build_candidates(60.0, &segments, &energy, &[]);
-        let regenerated = build_candidates(60.0, &segments, &energy, &[]);
+        let first = build_candidates(60.0, 0.0, 60.0, &segments, &energy, &[]);
+        let regenerated = build_candidates(60.0, 0.0, 60.0, &segments, &energy, &[]);
         let first_ids = first
             .iter()
             .map(|candidate| &candidate.id)
@@ -2223,7 +2489,7 @@ mod tests {
                 rms: if second < 45 { 0.8 } else { 0.1 },
             })
             .collect::<Vec<_>>();
-        let candidates = build_candidates(60.0, &segments, &energy, &[]);
+        let candidates = build_candidates(60.0, 0.0, 60.0, &segments, &energy, &[]);
         assert!(!candidates.is_empty());
         assert_eq!(candidates[0].chat_score, None);
         assert!(candidates[0].total_score > 0);
@@ -2274,7 +2540,7 @@ mod tests {
                 motion: if index > 12 { 0.8 } else { 0.1 },
             })
             .collect::<Vec<_>>();
-        let candidates = build_candidates(120.0, &segments, &energy, &motion);
+        let candidates = build_candidates(120.0, 0.0, 120.0, &segments, &energy, &motion);
         assert!(candidates
             .iter()
             .all(|candidate| candidate.chat_score.is_some()));
@@ -2286,6 +2552,510 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn range_candidates_stay_inside_requested_bounds() {
+        let segments = (0..40)
+            .map(|index| TranscriptSegment {
+                start_seconds: index as f64 * 30.0,
+                end_seconds: index as f64 * 30.0 + 4.0,
+                text: format!("범위 검증 발화 {index}"),
+            })
+            .collect::<Vec<_>>();
+        let energy = (0..1200)
+            .map(|second| EnergyPoint {
+                start_seconds: second as f64,
+                rms: 0.5,
+            })
+            .collect::<Vec<_>>();
+        let candidates = build_candidates(1200.0, 180.0, 360.0, &segments, &energy, &[]);
+        assert!(!candidates.is_empty());
+        assert!(candidates.iter().all(|candidate| {
+            candidate.start_seconds as f64 >= 180.0 - 0.001
+                && candidate.end_seconds as f64 <= 360.0 + 0.001
+        }));
+    }
+
+    #[test]
+    fn empty_or_inverted_range_yields_no_candidates() {
+        let segments = vec![TranscriptSegment {
+            start_seconds: 1.0,
+            end_seconds: 3.0,
+            text: "범위 밖 발화".into(),
+        }];
+        let energy = vec![EnergyPoint {
+            start_seconds: 1.0,
+            rms: 0.9,
+        }];
+        assert!(build_candidates(60.0, 30.0, 30.0, &segments, &energy, &[]).is_empty());
+        assert!(build_candidates(60.0, 50.0, 10.0, &segments, &energy, &[]).is_empty());
+        assert!(build_candidates(60.0, 100.0, 120.0, &segments, &energy, &[]).is_empty());
+    }
+
+    #[test]
+    fn excludes_windows_without_audio_or_dialogue_evidence() {
+        // Chat motion spans the full timeline, but energy/dialogue only cover 0–60s.
+        let segments = vec![TranscriptSegment {
+            start_seconds: 10.0,
+            end_seconds: 14.0,
+            text: "근거가 있는 구간만 후보가 됩니다".into(),
+        }];
+        let energy = (0..60)
+            .map(|second| EnergyPoint {
+                start_seconds: second as f64,
+                rms: 0.7,
+            })
+            .collect::<Vec<_>>();
+        let motion = (1..40)
+            .map(|index| ChatMotionPoint {
+                start_seconds: index as f64 * 15.0,
+                motion: 0.9,
+            })
+            .collect::<Vec<_>>();
+        let candidates = build_candidates(600.0, 0.0, 600.0, &segments, &energy, &motion);
+        assert!(!candidates.is_empty());
+        assert!(candidates
+            .iter()
+            .all(|candidate| candidate.end_seconds <= 60 + 45));
+        assert!(candidates
+            .iter()
+            .all(|candidate| candidate.total_score > 0));
+    }
+
+    #[test]
+    fn checkpoint_compatibility_requires_fingerprint_tools_and_ranker() {
+        let runtime = HashMap::from([
+            ("ffmpeg/ffmpeg.exe".into(), "aaa".into()),
+            ("whisper/whisper-cli.exe".into(), "bbb".into()),
+        ]);
+        let checkpoint = MediaCheckpoint::fresh(
+            "C:/media/source.mp4",
+            120.0,
+            AnalysisMode::Range,
+            10,
+            90,
+            vec![PlannedChunk {
+                offset_seconds: 10.0,
+                length_seconds: 80.0,
+            }],
+            "fingerprint-a".into(),
+            1024,
+            runtime.clone(),
+        );
+        assert!(checkpoint_is_compatible(
+            &checkpoint,
+            "C:/media/source.mp4",
+            AnalysisMode::Range,
+            10,
+            Some(90),
+            "fingerprint-a",
+            1024,
+            &runtime,
+        ));
+        assert!(!checkpoint_is_compatible(
+            &checkpoint,
+            "C:/media/source.mp4",
+            AnalysisMode::Range,
+            10,
+            Some(90),
+            "fingerprint-b",
+            1024,
+            &runtime,
+        ));
+        let mut stale_ranker = checkpoint.clone();
+        stale_ranker.ranker_version = "rules-v0.3.2".into();
+        assert!(!checkpoint_is_compatible(
+            &stale_ranker,
+            "C:/media/source.mp4",
+            AnalysisMode::Range,
+            10,
+            Some(90),
+            "fingerprint-a",
+            1024,
+            &runtime,
+        ));
+        let mut stale_tools = checkpoint.clone();
+        stale_tools
+            .runtime_sha256
+            .insert("ffmpeg/ffmpeg.exe".into(), "changed".into());
+        assert!(!checkpoint_is_compatible(
+            &stale_tools,
+            "C:/media/source.mp4",
+            AnalysisMode::Range,
+            10,
+            Some(90),
+            "fingerprint-a",
+            1024,
+            &runtime,
+        ));
+        let mut schema_v3 = checkpoint.clone();
+        schema_v3.schema_version = 3;
+        assert!(!checkpoint_is_compatible(
+            &schema_v3,
+            "C:/media/source.mp4",
+            AnalysisMode::Range,
+            10,
+            Some(90),
+            "fingerprint-a",
+            1024,
+            &runtime,
+        ));
+        let mut missing_language = checkpoint.clone();
+        missing_language.language.clear();
+        assert!(!checkpoint_is_compatible(
+            &missing_language,
+            "C:/media/source.mp4",
+            AnalysisMode::Range,
+            10,
+            Some(90),
+            "fingerprint-a",
+            1024,
+            &runtime,
+        ));
+        // Schema-4 JSON without language/ranker must not invent matching defaults.
+        let partial_json = serde_json::json!({
+            "schemaVersion": 4,
+            "sourcePath": "C:/media/source.mp4",
+            "durationSeconds": 120.0,
+            "chunkSeconds": 600.0,
+            "analysisMode": "range",
+            "analysisStartSeconds": 10,
+            "analysisEndSeconds": 90,
+            "inputFingerprint": "fingerprint-a",
+            "inputBytes": 1024,
+            "runtimeSha256": runtime,
+            "plannedChunks": [],
+            "completedChunks": 0,
+            "segments": [],
+            "energy": [],
+        });
+        let partial: MediaCheckpoint = serde_json::from_value(partial_json).unwrap();
+        assert!(partial.language.is_empty());
+        assert!(partial.ranker_version.is_empty());
+        assert!(!checkpoint_is_compatible(
+            &partial,
+            "C:/media/source.mp4",
+            AnalysisMode::Range,
+            10,
+            Some(90),
+            "fingerprint-a",
+            1024,
+            &runtime,
+        ));
+    }
+
+    #[test]
+    fn discarded_incompatible_checkpoint_restarts_media_when_job_units_advanced() {
+        // P0 F1: schema-3 / fingerprint-mismatched live is discarded → fresh CP with
+        // completed_chunks=0. An interrupted job snapshot with completed_units > 2 must
+        // recompute media intermediates, not hard-fail resume.
+        let runtime = HashMap::from([("ffmpeg/ffmpeg.exe".into(), "aaa".into())]);
+        let planned = vec![
+            PlannedChunk {
+                offset_seconds: 0.0,
+                length_seconds: 600.0,
+            },
+            PlannedChunk {
+                offset_seconds: 600.0,
+                length_seconds: 600.0,
+            },
+            PlannedChunk {
+                offset_seconds: 1200.0,
+                length_seconds: 600.0,
+            },
+            PlannedChunk {
+                offset_seconds: 1800.0,
+                length_seconds: 600.0,
+            },
+        ];
+        let mut schema3 = MediaCheckpoint::fresh(
+            "C:/media/source.mp4",
+            2400.0,
+            AnalysisMode::Full,
+            0,
+            2400,
+            planned.clone(),
+            "fp-old".into(),
+            4096,
+            runtime.clone(),
+        );
+        schema3.schema_version = 3;
+        schema3.completed_chunks = 3;
+        schema3.segments.push(TranscriptSegment {
+            start_seconds: 10.0,
+            end_seconds: 12.0,
+            text: "이전 스키마 결과".into(),
+        });
+        assert!(!checkpoint_is_compatible(
+            &schema3,
+            "C:/media/source.mp4",
+            AnalysisMode::Full,
+            0,
+            None,
+            "fp-new",
+            4096,
+            &runtime,
+        ));
+
+        // Simulate load_checkpoint → None then MediaCheckpoint::fresh (completed_chunks = 0).
+        let mut rebuilt = MediaCheckpoint::fresh(
+            "C:/media/source.mp4",
+            2400.0,
+            AnalysisMode::Full,
+            0,
+            2400,
+            planned,
+            "fp-new".into(),
+            4096,
+            runtime.clone(),
+        );
+        // Job snapshot advanced past probe + 3 chunks (units = 2 + 3 = 5).
+        let outcome =
+            align_checkpoint_with_job_units(&mut rebuilt, 5, true).expect("must restart, not fail");
+        assert_eq!(outcome, CheckpointAlignResult::RestartMediaFromScratch);
+        assert_eq!(rebuilt.completed_chunks, 0);
+        assert!(rebuilt.segments.is_empty());
+        assert_eq!(job_units_after_media_restart(&rebuilt), 2);
+
+        // Fingerprint mismatch rebuild path is the same: allow restart with advanced units.
+        let mut fp_mismatch_fresh = MediaCheckpoint::fresh(
+            "C:/media/source.mp4",
+            2400.0,
+            AnalysisMode::Full,
+            0,
+            2400,
+            vec![PlannedChunk {
+                offset_seconds: 0.0,
+                length_seconds: 600.0,
+            }],
+            "fp-current".into(),
+            4096,
+            runtime.clone(),
+        );
+        assert_eq!(
+            align_checkpoint_with_job_units(&mut fp_mismatch_fresh, 4, true).unwrap(),
+            CheckpointAlignResult::RestartMediaFromScratch
+        );
+
+        // Compatible checkpoint lagging the snapshot remains a hard integrity error.
+        let mut partial = MediaCheckpoint::fresh(
+            "C:/media/source.mp4",
+            2400.0,
+            AnalysisMode::Full,
+            0,
+            2400,
+            vec![
+                PlannedChunk {
+                    offset_seconds: 0.0,
+                    length_seconds: 600.0,
+                },
+                PlannedChunk {
+                    offset_seconds: 600.0,
+                    length_seconds: 600.0,
+                },
+                PlannedChunk {
+                    offset_seconds: 1200.0,
+                    length_seconds: 600.0,
+                },
+            ],
+            "fp-current".into(),
+            4096,
+            runtime,
+        );
+        partial.completed_chunks = 1;
+        partial.segments.push(TranscriptSegment {
+            start_seconds: 1.0,
+            end_seconds: 2.0,
+            text: "부분 완료".into(),
+        });
+        let err = align_checkpoint_with_job_units(&mut partial, 5, false).unwrap_err();
+        assert!(err.contains("작업 스냅샷보다 미디어 체크포인트가 뒤에"));
+        assert_eq!(partial.completed_chunks, 1);
+        assert_eq!(partial.segments.len(), 1);
+
+        // Compatible rewind path still trims intermediate media to the snapshot.
+        let mut ahead = partial.clone();
+        ahead.completed_chunks = 3;
+        ahead.segments.push(TranscriptSegment {
+            start_seconds: 700.0,
+            end_seconds: 702.0,
+            text: "스냅샷 이후".into(),
+        });
+        assert_eq!(
+            align_checkpoint_with_job_units(&mut ahead, 3, false).unwrap(),
+            CheckpointAlignResult::Rewound
+        );
+        assert_eq!(ahead.completed_chunks, 1);
+        assert!(ahead
+            .segments
+            .iter()
+            .all(|segment| segment.start_seconds < 600.0));
+    }
+
+    #[test]
+    fn load_incompatible_schema3_does_not_resume_prev_and_align_restarts() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("media-checkpoint.json");
+        let runtime = HashMap::from([("ffmpeg/ffmpeg.exe".into(), "aaa".into())]);
+        let mut schema3 = MediaCheckpoint::fresh(
+            "source.mp4",
+            1200.0,
+            AnalysisMode::Full,
+            0,
+            1200,
+            vec![
+                PlannedChunk {
+                    offset_seconds: 0.0,
+                    length_seconds: 600.0,
+                },
+                PlannedChunk {
+                    offset_seconds: 600.0,
+                    length_seconds: 600.0,
+                },
+            ],
+            "fp".into(),
+            2048,
+            runtime.clone(),
+        );
+        schema3.schema_version = 3;
+        schema3.completed_chunks = 2;
+        save_checkpoint(&path, &schema3).unwrap();
+
+        let loaded = load_checkpoint(
+            &path,
+            "source.mp4",
+            AnalysisMode::Full,
+            None,
+            None,
+            "fp",
+            2048,
+            &runtime,
+        )
+        .unwrap();
+        assert!(loaded.is_none(), "schema-3 live must be discarded");
+
+        // Fresh rebuild + advanced job units must restart media chunks from 0.
+        let mut fresh = MediaCheckpoint::fresh(
+            "source.mp4",
+            1200.0,
+            AnalysisMode::Full,
+            0,
+            1200,
+            vec![
+                PlannedChunk {
+                    offset_seconds: 0.0,
+                    length_seconds: 600.0,
+                },
+                PlannedChunk {
+                    offset_seconds: 600.0,
+                    length_seconds: 600.0,
+                },
+            ],
+            "fp".into(),
+            2048,
+            runtime,
+        );
+        let outcome = align_checkpoint_with_job_units(&mut fresh, 5, true).unwrap();
+        assert_eq!(outcome, CheckpointAlignResult::RestartMediaFromScratch);
+        assert_eq!(fresh.completed_chunks, 0);
+        // Job identity/source fields stay on the job snapshot; media units clamp to probe.
+        assert_eq!(job_units_after_media_restart(&fresh), 2);
+    }
+
+    #[test]
+    fn load_checkpoint_rejects_stale_and_recovers_previous_generation() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("media-checkpoint.json");
+        let runtime = HashMap::from([("ffmpeg/ffmpeg.exe".into(), "aaa".into())]);
+        let good = MediaCheckpoint::fresh(
+            "source.mp4",
+            90.0,
+            AnalysisMode::Full,
+            0,
+            90,
+            vec![PlannedChunk {
+                offset_seconds: 0.0,
+                length_seconds: 90.0,
+            }],
+            "fp-good".into(),
+            2048,
+            runtime.clone(),
+        );
+        save_checkpoint(&path, &good).unwrap();
+        let mut stale = good.clone();
+        stale.input_fingerprint = "fp-stale".into();
+        save_checkpoint(&path, &stale).unwrap();
+        // Live file is stale for the current fingerprint; must not resume from .prev either.
+        let rejected = load_checkpoint(
+            &path,
+            "source.mp4",
+            AnalysisMode::Full,
+            None,
+            None,
+            "fp-good",
+            2048,
+            &runtime,
+        )
+        .unwrap();
+        assert!(rejected.is_none());
+        // Drop live file so reader falls back to the previous good generation.
+        fs::remove_file(&path).unwrap();
+        let recovered = load_checkpoint(
+            &path,
+            "source.mp4",
+            AnalysisMode::Full,
+            None,
+            None,
+            "fp-good",
+            2048,
+            &runtime,
+        )
+        .unwrap()
+        .expect("previous generation should resume");
+        assert_eq!(recovered.input_fingerprint, "fp-good");
+
+        // Corrupt (non-empty garbage) live must recover .prev, not silently recompute.
+        save_checkpoint(&path, &good).unwrap();
+        let mut next = good.clone();
+        next.completed_chunks = 1;
+        save_checkpoint(&path, &next).unwrap();
+        fs::write(&path, b"{not-json").unwrap();
+        let from_corrupt = load_checkpoint(
+            &path,
+            "source.mp4",
+            AnalysisMode::Full,
+            None,
+            None,
+            "fp-good",
+            2048,
+            &runtime,
+        )
+        .unwrap()
+        .expect("corrupt live should fall back to previous good generation");
+        assert_eq!(from_corrupt.completed_chunks, 0);
+        assert_eq!(from_corrupt.input_fingerprint, "fp-good");
+    }
+
+    #[test]
+    fn disk_space_guard_explains_shortage_before_start() {
+        let required = estimate_analysis_workspace_bytes(7_000_000_000, 8.0 * 3600.0);
+        assert!(required > 512 * MIB);
+        // Estimate is independent of source_bytes (local source already on disk).
+        assert_eq!(
+            estimate_analysis_workspace_bytes(1, 8.0 * 3600.0),
+            estimate_analysis_workspace_bytes(u64::MAX / 2, 8.0 * 3600.0)
+        );
+        let err = ensure_sufficient_disk_space(1_000, required).unwrap_err();
+        assert!(err.contains("저장 공간이 부족합니다"));
+        assert!(err.contains("확보"));
+        assert!(err.contains("GB") || err.contains("MB"));
+        assert!(ensure_sufficient_disk_space(required, required).is_ok());
+        assert!(ensure_sufficient_disk_space(required - 1, required).is_err());
+        // Non-finite duration must not panic or wrap wildly.
+        let finiteish = estimate_analysis_workspace_bytes(0, f64::NAN);
+        assert!(finiteish > 512 * MIB);
+        assert!(finiteish < 8 * 1024 * MIB);
     }
 
     #[test]
@@ -2373,7 +3143,7 @@ mod tests {
         )
         .unwrap();
         let segments = parse_srt(&output_prefix.with_extension("srt"), 0.0).unwrap();
-        let candidates = build_candidates(duration, &segments, &energy, &[]);
+        let candidates = build_candidates(duration, 0.0, duration, &segments, &energy, &[]);
         assert!(!candidates.is_empty());
         assert!(candidates
             .iter()
@@ -2382,24 +3152,25 @@ mod tests {
             .iter()
             .any(|candidate| candidate.transcript_excerpt.contains("fellow Americans")));
 
-        let checkpoint = MediaCheckpoint {
-            schema_version: 3,
-            source_path: source.display().to_string(),
-            duration_seconds: duration,
-            chunk_seconds: CHUNK_SECONDS,
-            analysis_mode: AnalysisMode::Full,
-            analysis_start_seconds: 0,
-            analysis_end_seconds: duration.ceil() as u32,
-            planned_chunks: vec![PlannedChunk {
+        let (fingerprint, bytes) = source_fingerprint(&source).unwrap();
+        let checkpoint = MediaCheckpoint::fresh(
+            &source.display().to_string(),
+            duration,
+            AnalysisMode::Full,
+            0,
+            duration.ceil() as u32,
+            vec![PlannedChunk {
                 offset_seconds: 0.0,
                 length_seconds: duration,
             }],
-            completed_chunks: 1,
-            segments,
-            energy,
-            chat_motion_completed: false,
-            chat_motion: Vec::new(),
-        };
+            fingerprint,
+            bytes,
+            runtime_hashes().unwrap_or_default(),
+        );
+        let mut checkpoint = checkpoint;
+        checkpoint.completed_chunks = 1;
+        checkpoint.segments = segments;
+        checkpoint.energy = energy;
         let checkpoint_path = temp.path().join("media-checkpoint.json");
         save_checkpoint(&checkpoint_path, &checkpoint).unwrap();
         assert!(checkpoint_path.is_file());
