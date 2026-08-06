@@ -1110,25 +1110,20 @@ fn probe_download_metadata(
     let plan = match selected_format_plan_from_info(&info) {
         Ok(plan) => plan,
         Err(message) => {
-            let class_name = if message == unsafe_size_error() {
-                "unsafe_size"
+            let class = if message == unsafe_size_error() {
+                MetadataProbeFailureClass::UnsafeSize
             } else {
-                "network_or_availability"
+                MetadataProbeFailureClass::NetworkOrAvailability
             };
-            write_minimal_metadata_log(
+            return Err(probe_fail(
                 log_dir,
-                &build_minimal_metadata_log(
-                    None,
-                    status.code(),
-                    stdout_observed,
-                    stderr_observed,
-                    false,
-                    false,
-                    false,
-                    Some(class_name),
-                ),
-            );
-            return Err(AcquisitionError::Message(message));
+                class,
+                status.code(),
+                stdout_observed,
+                stderr_observed,
+                false,
+                false,
+            ));
         }
     };
 
