@@ -1,6 +1,6 @@
 # VOD Scout v0.3.4 통합 인계서
 
-현재 게이트: **v0.3.4 공개 릴리스·인앱 updater·DisplayVersion·작업 보존 PASS · Authenticode/SmartScreen HOLD · 포스트 릴리스 문서 PR 대기 · v0.4.0 구현 전 HOLD**
+현재 게이트: **v0.3.4 공개 릴리스·인앱 updater·DisplayVersion·작업 보존 PASS · Authenticode/SmartScreen HOLD · 포스트 릴리스 문서 PR #10은 미병합 가능 · 승인된 v0.4.0 P0는 별도 시작 가능 · P1–P7 구현·merge·release 미승인**
 
 ## v0.3.4 현재 상태
 
@@ -36,7 +36,7 @@
 1. **Windows Authenticode / SmartScreen** — 설치 EXE·앱 `NotSigned`. 인증서 구매·생성 미승인. updater minisign은 PASS.
 2. **과거 DisplayVersion 근본 원인** — v0.3.2→v0.3.3에서 ARP `0.3.2` 잔류 원인은 미확정. v0.3.3→v0.3.4 인앱 경로 결과는 PASS.
 3. **Whisper 음성 인식 중 취소** — 미실행.
-4. **v0.4.0 P0–P7** — 구현·merge·release 미승인(범위는 별도 계획).
+4. **v0.4.0 P1–P7** — 구현·merge·release 미승인. **P0 브랜치·개발 PR**은 v0.3.4 공개 릴리스 게이트 완료 후 별도 작업으로 시작 가능(이미 승인). 문서 PR #10 병합을 선행 조건으로 두지 않는다.
 
 ## v0.3.3 공개 기준선 (변경 금지)
 
@@ -46,9 +46,9 @@
 
 ## 다음 작업
 
-1. 이 포스트 릴리스 문서 브랜치 `codex/v034-post-release-docs` PR을 main에 병합(문서만; 제품 코드·태그·자산 변경 없음).
-2. Authenticode 정책은 사용자 승인 후에만 진행. 인증서 없이 PASS로 기록하지 않는다.
-3. v0.4.0은 별도 승인·브랜치에서만 시작. 이 문서 작업은 v0.4 구현을 포함하지 않는다.
-4. Whisper 중 취소 등은 필요 시 후속 패치에서 측정한다.
+1. **승인된 v0.4.0 P0** 브랜치·개발 PR을 **별도 작업 트리/브랜치**에서 시작한다. 포스트 릴리스 문서 PR(#10)을 먼저 병합할 필요는 없다.
+2. PR #10(`codex/v034-post-release-docs`)은 문서 전용으로 열려 있으며, 리뷰 후 병합해도 되고 **미병합으로 두어도** 제품 게이트·P0 시작을 막지 않는다. 제품 코드·태그·Release 자산은 건드리지 않는다.
+3. Authenticode 정책은 사용자 승인 후에만 진행. 인증서 없이 PASS로 기록하지 않는다.
+4. v0.4.0 **P1–P7 구현과 merge/release**는 미승인. Whisper 중 취소 등은 필요 시 후속 패치에서 측정한다.
 
 기존 사용자 데이터와 설치본을 삭제하지 않는다. 공개 문서에 비밀값·불필요한 개인 홈 경로를 넣지 않는다. 빌드 산출물(`src-tauri/target`, `dist`)은 스테이징하지 않는다.
