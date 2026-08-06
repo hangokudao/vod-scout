@@ -8,7 +8,7 @@
 
 [변경 내용·SHA-256·서명 파일 보기](https://github.com/hangokudao/vod-scout/releases/tag/v0.3.4)
 
-Windows 코드 서명 인증서가 없어 처음 설치할 때 SmartScreen 경고가 표시될 수 있습니다. v0.3.4 공개 설치 파일은 패키징·Release 검증 전까지 내려받을 수 없습니다.
+Windows 코드 서명 인증서가 없어 처음 설치할 때 SmartScreen 경고가 표시될 수 있습니다. 설치 파일 크기·SHA-256·updater 서명은 [v0.3.4 릴리스 기록](docs/V0.3.4-RELEASE.md)과 [빌드 명세](BUILD-MANIFEST.md)를 따릅니다.
 
 ## 0.3.4에서 되는 것
 
@@ -114,7 +114,7 @@ cargo test --manifest-path src-tauri/fixture-worker/Cargo.toml
 
 ## 다음 순서
 
-1. v0.3.4 패키징·설치·updater·DisplayVersion·실제 YouTube 취소 회귀 검증
+1. v0.3.4 공개·인앱 업데이트·DisplayVersion·데이터 보존 검증 완료 (Authenticode는 계속 `HOLD`)
 2. v0.4.0 P0 체크포인트·범위·취소·저장 공간 정확성
 3. YouTube 자막 확보·품질 검사·검색과 전체 저비용 시간축
 4. 이야기 구간 탐색과 필요한 Whisper의 GPU 우선·CPU 자동 전환
