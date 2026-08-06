@@ -37,9 +37,10 @@
 
 ### Known issues
 
-- 실제 YouTube 취소·재개와 전체 병합 종료 디스크 피크는 측정 완료다(취소 약 1.4s/3.4s, peak 약 13.08 GiB · 최종 약 6.58 GiB · peak−final 임시 약 6.50 GiB; 상세는 `docs/V0.3.4-RELEASE.md`). Whisper 음성 인식 중 취소는 아직 `HOLD`다.
-- 서명된 updater 자산(`.sig`/`latest.json`/`SHA256SUMS`), 실제 설치·인앱 updater, 공개 자산 재다운로드, GitHub Actions 검사, Authenticode는 `HOLD`다. pre-PR NSIS 설치 EXE 증거는 있으나 서명 키 부재로 공개 릴리스 자산이 아니다.
-- 로컬 설치본에서 실행 파일은 `0.3.3`인데 Windows 제거 프로그램 `DisplayVersion`은 `0.3.2`로 남을 수 있다. Tauri NSIS 템플릿은 Install에서 `DisplayVersion`을 번들 `VERSION`으로 쓰지만, 과거 updater 경로의 갱신 실패 원인은 제어된 v0.3.4 재현 전까지 `HOLD`다. 추측성 레지스트리 수정 훅은 넣지 않았다.
+- 공개 Release `v0.3.4`(exact `a341bae…`, Actions `31057676958`, 5개 자산·minisign·인앱 v0.3.3→v0.3.4·DisplayVersion `0.3.4`·작업 15개·데이터 파일 2,087개 보존)는 검증 완료다. 상세·해시는 `docs/V0.3.4-RELEASE.md`, `BUILD-MANIFEST.md`.
+- 실제 YouTube 취소·재개와 전체 병합 종료 디스크 피크는 측정 완료다(취소 약 1.4s/3.4s, peak 약 13.08 GiB · 최종 약 6.58 GiB · peak−final 임시 약 6.50 GiB). Whisper 음성 인식 중 취소는 아직 `HOLD`다.
+- Windows Authenticode 인증서가 없어 설치 EXE·앱이 `NotSigned`이며 SmartScreen 경고가 표시될 수 있다. 인증서 구매·생성은 하지 않았고 `HOLD`다. updater minisign 경로는 PASS다.
+- 과거 공개 v0.3.2→v0.3.3 업데이트에서 HKCU `DisplayVersion`이 `0.3.2`로 남았던 근본 원인은 확정하지 않았다(`HOLD`). 공개 v0.3.3→v0.3.4 인앱 경로에서는 `DisplayVersion`이 `0.3.4`로 맞춰졌다.
 
 ## 0.3.3 - 2026-08-05
 
