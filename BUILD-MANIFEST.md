@@ -1,48 +1,67 @@
 # VOD Scout 빌드 명세
 
-## v0.3.4 pre-PR 패키징 증거 (설치·공개 전)
+## v0.3.4 공개 빌드
 
-상태: **부분 PASS · 서명·설치·공개 HOLD** — 소스 게이트 전부 통과했고, 로컬 `npm.cmd run tauri:build`가 NSIS 설치 EXE까지 생성했다. `createUpdaterArtifacts` 서명 단계에서 `TAURI_SIGNING_PRIVATE_KEY` 부재로 종료해 updater `.sig`/`latest.json`/체크섬 생성은 `HOLD`다. 아래 설치 EXE는 **pre-PR 패키징 증거**이며 공개 릴리스 자산이 아니다. 설치·DisplayVersion·updater 인앱 교체·공개 재다운로드는 이 단계에서 하지 않았다. Authenticode는 인증서 없어 `HOLD`다.
+상태: **PASS** — exact merge에서 태그·CI·공개 자산·minisign·인앱 v0.3.3→v0.3.4·DisplayVersion·작업 보존을 확인했다. Authenticode는 승인된 예외로 `HOLD`다.
 
-- 작업 브랜치: `codex/v034-stability-release` · HEAD `7fd92cb2d28b43e2e95ba2b39a70581ddc0a3d2a` (빌드 시점; 이후 문서/SBOM 갱신 가능)
-- 도구: Node.js `v24.18.0`, npm `11.16.0`, rustc/cargo `1.97.1`, Tauri CLI `2.11.4`, Windows 11
-- 버전 정본: `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, README 설치 링크·`VOD.Scout_0.3.4_x64-setup.exe` 파일명, release notes, workflows, `scripts/generate-release-assets.mjs` 모두 `0.3.4`
-- 소스 게이트: `npm ci` 생략(lockfile 일치 `npm ls` 0 exit) · sidecar/media-tools/check:yt-dlp/test/test:security/build · cargo fmt/test · fixture-worker test · `npm audit` 0 · secret/path/version 스캔 · `git diff --check` 모두 PASS (상세 소요 시간은 작업 리포트)
+- exact commit: `a341bae3dcf65ff60ecdd3b1ac5c04dd6140952a` (PR #9)
+- 태그·Release: `v0.3.4`, https://github.com/hangokudao/vod-scout/releases/tag/v0.3.4 (ID `365895027`, published `2026-08-06T00:19:47Z`, draft=false, prerelease=false, GitHub latest)
+- annotated tag object: `ea5d807a3535f8fede188d255d2fe7fbf4b03bd0` → peel `a341bae…`
+- GitHub Actions: run `31057676958` Release Windows app, **success**, head_sha `a341bae…`
+- 버전 정본: `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, README 설치 링크와 설치 파일명 모두 `0.3.4`
+- 도구(소스 게이트): Node.js `v24.18.0`, npm `11.16.0`, rustc/cargo `1.97.1`, Tauri CLI `2.11.4`, Windows 11
 - yt-dlp: pinned/bundled/latestStable `2026.07.04` · status `PASS`
-- npm audit: info/low/moderate/high/critical **0** (dependencies total 209; 도달 가능 취약점 단정 없음)
-- SPDX SBOM: `npm.cmd run sbom` 재생성 · SPDX-2.3 · 루트 `vod-scout` `0.3.4` · 656 packages · 로컬 절대 빌드 경로 없음
+- npm audit: info/low/moderate/high/critical **0** (dependencies total 209)
+- SPDX SBOM: SPDX-2.3 · 루트 `vod-scout@0.3.4` · 656 packages · 개인 절대 경로 없음
 
-### pre-PR 로컬 번들 (gitignore · 스테이징 금지)
+### 공개 자산
 
-| 산출물 | 크기(bytes) | SHA-256 | 비고 |
+| 자산 | 크기(bytes) | SHA-256 |
+|---|---:|---|
+| `VOD.Scout_0.3.4_x64-setup.exe` | 233,849,362 | `6848c438f8401e964608cb14e8aae34fce1df6551b6142303ddae45cf8942fa3` |
+| `VOD.Scout_0.3.4_x64-setup.exe.sig` | 420 | `a8f6bba8a379e030865b3a9f250cdf1d73463e38a2a9534b173a1da8c2b548a5` |
+| `latest.json` | 14,563 | `3ee2dad252892b7106d8a5fb466998cedd728d52d29ae241c7066a12f1280ff0` |
+| `SHA256SUMS.txt` | 355 | `a4640d71e3495fdbb767b86e01525aa80607c13a5ecf2f4f299e322c541cce30` |
+| `SBOM.spdx.json` | 615,471 | `6ff3d7a3130c35a560f06eab00e48258f45165c6ee2d8379dbc0f30193e6de9a` |
+
+- GitHub asset digest와 재다운로드 SHA-256 일치: 5/5 PASS
+- 공개 직접 다운로드: 5/5 HTTP 200 (Content-Length 일치)
+- `SHA256SUMS.txt`: 포함된 4개 자산 재계산 PASS (정렬·두 칸 공백)
+- SBOM: SPDX 2.3, 루트 `vod-scout 0.3.4`, 총 656 packages
+- updater 서명: `latest.json`과 `.sig` 일치, 앱 공개키로 독립 minisign 검증 PASS
+- 설치 EXE PE ProductVersion/FileVersion `0.3.4(.0)`
+- Authenticode: 설치 EXE·업데이트 후 앱 `NotSigned`. 인증서 없어 `HOLD`
+
+### 인앱 업데이트 후 설치 바이너리
+
+| 파일 | 크기 | SHA-256 | 제품 버전 |
 |---|---:|---|---|
-| `src-tauri/target/release/bundle/nsis/VOD Scout_0.3.4_x64-setup.exe` | 233,851,958 | `CD5033E86A095F3118D24CAFD2535238B163592D755D0B7BF317028CEC198DA0` | Tauri NSIS 원본 파일명(공백). 공개 계약명은 `VOD.Scout_0.3.4_x64-setup.exe`. ProductVersion/FileVersion `0.3.4`. Authenticode `NotSigned`. **공개 자산 아님** |
-| `src-tauri/target/release/vod-scout.exe` | 15,188,992 | `71BF0A68A5677B8B3F7CF2C102C963671B976D4D9059148AB320D4DC807ECBED` | ProductVersion/FileVersion `0.3.4`. Authenticode `NotSigned`. PE ASCII 절대 사용자 경로 문자열 0건 |
-| `src-tauri/target/release/fixture-worker.exe` | 180,224 | `C6651D8004EBCCF7785C1C6C54994D6B5332E639CFF4A695FFCA25E0FC57DB10` | Authenticode `NotSigned` |
-| `SBOM.spdx.json` (저장소 추적) | 615,471 | `6FF3D7A3130C35A560F06EAB00E48258F45165C6EE2D8379DBC0F30193E6DE9A` | 재생성 PASS |
+| 설치 폴더 `vod-scout.exe` | 15,182,336 | `A875FA69CBD2D89FC431A700B388A5E3E6F1C4DD98D012345C81372A96FFCEF7` | 0.3.4 |
+| 설치 폴더 `uninstall.exe` | 157,371 | `698CF81370A483D95CF562C416F25409891FE75F62F6EB832077AC44FC50F7D4` | 0.3.4 |
 
-- 서명 실패 원문(키 값 비공개): `A public key has been found, but no private key. Make sure to set TAURI_SIGNING_PRIVATE_KEY environment variable.`
-- updater 산출: `.sig` / `latest.json` / `SHA256SUMS.txt` **미생성** → `HOLD` (키 주입 후 공개 릴리스 파이프라인에서 생성)
-- `scripts/generate-release-assets.mjs`: 정품 `.sig` 없어 **미실행** (위조 서명 금지)
-- 번들 준비 리소스: `src-tauri/resources/media-tools` schema 5 · runtimeHashes 28 · yt-dlp/deno/ffmpeg/ffprobe/whisper/model 존재. `manifest.json`의 `preparedAt`만 게이트 실행으로 갱신됨
-- 설치·ARP DisplayVersion·인앱 updater·공개 재다운로드·GitHub Actions·Authenticode: **HOLD**
-- 실제 YouTube 취소·재개(release `vod-scout.exe` 0.3.4 + 내장 yt-dlp `2026.07.04`/FFmpeg, 격리 E2E 데이터 디렉터리, 승인 URL `JN3BO9GLuFU`, 기본 720p): **PASS**
-  - 1차 취소: 단말 `CANCELLED` 1,405ms, 소유 yt-dlp 트리 소멸 1,418ms (하드캡 8s, 외부 kill 없음)
-  - 재개: 동일 작업에서 yt-dlp 재기동·`ACQUIRING` 진행, 스냅샷 손상 없음
-  - 2차 취소(병합 관측 직후): 단말·자식 소멸 3,390ms `CANCELLED`
-  - 기존 설치 ARP `DisplayVersion=0.3.2`·사용자 작업 디렉터리 job 집합 해시 전후 불변
-- 실제 YouTube 전체 병합 종료 디스크 피크(`scripts/sample-disk-usage.mjs`, 1s, 표본 816, 약 826s, 시작→획득 824.2s): **PASS**
-  - peak totalBytes **14,045,353,616** (~13.08 GiB) at 2026-08-05T22:41:45.421Z (병합 직전 끝: 열린 `source.temp.mkv` + 분리 스트림 동시)
-  - 피크 구성(이름만): 열린 `source.temp.mkv` 6,974,603,264 · `source.f298.mp4` 6,589,745,009 · `source.f251.webm` 480,986,041
-  - 최종 totalBytes **7,068,902,876** (~6.58 GiB); peak−final 임시 오버헤드 **6,976,450,740** (~6.50 GiB)
-  - 완성 소스: `source.mkv` 7,060,479,026 bytes · 길이 31,999.981s · `acquisition.json` schema 1 · 분리 스트림/`source.temp` 잔존 없음
-  - 제품 상태 `ACQUIRING`→`PROBING`(미디어 확인); FFmpeg 병합 관측; Whisper 전 제품 취소 614ms/`CANCELLED`
+### 실제 업데이트 결과 (v0.3.3 → v0.3.4)
+
+- 시작: 공개 v0.3.3 설치본, 메인 PE `0.3.3`, ARP `DisplayVersion=0.3.2`
+- 경로: 설정 인앱 updater만 (`지금 업데이트`). 운영자 직접 설치 EXE 실행·제거 재설치 없음
+- 완료: 메인·`uninstall` PE `0.3.4`, 단일 HKCU 제거 항목 `DisplayVersion=0.3.4`, 설정 `최신 상태` / `현재 최신 안정 버전`
+- 데이터 보존: 작업 15개 ID 동일, 데이터 파일 2,087개, 누락·추가·해시/크기/mtime 변경 0
+- 공개 `latest.json` version 유지 `0.3.4`
+- HOLD: Authenticode/SmartScreen (`NotSigned`)
+
+### 실제 YouTube·디스크 측정 (소스 게이트)
+
+- 취소·재개(승인 URL `JN3BO9GLuFU`, release exe 0.3.4 + 내장 yt-dlp/FFmpeg, 격리 E2E): **PASS** — 1차 취소 1,405ms/자식 1,418ms; 재개 후 yt-dlp 재기동; 2차 취소 3,390ms
+- 전체 병합 종료 디스크 피크(`sample-disk-usage.mjs` 1s, 표본 816): **PASS** — peak 14,045,353,616 (~13.08 GiB); final 7,068,902,876; peak−final 임시 6,976,450,740; 완성 `source.mkv` 7,060,479,026 · 31,999.981s
+
+### pre-PR 로컬 패키징 참고 (공개 자산 아님)
+
+로컬 `tauri:build` NSIS 본문 해시는 CI 공개 자산과 다르다. 공개 정본은 위 5개 자산 표다.
 
 ### v0.3.4 DisplayVersion 게이트
 
-- 확인된 로컬 불일치(개인 절대 경로 비공개): ARP `DisplayVersion=0.3.2`, 설치 바이너리 제품 버전 `0.3.3`
-- Tauri NSIS 템플릿: Install 절에서 `DisplayVersion`을 번들 `${VERSION}`으로 기록
-- 조치: 추측 훅 없음. v0.3.4 설치·updater 재현에서 ARP·PE가 `0.3.4`인지 확인 후 닫거나 최소 수정
+- 과거: v0.3.2→v0.3.3 후 ARP `DisplayVersion=0.3.2`, 바이너리 `0.3.3` — 근본 원인 미확정 `HOLD`
+- NSIS 템플릿: Install 절에서 `DisplayVersion`을 번들 `${VERSION}`으로 기록
+- 결과: v0.3.3→v0.3.4 인앱 경로에서 ARP·PE 모두 `0.3.4` **PASS**. 추측 훅 없음
 
 ## v0.3.3 공개 빌드
 
