@@ -11,6 +11,8 @@
 ### Fixed
 
 - 내려받기 직전 가드가 download 폴더 피크만 보던 한계를 고쳤다. home/temp/job 볼륨과 분석 workspace(`estimate_analysis_workspace_bytes`)를 한 플래너로 묶고, 동일 볼륨 합산은 `aggregate_required_bytes_by_volume` 생산 경로로 검증한다.
+- 메타데이터 조회에서 고른 정확한 `format_id` 조합을 실제 미디어 전송에 고정하고, 정확한 `filesize`만으로 공간 계획을 세운다. `filesize_approx`만 있거나 크기·포맷이 불명이면 전송 전에 중단한다.
+- 메타데이터 probe stdout/stderr에 상한을 두고 초과 시 자식을 정리하며, 원시 JSON·stderr 대신 duration·format_id·filesize 등 최소 구조화 로그만 남긴다. 네트워크·로컬 환경·도구 실행·안전 용량 계산 불가 안내를 분리한다.
 - 장시간 디스크 샘플러(`scripts/sample-disk-usage.mjs`)가 측정 대상 트리를 수정하지 않음을 체크포인트 교체 스모크로 고정했다. 표본 출력은 대상 밖이어야 하며, 실행 중 `media-checkpoint` live→`.prev` 교체가 방해받지 않는다.
 
 ### v0.4.0 계획

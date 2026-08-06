@@ -23,8 +23,13 @@ use crate::media::terminate_child_tree;
 #[cfg(windows)]
 use crate::media::{KillOnCloseJob, CREATE_NO_WINDOW};
 
-/// yt-dlp format selector shared by metadata probe and media transfer.
-const YT_DLP_FORMAT: &str = "bv*[height<=720]+ba/b[height<=720]/b";
+/// Initial format expression for metadata probe only. The probe result is pinned by exact
+/// `format_id`s for the actual media transfer (`run_yt_dlp`).
+const YT_DLP_FORMAT_PROBE: &str = "bv*[height<=720]+ba/b[height<=720]/b";
+
+/// Hard caps on metadata-only probe pipes (fail closed if exceeded).
+const PROBE_STDOUT_BYTE_LIMIT: usize = 2 * 1024 * 1024;
+const PROBE_STDERR_BYTE_LIMIT: usize = 256 * 1024;
 
 #[derive(Debug)]
 enum AcquisitionError {
@@ -250,8 +255,9 @@ fn acquire<R: tauri::Runtime>(
         })
         .map_err(AcquisitionError::Message)?;
 
-        // Metadata-only size lookup and multi-phase free-space plan MUST pass before any media transfer.
-        ensure_download_disk_space(
+        // Metadata-only size lookup, exact format pin, and multi-phase free-space plan MUST pass
+        // before any media transfer child.
+        let format_plan = ensure_download_disk_space(
             &tools,
             &source_url,
             &download_dir,
@@ -260,7 +266,15 @@ fn acquire<R: tauri::Runtime>(
             &state.cancel_requested,
         )?;
 
-        let outcome = run_yt_dlp(app, state, &tools, &source_url, &download_dir, &log_dir)?;
+        let outcome = run_yt_dlp(
+            app,
+            state,
+            &tools,
+            &source_url,
+            &download_dir,
+            &log_dir,
+            &format_plan.format_selector,
+        )?;
         let path = outcome
             .media_path
             .filter(|path| path.is_file())
@@ -316,20 +330,73 @@ fn overflow_plan_error() -> String {
         .into()
 }
 
-fn unknown_size_error() -> String {
-    "선택한 영상의 예상 용량을 확인하지 못했습니다. 네트워크와 영상 공개 여부를 확인한 뒤 다시 시도해 주세요."
+/// Exact `filesize` missing or only `filesize_approx` — cannot plan space safely.
+pub(crate) fn unsafe_size_error() -> String {
+    "선택한 영상의 정확한 용량을 확인하지 못해 안전하게 내려받기를 시작할 수 없습니다. 잠시 후 다시 시도하거나 다른 영상을 선택해 주세요."
         .into()
+}
+
+/// Network / availability class (probe exit failure, empty response).
+pub(crate) fn metadata_probe_network_message() -> String {
+    "YouTube 영상 정보를 확인하지 못했습니다. 네트워크 연결과 영상 공개 여부를 확인한 뒤 다시 시도해 주세요."
+        .into()
+}
+
+/// Local log folder / permissions / disk for diagnostics.
+pub(crate) fn metadata_probe_local_environment_message() -> String {
+    "작업 로그 폴더를 준비하지 못했습니다. 저장 공간과 폴더 권한을 확인한 뒤 다시 시도해 주세요."
+        .into()
+}
+
+/// Spawn / pipe / Job Object / oversized probe output.
+pub(crate) fn metadata_probe_tool_runtime_message() -> String {
+    "영상 정보 확인을 실행하지 못했습니다. 앱을 다시 시작한 뒤 다시 시도해 주세요. 문제가 계속되면 앱을 다시 설치해 주세요."
+        .into()
+}
+
+/// Probe response too large to process safely.
+pub(crate) fn metadata_probe_oversized_message() -> String {
+    "영상 정보가 비정상적으로 커서 안전하게 확인하지 못했습니다. 잠시 후 다시 시도해 주세요."
+        .into()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MetadataProbeFailureClass {
+    NetworkOrAvailability,
+    LocalEnvironment,
+    ToolRuntime,
+    OversizedOutput,
+    UnsafeSize,
+}
+
+pub(crate) fn metadata_probe_user_message(class: MetadataProbeFailureClass) -> String {
+    match class {
+        MetadataProbeFailureClass::NetworkOrAvailability => metadata_probe_network_message(),
+        MetadataProbeFailureClass::LocalEnvironment => metadata_probe_local_environment_message(),
+        MetadataProbeFailureClass::ToolRuntime => metadata_probe_tool_runtime_message(),
+        MetadataProbeFailureClass::OversizedOutput => metadata_probe_oversized_message(),
+        MetadataProbeFailureClass::UnsafeSize => unsafe_size_error(),
+    }
+}
+
+/// Probe selection pinned for the actual media transfer.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct SelectedFormatPlan {
+    pub format_selector: String,
+    pub format_ids: Vec<String>,
+    pub stream_sizes: Vec<u64>,
+    pub duration_seconds: f64,
 }
 
 /// Checked sum of selected stream sizes (each must be > 0).
 pub(crate) fn sum_stream_sizes(stream_sizes: &[u64]) -> Result<u64, String> {
     if stream_sizes.is_empty() {
-        return Err(unknown_size_error());
+        return Err(unsafe_size_error());
     }
     let mut total = 0u64;
     for &size in stream_sizes {
         if size == 0 {
-            return Err(unknown_size_error());
+            return Err(unsafe_size_error());
         }
         total = total.checked_add(size).ok_or_else(overflow_plan_error)?;
     }
@@ -514,43 +581,86 @@ pub(crate) fn ensure_planned_download_space(
     Ok(max_need)
 }
 
-/// Parse positive byte sizes from a yt-dlp info JSON object (metadata only, no media transfer).
-pub(crate) fn selected_stream_sizes_from_info(info: &Value) -> Result<Vec<u64>, String> {
-    if let Some(formats) = info
+/// Build a transfer-pinned plan from metadata JSON: exact `filesize` only + `format_id` pin.
+pub(crate) fn selected_format_plan_from_info(info: &Value) -> Result<SelectedFormatPlan, String> {
+    let duration_seconds = duration_seconds_from_info(info)?;
+    let (format_ids, stream_sizes) = if let Some(formats) = info
         .get("requested_formats")
         .and_then(|value| value.as_array())
     {
         if formats.is_empty() {
-            return Err(unknown_size_error());
+            return Err(unsafe_size_error());
         }
+        let mut ids = Vec::with_capacity(formats.len());
         let mut sizes = Vec::with_capacity(formats.len());
         for format in formats {
-            sizes.push(stream_size_bytes(format)?);
+            ids.push(extract_format_id(format)?);
+            sizes.push(stream_exact_filesize(format)?);
         }
-        return Ok(sizes);
-    }
-    Ok(vec![stream_size_bytes(info)?])
+        (ids, sizes)
+    } else {
+        (
+            vec![extract_format_id(info)?],
+            vec![stream_exact_filesize(info)?],
+        )
+    };
+    let format_selector = format_selector_from_ids(&format_ids)?;
+    Ok(SelectedFormatPlan {
+        format_selector,
+        format_ids,
+        stream_sizes,
+        duration_seconds,
+    })
 }
 
-/// Safest defensible size: max of available `filesize` / `filesize_approx` (never under-estimate).
-fn stream_size_bytes(format: &Value) -> Result<u64, String> {
-    let mut best: Option<u64> = None;
-    for key in ["filesize", "filesize_approx"] {
-        if let Some(size) = format.get(key).and_then(json_positive_u64) {
-            best = Some(match best {
-                Some(current) => current.max(size),
-                None => size,
-            });
-        }
+/// Exact positive `filesize` only. `filesize_approx` alone is insufficient (fail closed).
+fn stream_exact_filesize(format: &Value) -> Result<u64, String> {
+    match format.get("filesize").and_then(json_positive_u64) {
+        Some(size) => Ok(size),
+        None => Err(unsafe_size_error()),
     }
-    best.ok_or_else(unknown_size_error)
+}
+
+fn extract_format_id(format: &Value) -> Result<String, String> {
+    let raw = format
+        .get("format_id")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(unsafe_size_error)?;
+    validate_format_id(raw)?;
+    Ok(raw.to_string())
+}
+
+/// yt-dlp format ids used as CLI `--format` tokens must be conservative and shell-safe.
+pub(crate) fn validate_format_id(id: &str) -> Result<(), String> {
+    if id.is_empty() || id.len() > 64 {
+        return Err(unsafe_size_error());
+    }
+    let ok = id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+    if ok {
+        Ok(())
+    } else {
+        Err(unsafe_size_error())
+    }
+}
+
+pub(crate) fn format_selector_from_ids(ids: &[String]) -> Result<String, String> {
+    if ids.is_empty() {
+        return Err(unsafe_size_error());
+    }
+    for id in ids {
+        validate_format_id(id)?;
+    }
+    Ok(ids.join("+"))
 }
 
 pub(crate) fn duration_seconds_from_info(info: &Value) -> Result<f64, String> {
-    let raw = info.get("duration").ok_or_else(|| {
-        "영상 길이를 확인하지 못했습니다. 네트워크와 영상 공개 여부를 확인한 뒤 다시 시도해 주세요."
-            .to_string()
-    })?;
+    let raw = info
+        .get("duration")
+        .ok_or_else(metadata_probe_network_message)?;
     let seconds = raw
         .as_f64()
         .or_else(|| raw.as_u64().map(|value| value as f64))
@@ -561,10 +671,7 @@ pub(crate) fn duration_seconds_from_info(info: &Value) -> Result<f64, String> {
         });
     match seconds {
         Some(value) if value.is_finite() && value > 0.0 => Ok(value),
-        _ => Err(
-            "영상 길이를 확인하지 못했습니다. 네트워크와 영상 공개 여부를 확인한 뒤 다시 시도해 주세요."
-                .into(),
-        ),
+        _ => Err(metadata_probe_network_message()),
     }
 }
 
@@ -577,15 +684,124 @@ fn json_positive_u64(value: &Value) -> Option<u64> {
             if let Some(signed) = number.as_i64() {
                 return (signed > 0).then_some(signed as u64);
             }
-            if let Some(float) = number.as_f64() {
-                if float.is_finite() && float > 0.0 && float <= u64::MAX as f64 {
-                    return Some(float.ceil() as u64);
-                }
-            }
+            // Exact filesize must be an integer field; reject fractional JSON numbers.
             None
         }
         _ => None,
     }
+}
+
+/// Minimal structured probe log (no raw JSON, URLs, headers, or stderr bodies).
+pub(crate) fn build_minimal_metadata_log(
+    plan: Option<&SelectedFormatPlan>,
+    probe_exit_code: Option<i32>,
+    stdout_bytes_observed: usize,
+    stderr_bytes_observed: usize,
+    stdout_capped: bool,
+    stderr_capped: bool,
+    ok: bool,
+    failure_class: Option<&str>,
+) -> Value {
+    let mut map = serde_json::Map::new();
+    map.insert("schemaVersion".into(), Value::from(1));
+    map.insert("ok".into(), Value::from(ok));
+    if let Some(code) = probe_exit_code {
+        map.insert("probeExitCode".into(), Value::from(code));
+    }
+    map.insert(
+        "stdoutBytesObserved".into(),
+        Value::from(stdout_bytes_observed as u64),
+    );
+    map.insert(
+        "stderrBytesObserved".into(),
+        Value::from(stderr_bytes_observed as u64),
+    );
+    map.insert("stdoutCapped".into(), Value::from(stdout_capped));
+    map.insert("stderrCapped".into(), Value::from(stderr_capped));
+    if let Some(class) = failure_class {
+        map.insert("failureClass".into(), Value::from(class));
+    }
+    if let Some(plan) = plan {
+        map.insert(
+            "durationSeconds".into(),
+            Value::from(plan.duration_seconds),
+        );
+        map.insert(
+            "formatIds".into(),
+            Value::Array(
+                plan.format_ids
+                    .iter()
+                    .cloned()
+                    .map(Value::String)
+                    .collect(),
+            ),
+        );
+        map.insert(
+            "formatSelector".into(),
+            Value::String(plan.format_selector.clone()),
+        );
+        map.insert(
+            "streamFilesizes".into(),
+            Value::Array(
+                plan.stream_sizes
+                    .iter()
+                    .map(|size| Value::from(*size))
+                    .collect(),
+            ),
+        );
+    }
+    Value::Object(map)
+}
+
+fn write_minimal_metadata_log(log_dir: &Path, value: &Value) {
+    let _ = fs::create_dir_all(log_dir);
+    if let Ok(bytes) = serde_json::to_vec_pretty(value) {
+        let _ = fs::write(log_dir.join("yt-dlp.metadata.json"), bytes);
+    }
+}
+
+fn probe_fail(
+    log_dir: &Path,
+    class: MetadataProbeFailureClass,
+    exit_code: Option<i32>,
+    stdout_len: usize,
+    stderr_len: usize,
+    stdout_capped: bool,
+    stderr_capped: bool,
+) -> AcquisitionError {
+    let class_name = match class {
+        MetadataProbeFailureClass::NetworkOrAvailability => "network_or_availability",
+        MetadataProbeFailureClass::LocalEnvironment => "local_environment",
+        MetadataProbeFailureClass::ToolRuntime => "tool_runtime",
+        MetadataProbeFailureClass::OversizedOutput => "oversized_output",
+        MetadataProbeFailureClass::UnsafeSize => "unsafe_size",
+    };
+    write_minimal_metadata_log(
+        log_dir,
+        &build_minimal_metadata_log(
+            None,
+            exit_code,
+            stdout_len,
+            stderr_len,
+            stdout_capped,
+            stderr_capped,
+            false,
+            Some(class_name),
+        ),
+    );
+    AcquisitionError::Message(metadata_probe_user_message(class))
+}
+
+/// Read at most `limit` bytes; returns `(bytes, exceeded)` without retaining the overflow tail.
+pub(crate) fn read_capped_bytes<R: Read>(reader: R, limit: usize) -> std::io::Result<(Vec<u8>, bool)> {
+    let mut limited = reader.take(limit as u64 + 1);
+    let mut buffer = Vec::new();
+    limited.read_to_end(&mut buffer)?;
+    let exceeded = buffer.len() > limit;
+    if exceeded {
+        buffer.truncate(limit);
+    }
+    Ok((buffer, exceeded))
 }
 
 fn ensure_download_disk_space(
@@ -595,50 +811,41 @@ fn ensure_download_disk_space(
     job_dir: &Path,
     log_dir: &Path,
     cancel_requested: &AtomicBool,
-) -> Result<(), AcquisitionError> {
+) -> Result<SelectedFormatPlan, AcquisitionError> {
     if cancel_requested.load(Ordering::SeqCst) {
         return Err(AcquisitionError::Cancelled);
     }
-    let info = probe_download_metadata(tools, source_url, download_dir, log_dir, cancel_requested)?;
-    let stream_sizes = selected_stream_sizes_from_info(&info).map_err(AcquisitionError::Message)?;
-    let duration = duration_seconds_from_info(&info).map_err(AcquisitionError::Message)?;
+    let plan = probe_download_metadata(tools, source_url, download_dir, log_dir, cancel_requested)?;
     // Product currently pins yt-dlp home and temp to download_dir; job_dir holds analysis workspace.
-    ensure_planned_download_space(&stream_sizes, duration, download_dir, download_dir, job_dir)
-        .map_err(AcquisitionError::Message)?;
-    Ok(())
-}
-
-/// User-visible message for metadata-only probe failures.
-/// Must not include tool names, raw stderr, exit codes, or spawn error text.
-pub(crate) fn metadata_probe_user_message() -> String {
-    "YouTube 영상 정보를 확인하지 못했습니다. 네트워크 연결과 영상 공개 여부를 확인한 뒤 다시 시도해 주세요."
-        .into()
-}
-
-fn write_probe_diagnostic_log(log_dir: &Path, file_name: &str, contents: impl AsRef<[u8]>) {
-    let _ = fs::create_dir_all(log_dir);
-    let _ = fs::write(log_dir.join(file_name), contents);
-}
-
-fn probe_metadata_failed(log_dir: &Path, diagnostic_name: &str, detail: impl AsRef<[u8]>) -> AcquisitionError {
-    write_probe_diagnostic_log(log_dir, diagnostic_name, detail);
-    AcquisitionError::Message(metadata_probe_user_message())
+    ensure_planned_download_space(
+        &plan.stream_sizes,
+        plan.duration_seconds,
+        download_dir,
+        download_dir,
+        job_dir,
+    )
+    .map_err(AcquisitionError::Message)?;
+    Ok(plan)
 }
 
 /// Metadata-only probe (`--skip-download` + `--dump-single-json`). No media transfer.
-/// User-facing errors stay free of tool names; raw diagnostics go only to `log_dir`.
+/// Pins exact format_ids for transfer; exact filesize only; capped pipes; minimal structured log.
 fn probe_download_metadata(
     tools: &DownloadTools,
     source_url: &str,
     download_dir: &Path,
     log_dir: &Path,
     cancel_requested: &AtomicBool,
-) -> Result<Value, AcquisitionError> {
-    if let Err(error) = fs::create_dir_all(log_dir) {
-        return Err(probe_metadata_failed(
+) -> Result<SelectedFormatPlan, AcquisitionError> {
+    if fs::create_dir_all(log_dir).is_err() {
+        return Err(probe_fail(
             log_dir,
-            "yt-dlp.metadata.spawn.log",
-            format!("create_dir_all log_dir failed: {error}"),
+            MetadataProbeFailureClass::LocalEnvironment,
+            None,
+            0,
+            0,
+            false,
+            false,
         ));
     }
     let mut command = Command::new(&tools.yt_dlp);
@@ -653,7 +860,7 @@ fn probe_download_metadata(
             "--match-filter",
             "!is_live",
             "--format",
-            YT_DLP_FORMAT,
+            YT_DLP_FORMAT_PROBE,
             "--dump-single-json",
         ])
         .arg("--ffmpeg-location")
@@ -678,24 +885,31 @@ fn probe_download_metadata(
     }
     let mut child = match command.spawn() {
         Ok(child) => child,
-        Err(error) => {
-            // Spawn failed before stderr exists — keep raw detail in a dedicated log only.
-            return Err(probe_metadata_failed(
+        Err(_) => {
+            return Err(probe_fail(
                 log_dir,
-                "yt-dlp.metadata.spawn.log",
-                format!("spawn failed: {error}"),
+                MetadataProbeFailureClass::ToolRuntime,
+                None,
+                0,
+                0,
+                false,
+                false,
             ));
         }
     };
     #[cfg(windows)]
     let job_guard = match KillOnCloseJob::attach(&child) {
         Ok(job) => Some(job),
-        Err(error) => {
+        Err(_) => {
             terminate_child_tree(&mut child, None);
-            return Err(probe_metadata_failed(
+            return Err(probe_fail(
                 log_dir,
-                "yt-dlp.metadata.spawn.log",
-                format!("job attach failed: {error}"),
+                MetadataProbeFailureClass::ToolRuntime,
+                None,
+                0,
+                0,
+                false,
+                false,
             ));
         }
     };
@@ -707,10 +921,14 @@ fn probe_download_metadata(
             terminate_child_tree(&mut child, job_guard.as_ref());
             #[cfg(not(windows))]
             terminate_child_tree(&mut child);
-            return Err(probe_metadata_failed(
+            return Err(probe_fail(
                 log_dir,
-                "yt-dlp.metadata.spawn.log",
-                "stdout pipe missing after spawn",
+                MetadataProbeFailureClass::ToolRuntime,
+                None,
+                0,
+                0,
+                false,
+                false,
             ));
         }
     };
@@ -721,24 +939,62 @@ fn probe_download_metadata(
             terminate_child_tree(&mut child, job_guard.as_ref());
             #[cfg(not(windows))]
             terminate_child_tree(&mut child);
-            return Err(probe_metadata_failed(
+            return Err(probe_fail(
                 log_dir,
-                "yt-dlp.metadata.spawn.log",
-                "stderr pipe missing after spawn",
+                MetadataProbeFailureClass::ToolRuntime,
+                None,
+                0,
+                0,
+                false,
+                false,
             ));
         }
     };
-    let stdout_thread = thread::spawn(move || {
-        let mut buffer = Vec::new();
-        let mut reader = BufReader::new(stdout);
-        let _ = reader.read_to_end(&mut buffer);
-        buffer
+
+    let stdout_cap = Arc::new(AtomicBool::new(false));
+    let stderr_cap = Arc::new(AtomicBool::new(false));
+    let stdout_cap_thread = stdout_cap.clone();
+    let stderr_cap_thread = stderr_cap.clone();
+    // stdout: keep capped body only long enough to parse JSON.
+    let stdout_thread = thread::spawn(move || -> (Vec<u8>, usize, bool) {
+        match read_capped_bytes(stdout, PROBE_STDOUT_BYTE_LIMIT) {
+            Ok((buf, exceeded)) => {
+                if exceeded {
+                    stdout_cap_thread.store(true, Ordering::SeqCst);
+                }
+                let observed = if exceeded {
+                    PROBE_STDOUT_BYTE_LIMIT + 1
+                } else {
+                    buf.len()
+                };
+                (buf, observed, exceeded)
+            }
+            Err(_) => {
+                stdout_cap_thread.store(true, Ordering::SeqCst);
+                (Vec::new(), 0, true)
+            }
+        }
     });
-    let stderr_thread = thread::spawn(move || {
-        let mut buffer = Vec::new();
-        let mut reader = BufReader::new(stderr);
-        let _ = reader.read_to_end(&mut buffer);
-        buffer
+    // stderr: measure with cap, discard body immediately (never persist).
+    let stderr_thread = thread::spawn(move || -> (usize, bool) {
+        match read_capped_bytes(stderr, PROBE_STDERR_BYTE_LIMIT) {
+            Ok((buf, exceeded)) => {
+                if exceeded {
+                    stderr_cap_thread.store(true, Ordering::SeqCst);
+                }
+                let observed = if exceeded {
+                    PROBE_STDERR_BYTE_LIMIT + 1
+                } else {
+                    buf.len()
+                };
+                drop(buf);
+                (observed, exceeded)
+            }
+            Err(_) => {
+                stderr_cap_thread.store(true, Ordering::SeqCst);
+                (0, true)
+            }
+        }
     });
 
     let status = loop {
@@ -751,49 +1007,145 @@ fn probe_download_metadata(
             let _ = stderr_thread.join();
             return Err(AcquisitionError::Cancelled);
         }
+        if stdout_cap.load(Ordering::SeqCst) || stderr_cap.load(Ordering::SeqCst) {
+            #[cfg(windows)]
+            terminate_child_tree(&mut child, job_guard.as_ref());
+            #[cfg(not(windows))]
+            terminate_child_tree(&mut child);
+            let (stdout_bytes, stdout_observed, stdout_capped) =
+                stdout_thread.join().unwrap_or_else(|_| (Vec::new(), 0, true));
+            let (stderr_observed, stderr_capped) =
+                stderr_thread.join().unwrap_or((0, true));
+            drop(stdout_bytes);
+            return Err(probe_fail(
+                log_dir,
+                MetadataProbeFailureClass::OversizedOutput,
+                None,
+                stdout_observed,
+                stderr_observed,
+                stdout_capped,
+                stderr_capped,
+            ));
+        }
         match child.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) => {}
-            Err(error) => {
+            Err(_) => {
                 #[cfg(windows)]
                 terminate_child_tree(&mut child, job_guard.as_ref());
                 #[cfg(not(windows))]
                 terminate_child_tree(&mut child);
                 let _ = stdout_thread.join();
                 let _ = stderr_thread.join();
-                return Err(probe_metadata_failed(
+                return Err(probe_fail(
                     log_dir,
-                    "yt-dlp.metadata.spawn.log",
-                    format!("try_wait failed: {error}"),
+                    MetadataProbeFailureClass::ToolRuntime,
+                    None,
+                    0,
+                    0,
+                    false,
+                    false,
                 ));
             }
         }
         thread::sleep(Duration::from_millis(50));
     };
-    let stdout_bytes = stdout_thread.join().unwrap_or_default();
-    let stderr_bytes = stderr_thread.join().unwrap_or_default();
-    // Preserve raw probe diagnostics for support; never surface them in the UI message.
-    write_probe_diagnostic_log(log_dir, "yt-dlp.metadata.json", &stdout_bytes);
-    write_probe_diagnostic_log(log_dir, "yt-dlp.metadata.stderr.log", &stderr_bytes);
+    let (stdout_bytes, stdout_observed, stdout_capped) =
+        stdout_thread.join().unwrap_or_else(|_| (Vec::new(), 0, true));
+    let (stderr_observed, stderr_capped) = stderr_thread.join().unwrap_or((0, true));
+    if stdout_capped || stderr_capped {
+        drop(stdout_bytes);
+        return Err(probe_fail(
+            log_dir,
+            MetadataProbeFailureClass::OversizedOutput,
+            status.code(),
+            stdout_observed,
+            stderr_observed,
+            stdout_capped,
+            stderr_capped,
+        ));
+    }
 
     if !status.success() {
-        write_probe_diagnostic_log(
+        drop(stdout_bytes);
+        return Err(probe_fail(
             log_dir,
-            "yt-dlp.metadata.spawn.log",
-            format!("probe exit code: {:?}\n", status.code()),
-        );
-        return Err(AcquisitionError::Message(metadata_probe_user_message()));
+            MetadataProbeFailureClass::NetworkOrAvailability,
+            status.code(),
+            stdout_observed,
+            stderr_observed,
+            false,
+            false,
+        ));
     }
     if stdout_bytes.is_empty() {
-        return Err(AcquisitionError::Message(metadata_probe_user_message()));
-    }
-    serde_json::from_slice(&stdout_bytes).map_err(|error| {
-        probe_metadata_failed(
+        return Err(probe_fail(
             log_dir,
-            "yt-dlp.metadata.spawn.log",
-            format!("json parse failed: {error}"),
-        )
-    })
+            MetadataProbeFailureClass::NetworkOrAvailability,
+            status.code(),
+            0,
+            stderr_observed,
+            false,
+            false,
+        ));
+    }
+    let info: Value = match serde_json::from_slice(&stdout_bytes) {
+        Ok(value) => value,
+        Err(_) => {
+            drop(stdout_bytes);
+            return Err(probe_fail(
+                log_dir,
+                MetadataProbeFailureClass::NetworkOrAvailability,
+                status.code(),
+                stdout_observed,
+                stderr_observed,
+                false,
+                false,
+            ));
+        }
+    };
+    // Drop raw stdout after parse — only structured plan fields are logged.
+    drop(stdout_bytes);
+
+    let plan = match selected_format_plan_from_info(&info) {
+        Ok(plan) => plan,
+        Err(message) => {
+            let class_name = if message == unsafe_size_error() {
+                "unsafe_size"
+            } else {
+                "network_or_availability"
+            };
+            write_minimal_metadata_log(
+                log_dir,
+                &build_minimal_metadata_log(
+                    None,
+                    status.code(),
+                    stdout_observed,
+                    stderr_observed,
+                    false,
+                    false,
+                    false,
+                    Some(class_name),
+                ),
+            );
+            return Err(AcquisitionError::Message(message));
+        }
+    };
+
+    write_minimal_metadata_log(
+        log_dir,
+        &build_minimal_metadata_log(
+            Some(&plan),
+            status.code(),
+            stdout_observed,
+            stderr_observed,
+            false,
+            false,
+            true,
+            None,
+        ),
+    );
+    Ok(plan)
 }
 
 fn run_yt_dlp<R: tauri::Runtime>(
@@ -803,7 +1155,12 @@ fn run_yt_dlp<R: tauri::Runtime>(
     source_url: &str,
     download_dir: &Path,
     log_dir: &Path,
+    format_selector: &str,
 ) -> Result<DownloadOutcome, AcquisitionError> {
+    // Fail closed if selector was not pre-validated (should already be pinned from probe).
+    for id in format_selector.split('+') {
+        validate_format_id(id).map_err(AcquisitionError::Message)?;
+    }
     let mut command = Command::new(&tools.yt_dlp);
     command
         .args([
@@ -821,7 +1178,7 @@ fn run_yt_dlp<R: tauri::Runtime>(
             "--print",
             "after_move:VODSCOUT_RESULT=%(filepath)j",
             "--format",
-            YT_DLP_FORMAT,
+            format_selector,
             "--continue",
             "--part",
             "--retries",
@@ -1223,27 +1580,86 @@ mod tests {
     }
 
     #[test]
-    fn selected_stream_sizes_use_max_of_size_fields() {
+    fn selected_format_plan_requires_exact_filesize_and_pins_format_ids() {
         let multi = serde_json::json!({
+            "duration": 120.0,
             "requested_formats": [
                 {"format_id": "298", "filesize": 100u64, "filesize_approx": 150u64},
-                {"format_id": "251", "filesize": null, "filesize_approx": 40u64}
+                {"format_id": "251", "filesize": 40u64, "filesize_approx": 999u64}
             ]
         });
-        // Safest defensible: max(100,150)=150 and 40
+        let plan = selected_format_plan_from_info(&multi).unwrap();
+        // Exact filesize only — approx is ignored.
+        assert_eq!(plan.stream_sizes, vec![100, 40]);
+        assert_eq!(plan.format_ids, vec!["298".to_string(), "251".to_string()]);
+        assert_eq!(plan.format_selector, "298+251");
+        assert_eq!(plan.duration_seconds, 120.0);
+
+        let approx_only = serde_json::json!({
+            "duration": 10.0,
+            "format_id": "22",
+            "filesize_approx": 1_024u64
+        });
+        let err = selected_format_plan_from_info(&approx_only).unwrap_err();
+        assert_eq!(err, unsafe_size_error());
+        assert!(err.contains("정확한 용량"));
+
+        let bad_id = serde_json::json!({
+            "duration": 10.0,
+            "requested_formats": [{"format_id": "298;rm", "filesize": 10u64}]
+        });
         assert_eq!(
-            selected_stream_sizes_from_info(&multi).unwrap(),
-            vec![150, 40]
+            selected_format_plan_from_info(&bad_id).unwrap_err(),
+            unsafe_size_error()
         );
-        let single = serde_json::json!({"filesize_approx": 1_024u64});
+    }
+
+    #[test]
+    fn format_selector_from_ids_fail_closed_on_empty_or_invalid() {
+        assert!(format_selector_from_ids(&[]).is_err());
+        assert!(validate_format_id("").is_err());
+        assert!(validate_format_id("a/b").is_err());
         assert_eq!(
-            selected_stream_sizes_from_info(&single).unwrap(),
-            vec![1_024]
+            format_selector_from_ids(&["137".into(), "140".into()]).unwrap(),
+            "137+140"
         );
-        let missing = serde_json::json!({"requested_formats": [{"format_id": "x"}]});
-        let err = selected_stream_sizes_from_info(&missing).unwrap_err();
-        assert!(err.contains("예상 용량"));
-        assert!(err.contains("다시 시도"));
+    }
+
+    #[test]
+    fn read_capped_bytes_truncates_and_flags_overflow() {
+        let (buf, exceeded) = read_capped_bytes(std::io::Cursor::new(vec![1u8; 10]), 4).unwrap();
+        assert!(exceeded);
+        assert_eq!(buf, vec![1, 1, 1, 1]);
+        let (buf2, exceeded2) = read_capped_bytes(std::io::Cursor::new(vec![9u8; 3]), 8).unwrap();
+        assert!(!exceeded2);
+        assert_eq!(buf2, vec![9, 9, 9]);
+    }
+
+    #[test]
+    fn minimal_metadata_log_has_no_urls_or_raw_stderr() {
+        let plan = SelectedFormatPlan {
+            format_selector: "298+251".into(),
+            format_ids: vec!["298".into(), "251".into()],
+            stream_sizes: vec![10, 20],
+            duration_seconds: 30.0,
+        };
+        let log = build_minimal_metadata_log(
+            Some(&plan),
+            Some(0),
+            100,
+            0,
+            false,
+            false,
+            true,
+            None,
+        );
+        let text = log.to_string();
+        assert!(!text.contains("http"));
+        assert!(!text.contains("youtube"));
+        assert!(!text.contains("Authorization"));
+        assert_eq!(log["formatSelector"], "298+251");
+        assert_eq!(log["streamFilesizes"][0], 10);
+        assert_eq!(log["durationSeconds"], 30.0);
     }
 
     #[test]
@@ -1293,30 +1709,33 @@ mod tests {
         assert!(plan_pre_download_volume_bytes(&[u64::MAX, 1], 1.0, "a", "a", "a").is_err());
         assert!(plan_pre_download_volume_bytes(&[u64::MAX / 2 + 1], 1.0, "a", "a", "a").is_err());
         let err = duration_seconds_from_info(&serde_json::json!({})).unwrap_err();
-        assert!(err.contains("길이"));
+        assert_eq!(err, metadata_probe_network_message());
     }
 
     #[test]
-    fn metadata_probe_user_message_excludes_tool_names_and_stays_actionable() {
-        let msg = metadata_probe_user_message();
-        let lower = msg.to_ascii_lowercase();
-        assert!(
-            !lower.contains("yt-dlp") && !lower.contains("ytdlp"),
-            "probe UI must not name yt-dlp: {msg}"
-        );
-        assert!(
-            !lower.contains("ffmpeg"),
-            "probe UI must not name ffmpeg: {msg}"
-        );
-        assert!(
-            !msg.contains("종료 코드") && !lower.contains("exit"),
-            "probe UI must not expose exit codes: {msg}"
-        );
-        assert!(
-            msg.contains("확인") && msg.contains("다시 시도"),
-            "probe UI must stay actionable Korean: {msg}"
-        );
-        assert!(msg.contains("네트워크") || msg.contains("공개"));
+    fn metadata_probe_messages_are_separated_and_hide_tool_names() {
+        let classes = [
+            MetadataProbeFailureClass::NetworkOrAvailability,
+            MetadataProbeFailureClass::LocalEnvironment,
+            MetadataProbeFailureClass::ToolRuntime,
+            MetadataProbeFailureClass::OversizedOutput,
+            MetadataProbeFailureClass::UnsafeSize,
+        ];
+        let mut bodies = std::collections::BTreeSet::new();
+        for class in classes {
+            let msg = metadata_probe_user_message(class);
+            let lower = msg.to_ascii_lowercase();
+            assert!(!lower.contains("yt-dlp") && !lower.contains("ffmpeg"), "{msg}");
+            assert!(!msg.contains("종료 코드"), "{msg}");
+            assert!(msg.contains("다시 시도") || msg.contains("선택"), "{msg}");
+            bodies.insert(msg);
+        }
+        // Distinct recovery guidance for the four Oracle-required classes (+ oversized).
+        assert!(bodies.len() >= 4);
+        assert!(metadata_probe_network_message().contains("네트워크"));
+        assert!(metadata_probe_local_environment_message().contains("권한"));
+        assert!(metadata_probe_tool_runtime_message().contains("다시 설치") || metadata_probe_tool_runtime_message().contains("다시 시작"));
+        assert!(unsafe_size_error().contains("정확한 용량"));
     }
 
     #[test]

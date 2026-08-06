@@ -7,9 +7,9 @@
 - 증상: 분석 단계에는 여유 공간 확인이 있으나, yt-dlp 미디어 전송 전에는 선택 스트림 크기 기반 차단이 없어 장시간 내려받기 중 디스크 고갈 위험이 남았다. (P0 분석 가드 이후 남은 항목)
 - 원인(1차): `run_yt_dlp`가 메타데이터 용량 조회 없이 바로 전송 자식을 띄웠다. 병합 피크는 분리 스트림+임시 병합 출력으로 최종 크기보다 크게 관측된다.
 - 원인(REV1): 1차 가드가 `download_dir`에 2.2×스트림만 적용해 home/temp/job 단계와 분석 workspace를 빠뜨렸고, `aggregate_required_bytes_by_volume`이 생산 경로에서 쓰이지 않았다.
-- 수정: 메타데이터 전용 조회로 스트림 크기(필드 중 더 큰 값)·길이를 읽고, 순차 단계(max)·동시 필요(sum) 플래너로 볼륨별 필요 여유를 계산한다. 내려받기 피크 `P=2S+⌊2S/10⌋`, 분리 볼륨 `B=S+⌊S/10⌋`, 분석 `W=estimate_analysis_workspace_bytes(S,duration)`, 분석 단계에서 home에 최종 원본 `S` 유지. 생산 경로는 `aggregate_required_bytes_by_volume`으로 동시 합산. 미상·오버플로·여유 부족 시 전송 자식 없이 한국어 조치. 로그: `tool-logs/yt-dlp.metadata.json`.
-- 회귀 테스트: pure same/distinct volume plan, overflow, production path↔pure 일치, 부족 메시지; integrity 볼륨 합산; `scripts/sample-disk-usage.test.mjs`. 실제 YouTube 장시간·부족 E2E는 미실행 → `HOLD`.
-- 상태: 단위 `PASS` (cargo lib 50 pass / 0 fail / 1 ignored), 샘플러 스모크 `PASS` (3/3), 실제 YouTube 부족 차단 E2E `HOLD`
+- 수정: 메타데이터 전용 조회로 정확한 `filesize`·`format_id`·길이를 읽고, 순차 단계(max)·동시 필요(sum) 플래너로 볼륨별 필요 여유를 계산한다. 내려받기 피크 `P=2S+⌊2S/10⌋`, 분리 볼륨 `B=S+⌊S/10⌋`, 분석 `W=estimate_analysis_workspace_bytes(S,duration)`. 실제 전송은 probe가 고른 `format_id` 조합(`298+251` 형태)으로 고정한다. `filesize_approx`만 있거나 포맷/크기 불명이면 fail closed. probe stdout 2MiB·stderr 256KiB 상한 초과 시 자식 정리 후 중단. 원시 전체 JSON/stderr는 저장하지 않고 `tool-logs/yt-dlp.metadata.json`에 duration·formatIds·streamFilesizes 등 최소 구조화 필드만 기록. 네트워크·로컬 로그/권한·도구 실행·안전 용량 불가 안내를 분리.
+- 회귀 테스트: exact filesize·format pin, cap 읽기, 최소 로그, 메시지 분리, pure plan, overflow, production path; integrity 볼륨 합산; `scripts/sample-disk-usage.test.mjs`. 실제 YouTube 장시간·부족 E2E·403 원인 분리는 미실행 → `HOLD`.
+- 상태: 단위 `PASS` (cargo lib 54 pass / 0 fail / 1 ignored), 샘플러·canonical 게이트는 본 세션 재실행, 실제 YouTube 부족 차단·신선 전체 다운로드 E2E·403 원인 분리 `HOLD`
 
 ## 2026-08-07 · Unreleased · 디스크 샘플러와 체크포인트 교체 간섭
 
