@@ -2,6 +2,23 @@
 
 실제로 재현하거나 로그로 확인한 문제만 기록한다. 원인이 확정되지 않은 항목은 `HOLD`로 표시한다.
 
+## 2026-08-06 · v0.4.0-P0 · 비호환 체크포인트 폐기 후 재개 하드 실패 (H5 / H5F)
+
+- 증상과 재현 조건: schema 3 또는 지문·도구·언어·ranker 불일치로 미디어 체크포인트가 호환 실패하면 `load_checkpoint`가 `None`을 반환하고 빈 체크포인트(`completed_chunks = 0`)를 만든다. 작업 스냅샷 `completed_units`가 이미 probe 이후(예: 5)이면 정렬이 `0 < snapshot_chunks`를 무결성 오류로 보고 하드 실패했다. 메시지: `작업 스냅샷보다 미디어 체크포인트가 뒤에 있어 자동 재개할 수 없습니다.`
+- 원인: 정렬 로직이 **호환 체크포인트가 작업보다 뒤처진 경우**와 **의도적으로 비호환 중간 결과를 버리고 다시 계산하는 경우**를 구분하지 않았다. P0가 schema 4·지문 검사를 강화하면서 v0.3.x 중단 작업 재개 경로가 노출됐다.
+- 수정 (PR #11 후속 `d13b864`, main squash `cca7a9e…`에 포함): `media_intermediates_rebuilt`일 때 `RestartMediaFromScratch` — 하드 실패 대신 작업 `completed_units`를 probe 완료로 맞추고 미디어 청크부터 다시 계산. 호환 체크포인트가 뒤처진 경우는 기존처럼 하드 실패 유지.
+- 회귀 테스트: `discarded_incompatible_checkpoint_restarts_media_when_job_units_advanced`, `load_incompatible_schema3_does_not_resume_prev_and_align_restarts` 포함 `cargo test --lib` **41 pass / 1 ignored**. H5B 독립 재리뷰 PASS 후 병합.
+- 상태: 단위·리뷰·병합 `PASS`. 실제 미디어에서의 비호환 폐기 재개는 별도 시나리오 미실행 → 필요 시 후속 측정.
+
+## 2026-08-06 · v0.4.0-P0 · H11 검증 하니스 파일 잠금 (os error 32) — 제품 결함 아님
+
+- 증상과 재현 조건: main `cca7a9e` release `vod-scout.exe`로 H8 `source.mkv`(7,060,479,026 bytes, 31,999.981 s) **full** 분석. 제품 청크 34/54 완료 직후 상태가 `FAILED`가 되고 `errorDetail`에 `다른 프로세스가 파일을 사용 중이기 때문에 프로세스가 액세스 할 수 없습니다. (os error 32)`가 남았다. live `completedChunks=34` 보존.
+- 확인한 원인: **제품 Whisper/미디어 로직 결함이 아니라** out-of-tree H11 증거 샘플러가 `media-checkpoint.json`을 공유 없이 연 채(예: `Get-Content` 계열) 제품 `replace_file_preserving_previous`의 atomic rename(`live` → `.prev`)과 충돌했다.
+- 조치: 제품 코드 변경 없음. 샘플러를 `FileShare.ReadWrite|Delete` share-safe 방식으로 교체한 뒤 **같은 jobId**에 `start_job` 재개 → **REVIEW_READY** 54/54 · 후보 8.
+- 측정(완료 경로): 유효 연산 ~3643.4 s · 달력 start–end ~3831.5 s · 집계 RAM peak ~507 MB · job tree peak ~31 MB · 최종 job ~10 MB · 사용자 작업·H8 소스 delta 0.
+- 회귀/경계: overall 장시간 P0 **PASS**(재개 포함). **무중단 single-shot 서브게이트 HOLD** — share-safe 샘플링으로 처음부터 재실행 필요. 이 항목을 제품 체크포인트 버그로 기록하지 않는다.
+- 상태: 하니스 사고 문서화 `PASS` · 제품 결함 아님 · 무중단 재검증 `HOLD`
+
 ## 2026-08-06 · v0.3.4 · 설정 버튼을 알아보기 어려움
 
 - 사용자 제보: 화면 오른쪽 위의 작은 아이콘과 버전 표시가 설정 버튼처럼 보이지 않아, 처음 보는 사용자가 설정 화면의 위치를 알아보기 어렵다. (최초 기록 v0.3.3)

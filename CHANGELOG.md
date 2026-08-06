@@ -4,12 +4,39 @@
 
 ## Unreleased
 
-### v0.4.0 계획
+### v0.4.0 P0 (main 병합 · 제품 버전 0.3.4 유지 · 릴리스 아님)
+
+P0 코드는 공개 `main` `cca7a9e…`(PR #11)에 들어갔으나 **버전 정본·설치 EXE·태그·배포는 0.3.4 그대로**다. v0.4.0 공개 릴리스로 읽지 않는다.
+
+#### Fixed
+
+- 호환되지 않는 미디어 체크포인트(schema 3·입력 지문·도구/모델 해시·언어·후보 계산 버전 불일치)를 버린 뒤 작업 진행 단위가 이미 앞서 있으면, “작업 스냅샷보다 미디어 체크포인트가 뒤에 있어…”로 재개가 멈추던 문제를 수정했다. 미디어 중간 결과만 다시 계산하고 작업 id·소스·분석 설정은 유지한다 (H5F / PR #11 `d13b864`).
+
+#### Added (개발 경로 · 미배포)
+
+- 체크포인트 schema 4: 입력 지문·바이트·런타임 SHA-256·언어·`rules-v0.4.0-p0` 후보 계산 버전.
+- 범위 지정 후보를 분석 구간 안으로 제한하고 음량·발화 근거 없는 창 제외.
+- 체크포인트·스냅샷 등의 마지막 정상 세대(`.prev`) 보존 후 교체.
+- 분석 시작 전 작업 폴더 볼륨 여유 공간 검사(부족 시 한국어 설명). YouTube 다운로드 직전 검사는 아직 없다.
+
+#### Validation (2026-08-06 · main `cca7a9e`)
+
+- 단위·정적 6/6 PASS (H7B): npm 34 · build · cargo 41/1 ignored · fixture 5 · security 6 · `git diff --check`.
+- H8 실제 범위 분석 overall PASS ([60,360] · 후보 5 · 소스 31999.981 s). 신선 전체 재다운로드 재현 **HOLD**.
+- H9 디스크 가드 단위/정적 PASS. live low-disk **`HOLD: safe low-space E2E environment unavailable`**.
+- H10 실제 취소·재개 PASS (CANCELLED 242 ms · 재개 3/8 · REVIEW_READY 후보 8).
+- H11 실제 full overall PASS (54/54 · 후보 8 · RAM peak ~507 MB). 무중단 single-shot **HOLD** (검증용 샘플러 파일 잠금; 제품 결함 아님).
+
+#### Known issues (P0 잔여)
+
+- live 저용량 E2E·acquisition 사전 free-space·H8 재다운로드 재현·H11 무중단 single-shot이 PASS가 될 때까지 **v0.4.0 버전·설치 배포 계획을 진행하지 않는다**.
+- Authenticode/SmartScreen 및 P1–P7은 기존과 같이 HOLD.
+
+### v0.4.0 이후 계획 (P1~)
 
 - YouTube 원문 자막 우선 혼합 분석, 검색과 원본 시각 이동, 이야기 후보를 구현한다.
 - 필요한 Whisper 음성 인식은 실제 시험을 통과한 GPU를 우선 사용하고 실패한 청크만 CPU로 처리한다.
-- 1~2시간 품질 비교와 8시간 처리 시간·메모리·저장 공간·취소·재개를 검증한다.
-- 상세 범위와 완료 조건은 `docs/V0.4.0-PLAN.md`를 따른다. 이 범위는 v0.3.4에 포함하지 않는다.
+- 상세 범위와 완료 조건은 `docs/V0.4.0-PLAN.md`를 따른다.
 
 ## 0.3.4 - 2026-08-06
 
