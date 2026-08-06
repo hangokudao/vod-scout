@@ -1,63 +1,70 @@
-# VOD Scout v0.3.4 통합 인계서
+# VOD Scout v0.4.0 P0 인계서
 
-현재 게이트: **v0.3.4 소스 게이트·pre-PR NSIS 패키징 증거·실제 YouTube 취소/재개 PASS · 전체 병합 종료 디스크 피크 PASS · 서명된 updater 자산·실제 설치/updater/DisplayVersion/공개 재다운로드·Authenticode HOLD · v0.4.0 구현 전 HOLD**
+현재 게이트: **v0.4.0 P0 로컬 구현·독립 리뷰 수정 반영 · 단위/프로젝트 게이트 재검증 대상 · 커밋/PR 전 · 공개 버전 0.3.4 유지 · P1–P7·v0.4.0 릴리스 HOLD**
 
-## v0.3.4 현재 상태
+## 작업 트리
 
-- 작업 브랜치: `codex/v034-stability-release` (Orca 작업 트리). 원본 main 작업 트리는 읽기 전용으로 유지했으며 빌드 원본이 아니다.
-- pre-PR 게이트 시점 HEAD: `7fd92cb2d28b43e2e95ba2b39a70581ddc0a3d2a` (이후 문서·SBOM·manifest `preparedAt` 갱신 가능)
-- 버전 정본: `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, README 설치 링크·파일명, `src/releaseNotes.ts`, release/installer-smoke workflow, `scripts/generate-release-assets.mjs` 모두 `0.3.4`.
-- 기능 변경(다른 워커 소유, 통합 시 보존):
-  - 취소: job-scoped 종료, 취소 신호 순서, 단계 안내 (`src-tauri/src/{media,acquisition,lib}.rs`)
-  - UI: 설정 진입점·다크 입력 카드 (`src/App.tsx`, `src/App.css`, `src/App.test.tsx`)
-  - 측정: `scripts/sample-disk-usage.mjs` + `docs/DEVELOPMENT.md` 연결
-- DisplayVersion: 추측 훅 없음. ARP `0.3.2` / 바이너리 `0.3.3` 불일치와 NSIS `DisplayVersion=${VERSION}` 템플릿 증거를 기록. 제어된 v0.3.4 설치·updater 재현 게이트 `HOLD`.
-- Authenticode: 인증서 없음 → `HOLD`.
-- v0.4.0 P0~P7: 구현하지 않음.
+- Orca 전용 worktree: `C:\Users\myhan\orca\workspaces\vod-scout\v040-p0`
+- 기준 main SHA: `a341bae3dcf65ff60ecdd3b1ac5c04dd6140952a`
+- 로컬 브랜치: `codex/v040-p0` (미커밋 변경 유지; 이 세션에서 commit/push/PR 없음)
+- 원본 `C:\Users\myhan\repos\vod-scout` 및 다른 Orca worktree/PR #10: 읽기 전용·미수정
 
-## 마지막 PASS (pre-PR 패키징 게이트)
+## P0 정의 (정본: `docs/V0.4.0-PLAN.md`)
+
+| 항목 | 완료 조건 | 로컬 결과 |
+|---|---|---|
+| 체크포인트 호환성 | 입력 지문·도구/모델 해시·언어·분석 범위·후보 계산 버전 불일치 시 재사용 0 | `PASS` (단위) |
+| 범위 밖 후보 | 지정 범위 밖 후보 0 | `PASS` (단위) |
+| 근거 없는 후보 | 음량·발화 근거 없는 창 제외 | `PASS` (단위) |
+| 취소 감독 | 취소 뒤 관련 자식 0·미리보기 취소 연결 | 단위 취소/트리 `PASS`; 실제 YouTube 장시간 `HOLD` |
+| 저장 공간 사전 확인 | 부족 시 분석 시작 전 설명 | `PASS` (단위 메시지·estimate) |
+| 마지막 정상 세대 | 체크포인트/스냅샷 `.prev` 보존·손상 live 복구 | `PASS` (단위) |
+
+버전 범프·설치 EXE·SBOM·v0.4.0 updater 패키징은 P0에 포함하지 않았다. `package.json` / Cargo / tauri 정본은 `0.3.4`.
+
+## 마지막 PASS
 
 | 항목 | 결과 |
 |---|---|
-| cancel/job-scoped 종료 cargo 테스트 | 32 pass / 0 fail / 1 ignored |
-| fixture-worker | 5 pass |
-| `npm.cmd test` | 34 pass |
-| `npm.cmd run test:security` | 6 pass |
-| `npm.cmd run build` | PASS |
-| sidecar release · media-tools · check:yt-dlp | PASS (`2026.07.04`) |
-| `cargo fmt --check` · `git diff --check` · secret/path/version 스캔 | PASS |
-| `npm audit` | 0 / 0 / 0 / 0 / 0 (info…critical) |
-| SPDX SBOM 재생성 | PASS · 루트 `0.3.4` · 656 packages · SHA-256 `6FF3D7A3130C35A560F06EAB00E48258F45165C6EE2D8379DBC0F30193E6DE9A` |
-| `npm.cmd run tauri:build` NSIS 본문 | PASS 생성 · 설치 EXE SHA-256 `CD5033E86A095F3118D24CAFD2535238B163592D755D0B7BF317028CEC198DA0` (233,851,958 bytes) · 앱 PE `0.3.4` · **pre-PR 증거, 공개 자산 아님, gitignore** |
-| updater 서명 단계 | FAIL → `HOLD` (`TAURI_SIGNING_PRIVATE_KEY` 부재; 키 미생성·미노출) |
-| 디스크 샘플러 열린 핸들 65536→131072 | PASS (이전 제한 검증) |
-| 브라우저 대비·1280×900/540×900 설정 진입점 | PASS (이전 통합 측정) |
-| 실제 YouTube 취소·재개 (release exe + 내장 yt-dlp/FFmpeg, 승인 URL `JN3BO9GLuFU`) | **PASS** — 1차 취소 1,405ms / 자식 1,418ms; 재개 yt-dlp 재기동; 2차 취소 3,390ms (하드캡 8s 이내) |
-| 실제 YouTube 전체 병합 종료 디스크 피크 (`sample-disk-usage.mjs` 1s) | **PASS** — peak 14,045,353,616 bytes (~13.08 GiB); final 7,068,902,876; peak−final 임시 6,976,450,740; 완성 `source.mkv` 7,060,479,026 bytes · 31,999.981s; `ACQUIRING`→`PROBING`; 표본 816; 시작→획득 824.2s |
+| `cargo test --manifest-path src-tauri/Cargo.toml --lib` | **PASS** 39 pass / 0 fail / 1 ignored |
+| `cargo test --manifest-path src-tauri/fixture-worker/Cargo.toml` | **PASS** 5 pass |
+| `npm test` / `npm.cmd test` | **PASS** 34 pass |
+| `npm.cmd run build` | **PASS** (Windows) |
+| `npm.cmd run test:security` | **PASS** 6 pass |
+| `git diff --check` | **PASS** (trailing whitespace 수정 후) |
 
-상세: `BUILD-MANIFEST.md`, `docs/V0.3.4-RELEASE.md`, `/tmp/T3A-V034-PREPR-PACKAGING.md`, `/tmp/T3B-V034-YOUTUBE-CANCEL-DISK.md`, `/tmp/T3B2-V034-FULL-MERGE-PEAK.md`
+상세 구현 보고: `/tmp/T6A-V040-P0-IMPLEMENTATION.md`
+독립 리뷰 보고: `/tmp/T6R-V040-P0-INDEPENDENT-REVIEW.md`
 
-## 남은 HOLD
+## 코드 요약
 
-1. 로컬/CI 서명 키로 updater `.sig`·`latest.json`·`SHA256SUMS` 생성과 `generate-release-assets` (위조 서명 금지)
-2. 실제 설치·in-app updater·HKCU `DisplayVersion` 재현 (기대: 앱·PE·ARP 모두 `0.3.4`)
-3. GitHub Actions release/installer-smoke 실행 · 공개 재다운로드
-4. Windows Authenticode
-5. v0.4.0 P1–P7 구현·merge·release (미승인). P0 브랜치·개발 PR은 v0.3.4 릴리스 게이트 완료 후에만 시작(해당 범위는 이미 승인됨)
+- `media-checkpoint` schema 4: fingerprint, input bytes, runtime SHA-256, language `ko`, ranker `rules-v0.4.0-p0` (누락 필드는 빈 값으로 역직렬화 후 호환 실패)
+- `build_candidates`: 분석 구간 제한 + audio/dialogue 근거 필수
+- `replace_file_preserving_previous` / `.prev` 복구 (media·acquisition·snapshot·provenance); **손상 live JSON은 `.prev`로 복구**, 유효하지만 호환되지 않는 live는 재계산
+- 분석 시작 전 `free_disk_space_bytes` + workspace estimate(+10% 여유); 원본이 이미 디스크에 있으면 source 용량 이중 계산 없음
+- 미리보기 FFmpeg → `state.cancel_requested`
+- 사용자 단계 문구: 진행 메시지에서 `전사` → `음성 인식` (사용자 노출 문자열; AGENTS.md §8)
 
-## v0.3.3 공개 기준선 (변경 금지)
+## v0.3.4 공개 릴리스 상태 (정본 증거, PR #10 문서 미병합과 별개)
 
-- 공개 저장소: https://github.com/hangokudao/vod-scout
-- Release: https://github.com/hangokudao/vod-scout/releases/tag/v0.3.3
-- exact commit: `5f756af7390325a99f2820a424f7d4ef05334d14`
-- 상세: `docs/V0.3.3-RELEASE.md`, `BUILD-MANIFEST.md`
+post-release 검증 증거(`/tmp/T4C-…`, `/tmp/T4D-…`, `/tmp/T4E-…`, T5 보고) 기준:
 
-## 다음 작업
+| 게이트 | 결과 |
+|---|---|
+| updater minisign (공개 자산) | **PASS** |
+| in-app 0.3.3→0.3.4 (PE / uninstaller / ARP DisplayVersion / 설정 표시) | **PASS** |
+| 과거 DisplayVersion 불일치의 근본 원인 재현 | **HOLD** (미증명; 현재 설치 경로는 PASS) |
+| Authenticode / SmartScreen | **HOLD** (알려진 한계; 인증서 없음) |
 
-1. 이 브랜치 커밋·push·PR은 승인된 범위에서 진행 가능. **이 pre-PR 세션에서는 커밋·push·PR·태그·설치·사용자 데이터 변경을 하지 않았다.**
-2. 서명 키를 주입한 환경에서 규정 `tauri:build` + `generate-release-assets`로 공개 계약 자산 생성.
-3. 공개 v0.3.3 → v0.3.4 updater 재현으로 DisplayVersion 게이트 닫기. 실패 시에만 최소 수정.
-4. (완료) 실제 YouTube 취소·재개·전체 병합 종료 디스크 피크를 릴리스 문서에 기록.
-5. v0.3.4 릴리스 게이트 완료 후 v0.4.0 P0 브랜치·개발 PR 시작(승인됨). P1–P7 구현과 v0.4.0 merge/release는 미승인.
+**모든** updater 서명·DisplayVersion 게이트를 한꺼번에 HOLD라고 쓰지 않는다. PR #10(문서 정리)은 이 worktree에서 건드리지 않는다.
 
-기존 사용자 데이터와 설치본을 삭제하지 않는다. 공개 문서에 로컬 절대 경로·터미널 핸들·비밀값을 넣지 않는다. 빌드 산출물(`src-tauri/target`, `dist`)은 스테이징하지 않는다.
+## 남은 HOLD / 다음 작업
+
+1. 독립 리뷰 보고 확정 후 개발 PR (커밋·push는 승인 후). 설치 바이너리·모델·미디어는 커밋하지 않는다.
+2. 실제 미디어 E2E(범위 분석, 디스크 부족 차단, 취소·재개, 8시간 자원) 증거 — 미실행 → `HOLD`
+3. YouTube 선택 스트림 크기 기반 **다운로드 직전** 여유 공간 정밀화 — 현재는 분석 단계 중심; 사전 정밀 측정 PASS를 주장하지 않음
+4. P1(자막)·P2~P7 구현은 별도 승인
+5. Authenticode/SmartScreen 및 과거 DisplayVersion 근본 원인만 잔여 HOLD (minisign·in-app 갱신은 PASS)
+6. v0.4.0 버전 정렬·릴리스 문서 전체·설치 EXE는 merge/release 승인 시에만
+
+기존 사용자 데이터와 설치본을 삭제하지 않는다. 공개 문서에 로컬 절대 경로·터미널 핸들·비밀값을 넣지 않는다.

@@ -588,31 +588,45 @@ fn load_checkpoint(
     path: &Path,
     source_url: &str,
 ) -> Result<Option<AcquisitionCheckpoint>, AcquisitionError> {
-    if !path.is_file() {
-        return Ok(None);
+    let previous = crate::storage::previous_generation_path(path);
+    // Corrupt live falls through to .prev; valid live with wrong URL/schema does not.
+    for (is_live, candidate) in [(true, path), (false, previous.as_path())] {
+        if !candidate.is_file() {
+            continue;
+        }
+        let bytes = match fs::read(candidate) {
+            Ok(bytes) if !bytes.is_empty() => bytes,
+            Ok(_) => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        };
+        let checkpoint: AcquisitionCheckpoint = match serde_json::from_slice(&bytes) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        if checkpoint.schema_version != 1 || checkpoint.source_url != source_url {
+            if is_live {
+                return Ok(None);
+            }
+            continue;
+        }
+        let media = PathBuf::from(&checkpoint.media_path);
+        if media.is_file() && fs::metadata(&media)?.len() > 0 {
+            return Ok(Some(checkpoint));
+        }
+        // Media missing: try previous generation if any.
     }
-    let checkpoint: AcquisitionCheckpoint = serde_json::from_slice(&fs::read(path)?)?;
-    if checkpoint.schema_version != 1 || checkpoint.source_url != source_url {
-        return Ok(None);
-    }
-    let media = PathBuf::from(&checkpoint.media_path);
-    if media.is_file() && fs::metadata(media)?.len() > 0 {
-        Ok(Some(checkpoint))
-    } else {
-        Ok(None)
-    }
+    Ok(None)
 }
 
 fn save_checkpoint(
     path: &Path,
     checkpoint: &AcquisitionCheckpoint,
 ) -> Result<(), AcquisitionError> {
-    let temporary = path.with_extension("json.tmp");
-    fs::write(&temporary, serde_json::to_vec_pretty(checkpoint)?)?;
-    if path.exists() {
-        fs::remove_file(path)?;
-    }
-    fs::rename(temporary, path)?;
+    crate::storage::replace_file_preserving_previous(
+        path,
+        &serde_json::to_vec_pretty(checkpoint)?,
+    )?;
     Ok(())
 }
 

@@ -155,6 +155,82 @@ pub(crate) fn source_fingerprint(path: &Path) -> Result<(String, u64), String> {
     Ok((format!("{:x}", hasher.finalize()), length))
 }
 
+/// Free bytes available to the current user on the volume that holds `path`.
+/// `path` should already exist (file or directory) so the OS can resolve the volume.
+pub(crate) fn free_disk_space_bytes(path: &Path) -> Result<u64, String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+        let probe = if path.exists() {
+            path.to_path_buf()
+        } else if let Some(parent) = path.parent() {
+            parent.to_path_buf()
+        } else {
+            path.to_path_buf()
+        };
+        let wide = probe
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect::<Vec<u16>>();
+        let mut free_available = 0u64;
+        let mut total_bytes = 0u64;
+        let mut total_free = 0u64;
+        let ok = unsafe {
+            GetDiskFreeSpaceExW(
+                wide.as_ptr(),
+                &mut free_available,
+                &mut total_bytes,
+                &mut total_free,
+            )
+        };
+        if ok == 0 {
+            return Err("저장 공간 여유량을 확인하지 못했습니다.".into());
+        }
+        Ok(free_available)
+    }
+    #[cfg(unix)]
+    {
+        use std::ffi::CString;
+        let probe = if path.exists() {
+            path
+        } else {
+            path.parent().unwrap_or(path)
+        };
+        let c_path = CString::new(probe.to_string_lossy().as_bytes())
+            .map_err(|_| "저장 공간 경로가 올바르지 않습니다.".to_string())?;
+        let mut stat = unsafe { std::mem::zeroed::<libc::statvfs>() };
+        let rc = unsafe { libc::statvfs(c_path.as_ptr(), &mut stat) };
+        if rc != 0 {
+            return Err("저장 공간 여유량을 확인하지 못했습니다.".into());
+        }
+        Ok((stat.f_bavail as u64).saturating_mul(stat.f_frsize as u64))
+    }
+    #[cfg(not(any(windows, unix)))]
+    {
+        let _ = path;
+        Err("이 환경에서는 저장 공간 여유량을 확인하지 못합니다.".into())
+    }
+}
+
+/// Human-readable byte size for storage shortage messages.
+pub(crate) fn format_bytes_for_message(bytes: u64) -> String {
+    const KIB: f64 = 1024.0;
+    const MIB: f64 = 1024.0 * 1024.0;
+    const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
+    let value = bytes as f64;
+    if value >= GIB {
+        format!("{:.1} GB", value / GIB)
+    } else if value >= MIB {
+        format!("{:.0} MB", value / MIB)
+    } else if value >= KIB {
+        format!("{:.0} KB", value / KIB)
+    } else {
+        format!("{bytes} bytes")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
