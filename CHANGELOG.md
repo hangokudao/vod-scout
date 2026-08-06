@@ -19,18 +19,19 @@
 - (main) 범위 지정 후보를 분석 구간 안으로 제한하고 음량·발화 근거 없는 창 제외.
 - (main) 체크포인트·스냅샷 등의 마지막 정상 세대(`.prev`) 보존 후 교체.
 - (main) 분석 시작 전 작업 폴더 볼륨 여유 공간 검사(부족 시 한국어 설명).
-- (**PR #13 draft/open/unmerged**, 고정 HEAD `4597010c99bf8432f1fe15ba34269fd63d5daa7c`) YouTube 다운로드 경로 저장 공간 가드·메타데이터 점검 노출 정리. **main 미병합.**
+- (**PR #13 draft/open/unmerged**, 정적 고정 HEAD `e18b73efcb0ea40be812b7da12572e1207854863`) YouTube 다운로드 저장 공간 가드·메타데이터 점검. Oracle 후속: 메타 점검이 고른 정확한 `format_id`를 실제 `--format`에 결박, **exact `filesize`만** 허용(대략 크기 거부), stdout **2 MiB**/stderr **256 KiB** 상한·자식 정리, 최소 구조화 로그, 실패 안내 분리. **main 미병합.**
 
-#### Validation (2026-08-07 · PR #13 HEAD `4597010…` · 현재 정본)
+#### Validation (2026-08-07 · 현재 정본)
 
-증거: `D:\vod-scout-p0-evidence-20260807-023415-pr13-4597010\reports\P0-validation-report-ko.md` · `evidence-index.json`.
+증거: `D:\vod-scout-p0-evidence-20260807-023415-pr13-4597010\reports\P0-validation-report-ko.md` · `evidence-index.json` · `ORACLE-final-review-4597010-01a3f6b.md` · `PR13-final-rereview-e18b73e.md`.
 
-- PR #13: **draft · open · unmerged**. 독립 재리뷰 **PASS** · 정규(canonical) 6개 명령 **PASS** (`D:\vod-scout-p0-evidence-20260807-023415-pr13-4597010\reports\PR13-rereview-4597010.md` · SHA-256 `E5F285F19A6ACEC2FAED90639930A45088F9069D6AB4622D59B8640303885091` · `evidence-index.json` `fixedHeadCodeReview` / `gates`).
-- 실제 low-space(저용량) E2E: **HOLD** (`safe low-space E2E environment unavailable`).
-- 유일한 신규 제품 작업 `fd8c1cc5-3bfc-4e02-b97a-036ff1009f5e`: 메타데이터·저장 공간 점검 **PASS** → 부분 전송 약 **10 MB** 후 YouTube **HTTP 403** → 전체 신선 내려받기 **BLOCKED** · 중단 없는 장시간 분석 **BLOCKED**. 재시도·재개 없음.
-- 자원 메트릭 요약: **HOLD**. 설치 폴더 `D:\VOD Scout` 전후 동일 **PASS**. WebView 캐시·사용자 jobs before-after 증거 부족 **HOLD**.
-- 검증용 release `vod-scout.exe` 크기 **15,270,400** · SHA-256 **`2914E618F4F99A075C91E8CC888BD2E277ACFF57CEB34ED2F324519AE49B7D98`** — **설치본·공개 릴리스 자산이 아님** (`tauri build --no-bundle` 검증 전용).
-- 종합 판정: **BLOCKED**.
+- PR #13: **draft · open · unmerged**. 코드 정적 고정 HEAD **`e18b73efcb0ea40be812b7da12572e1207854863`**. 최종 독립 재리뷰 **PASS** · 정규(canonical) 6개 명령 **PASS** · 샘플러 3/3 **PASS** (`PR13-final-rereview-e18b73e.md` · SHA-256 `A4B6752524146DD9BDC9033D80DD6CF4D7E37DC5CDCC31CF0F8A2A4EBC340099` · `evidence-index.json` `postOracleCodeFix`). 제품 P0 merge readiness **아님**.
+- 실제 제품 E2E는 기존 HEAD **`4597010c99bf8432f1fe15ba34269fd63d5daa7c`**에서 **한 번만** 수행했다. 새 HEAD `e18b73e…`에서는 실제 YouTube·low-space·장시간 분석을 **재실행하지 않았다** → 제품 P0는 계속 **BLOCKED/HOLD**.
+- 유일한 신규 제품 작업 `fd8c1cc5-3bfc-4e02-b97a-036ff1009f5e` (`4597010…`): 메타데이터·저장 공간 점검 **PASS** → 부분 전송 약 **10 MB** 후 YouTube **HTTP 403** → 전체 신선 내려받기 **BLOCKED** · 중단 없는 장시간 분석 **BLOCKED**. 재시도·재개 없음. 403 원인 귀속(제공처·네트워크 vs PR #13 2단계 acquisition 회귀) **HOLD** — 외부 문제로 단정하지 않음.
+- 실제 low-space E2E: **HOLD** (`safe low-space E2E environment unavailable`). 자원 메트릭 요약 **HOLD**. 설치 폴더 `D:\VOD Scout` 전후 총 **453,110,594** bytes / **47** files 동일이나 파일별 SHA 매니페스트 없음 → 내용 불변 **HOLD**. WebView 캐시·사용자 jobs before-after **HOLD**.
+- 검증용 release `vod-scout.exe`(`4597010…` 빌드) 크기 **15,270,400** · SHA-256 **`2914E618F4F99A075C91E8CC888BD2E277ACFF57CEB34ED2F324519AE49B7D98`** — **설치본·공개 릴리스 자산이 아님**.
+- Oracle 최종 리뷰 **exactly once**: 판정 **BLOCKED** · Run `689ab803-0a7b-4695-ad8e-5a495c3b4991` · 보고 SHA-256 `DB59D334824C07A4F0922C454C476D93CDEADED10980C0910839AFFD00A19815` · 요청 모델 `GPT-5.6 Sol` · picker `unavailable`/선택 **검증되지 않음**. 재호출 없음.
+- 종합 판정: **BLOCKED**. 코드 PR #13·문서 PR 모두 **merge 금지**. v0.4.0 버전·설치·태그·배포 계획 **미포함**.
 
 #### Historical note (H8–H11 · 원샷 PASS 근거 아님)
 
@@ -38,7 +39,8 @@
 
 #### Known issues (P0 잔여)
 
-- full download·무중단 장시간 분석 **BLOCKED**, live low-space·자원 요약·사용자 데이터 before-after **HOLD**가 해소될 때까지 **PR 병합·v0.4.0 버전·설치 배포 계획을 진행하지 않는다**.
+- full download·무중단 장시간 분석 **BLOCKED**, live low-space·자원 요약·설치 폴더 내용 불변·사용자 데이터 before-after·403 귀속 **HOLD**가 해소될 때까지 **PR 병합·v0.4.0 버전·설치 배포 계획을 진행하지 않는다**.
+- probe 취소·hang 실제 E2E, 실행 시 yt-dlp/Deno/FFmpeg/Whisper·DLL·model 매니페스트 결박, 실제 체크포인트 마이그레이션은 단위·정적과 분리해 **미실행 HOLD**.
 - Authenticode/SmartScreen 및 P1–P7은 기존과 같이 HOLD.
 
 ### v0.4.0 이후 계획 (P1~ · P0 완료 후)
