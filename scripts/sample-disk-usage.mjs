@@ -4,8 +4,10 @@
  *
  * Recursively sums FileInfo/stat sizes without opening file contents, so files
  * currently open by yt-dlp/ffmpeg during merge are included. Never mutates the
- * measured tree. Samples are written incrementally as NDJSON; a final summary
- * is written on duration expiry, stop signal, or clean Ctrl+C termination.
+ * measured tree: no write/rename/unlink under --target, so product checkpoint
+ * replacement (live → .prev → new live) is not interfered with. Samples are
+ * written incrementally as NDJSON; a final summary is written on duration
+ * expiry, stop signal, or clean Ctrl+C termination.
  *
  * Usage:
  *   node scripts/sample-disk-usage.mjs --target <dir> --output <path>
@@ -147,9 +149,11 @@ function validatePositiveInt(name, value, min, max) {
 }
 
 /**
- * Recursively walk target, summing sizes from lstat only (no open/read of contents).
- * Open handles (yt-dlp/ffmpeg merge outputs) still report growing size via metadata.
- * Disappeared entries during walk are counted, not fatal. Symlinks are not followed.
+ * Recursively walk target, summing sizes from lstat only (no open/read of contents,
+ * no write/rename/unlink). Product checkpoint files under the tree can still be
+ * replaced by the app while this runs. Open handles (yt-dlp/ffmpeg merge outputs)
+ * still report growing size via metadata. Disappeared entries during walk are
+ * counted, not fatal. Symlinks are not followed.
  */
 function measureTree(root, largestN) {
   let totalBytes = 0;

@@ -1,14 +1,19 @@
 use super::{media, mutate_job, AppState};
 use crate::domain::JobStatus;
-use crate::integrity::verify_runtime_bundle;
+use crate::integrity::{
+    aggregate_required_bytes_by_volume, format_bytes_for_message, free_disk_space_bytes,
+    verify_runtime_bundle, volume_identity,
+};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Duration;
@@ -17,6 +22,9 @@ use url::Url;
 use crate::media::terminate_child_tree;
 #[cfg(windows)]
 use crate::media::{KillOnCloseJob, CREATE_NO_WINDOW};
+
+/// yt-dlp format selector shared by metadata probe and media transfer.
+const YT_DLP_FORMAT: &str = "bv*[height<=720]+ba/b[height<=720]/b";
 
 #[derive(Debug)]
 enum AcquisitionError {
@@ -236,11 +244,21 @@ fn acquire<R: tauri::Runtime>(
             job.current_stage_label = "YouTube 정보 확인".into();
             job.push_activity(
                 "download",
-                "YouTube 영상 정보를 확인하고 최대 720p로 다운로드합니다.",
+                "YouTube 영상 정보를 확인하고 저장 공간을 점검한 뒤 최대 720p로 다운로드합니다.",
             );
             Ok(())
         })
         .map_err(AcquisitionError::Message)?;
+
+        // Metadata-only size lookup and multi-phase free-space plan MUST pass before any media transfer.
+        ensure_download_disk_space(
+            &tools,
+            &source_url,
+            &download_dir,
+            &job_dir,
+            &log_dir,
+            &state.cancel_requested,
+        )?;
 
         let outcome = run_yt_dlp(app, state, &tools, &source_url, &download_dir, &log_dir)?;
         let path = outcome
@@ -293,6 +311,421 @@ struct DownloadOutcome {
     title: Option<String>,
 }
 
+fn overflow_plan_error() -> String {
+    "예상 용량 계산 중 값이 너무 커서 내려받기를 시작하지 않습니다. 디스크 공간을 확인한 뒤 다시 시도해 주세요."
+        .into()
+}
+
+fn unknown_size_error() -> String {
+    "선택한 영상의 예상 용량을 확인하지 못했습니다. 네트워크와 영상 공개 여부를 확인한 뒤 다시 시도해 주세요."
+        .into()
+}
+
+/// Checked sum of selected stream sizes (each must be > 0).
+pub(crate) fn sum_stream_sizes(stream_sizes: &[u64]) -> Result<u64, String> {
+    if stream_sizes.is_empty() {
+        return Err(unknown_size_error());
+    }
+    let mut total = 0u64;
+    for &size in stream_sizes {
+        if size == 0 {
+            return Err(unknown_size_error());
+        }
+        total = total.checked_add(size).ok_or_else(overflow_plan_error)?;
+    }
+    Ok(total)
+}
+
+/// Same-volume download peak: separate A/V + merge output (~2× streams) + 10% margin.
+/// `peak = 2*S + floor((2*S)/10)` with checked arithmetic.
+pub(crate) fn estimate_download_peak_bytes(stream_sizes: &[u64]) -> Result<u64, String> {
+    let streams_total = sum_stream_sizes(stream_sizes)?;
+    download_peak_from_streams_total(streams_total)
+}
+
+fn download_peak_from_streams_total(streams_total: u64) -> Result<u64, String> {
+    let peak = streams_total
+        .checked_mul(2)
+        .ok_or_else(overflow_plan_error)?;
+    let margin = peak / 10;
+    peak.checked_add(margin).ok_or_else(overflow_plan_error)
+}
+
+/// Per-volume budget when home and temp are on distinct volumes: streams + 10% margin each.
+fn stream_budget_with_margin(streams_total: u64) -> Result<u64, String> {
+    let margin = streams_total / 10;
+    streams_total
+        .checked_add(margin)
+        .ok_or_else(overflow_plan_error)
+}
+
+/// Pure multi-phase planner (deterministic volume ids — no filesystem).
+///
+/// # Formulas
+/// - `S = Σ stream_sizes` (checked; final source estimate = S)
+/// - Download peak (home≡temp): `P = 2S + floor(2S/10)`
+/// - Split budget (home≠temp, each volume): `B = S + floor(S/10)`
+/// - Analysis workspace: `W = estimate_analysis_workspace_bytes(S, duration)` (existing media helper)
+/// - Phase download (simultaneous → **sum** on a volume):
+///   - home≡temp → home: P
+///   - home≠temp → home: B, temp: B
+/// - Phase analysis (simultaneous → **sum**):
+///   - home: S (final source remains), job: W
+/// - Across sequential phases → **max** per volume
+pub(crate) fn plan_pre_download_volume_bytes(
+    stream_sizes: &[u64],
+    duration_seconds: f64,
+    home_volume: &str,
+    temp_volume: &str,
+    job_volume: &str,
+) -> Result<BTreeMap<String, u64>, String> {
+    let streams_total = sum_stream_sizes(stream_sizes)?;
+    let final_source = streams_total;
+    let analysis_ws = media::estimate_analysis_workspace_bytes(final_source, duration_seconds);
+
+    let mut download_phase: BTreeMap<String, u64> = BTreeMap::new();
+    if home_volume == temp_volume {
+        let peak = download_peak_from_streams_total(streams_total)?;
+        phase_sum_insert(&mut download_phase, home_volume, peak)?;
+    } else {
+        let budget = stream_budget_with_margin(streams_total)?;
+        phase_sum_insert(&mut download_phase, home_volume, budget)?;
+        phase_sum_insert(&mut download_phase, temp_volume, budget)?;
+    }
+
+    let mut analysis_phase: BTreeMap<String, u64> = BTreeMap::new();
+    phase_sum_insert(&mut analysis_phase, home_volume, final_source)?;
+    phase_sum_insert(&mut analysis_phase, job_volume, analysis_ws)?;
+
+    Ok(max_across_phases(
+        [download_phase, analysis_phase].into_iter(),
+    ))
+}
+
+fn phase_sum_insert(
+    map: &mut BTreeMap<String, u64>,
+    volume: &str,
+    amount: u64,
+) -> Result<(), String> {
+    let entry = map.entry(volume.to_string()).or_insert(0);
+    *entry = entry.checked_add(amount).ok_or_else(overflow_plan_error)?;
+    Ok(())
+}
+
+fn max_across_phases<I>(phases: I) -> BTreeMap<String, u64>
+where
+    I: IntoIterator<Item = BTreeMap<String, u64>>,
+{
+    let mut out: BTreeMap<String, u64> = BTreeMap::new();
+    for phase in phases {
+        for (volume, need) in phase {
+            out.entry(volume)
+                .and_modify(|existing: &mut u64| *existing = (*existing).max(need))
+                .or_insert(need);
+        }
+    }
+    out
+}
+
+/// Production planner: same formulas as [`plan_pre_download_volume_bytes`], but
+/// simultaneous needs are summed with [`aggregate_required_bytes_by_volume`]
+/// (proves distinct-volume handling in the real path).
+///
+/// Returns `(volume_id, probe_path, required_free_bytes)`.
+pub(crate) fn plan_pre_download_path_requirements(
+    stream_sizes: &[u64],
+    duration_seconds: f64,
+    home: &Path,
+    temp: &Path,
+    job: &Path,
+) -> Result<Vec<(String, PathBuf, u64)>, String> {
+    let streams_total = sum_stream_sizes(stream_sizes)?;
+    let final_source = streams_total;
+    let analysis_ws = media::estimate_analysis_workspace_bytes(final_source, duration_seconds);
+    let home_id = volume_identity(home)?;
+    let temp_id = volume_identity(temp)?;
+
+    // Phase download — simultaneous budgets aggregated (sum) per volume.
+    let download_targets: Vec<(PathBuf, u64)> = if home_id == temp_id {
+        vec![(
+            home.to_path_buf(),
+            download_peak_from_streams_total(streams_total)?,
+        )]
+    } else {
+        let budget = stream_budget_with_margin(streams_total)?;
+        vec![(home.to_path_buf(), budget), (temp.to_path_buf(), budget)]
+    };
+    let download_agg = aggregate_required_bytes_by_volume(&download_targets)?;
+
+    // Phase analysis — final source on home + analysis workspace on job (sum if same volume).
+    let analysis_targets = vec![
+        (home.to_path_buf(), final_source),
+        (job.to_path_buf(), analysis_ws),
+    ];
+    let analysis_agg = aggregate_required_bytes_by_volume(&analysis_targets)?;
+
+    let mut by_volume: BTreeMap<String, (PathBuf, u64)> = BTreeMap::new();
+    for (id, path, need) in download_agg {
+        by_volume.insert(id, (path, need));
+    }
+    for (id, path, need) in analysis_agg {
+        match by_volume.get_mut(&id) {
+            Some((_probe, existing)) => {
+                *existing = (*existing).max(need);
+            }
+            None => {
+                by_volume.insert(id, (path, need));
+            }
+        }
+    }
+    Ok(by_volume
+        .into_iter()
+        .map(|(id, (path, need))| (id, path, need))
+        .collect())
+}
+
+/// Check free space against the multi-phase plan. Shortage / free-space query failure block.
+pub(crate) fn ensure_planned_download_space(
+    stream_sizes: &[u64],
+    duration_seconds: f64,
+    home: &Path,
+    temp: &Path,
+    job: &Path,
+) -> Result<u64, String> {
+    let plan =
+        plan_pre_download_path_requirements(stream_sizes, duration_seconds, home, temp, job)?;
+    if plan.is_empty() {
+        return Err("내려받기 대상 폴더를 확인하지 못했습니다.".into());
+    }
+    let mut max_need = 0u64;
+    for (_id, probe, need) in plan {
+        max_need = max_need.max(need);
+        let available = free_disk_space_bytes(&probe)?;
+        if available < need {
+            let shortfall = need - available;
+            return Err(format!(
+                "저장 공간이 부족합니다. YouTube 내려받기와 이어지는 분석 준비에 이 디스크에서 약 {}이 필요하지만 현재 여유 공간은 {}입니다. 약 {}을 확보한 뒤 다시 시작해 주세요.",
+                format_bytes_for_message(need),
+                format_bytes_for_message(available),
+                format_bytes_for_message(shortfall)
+            ));
+        }
+    }
+    Ok(max_need)
+}
+
+/// Parse positive byte sizes from a yt-dlp info JSON object (metadata only, no media transfer).
+pub(crate) fn selected_stream_sizes_from_info(info: &Value) -> Result<Vec<u64>, String> {
+    if let Some(formats) = info
+        .get("requested_formats")
+        .and_then(|value| value.as_array())
+    {
+        if formats.is_empty() {
+            return Err(unknown_size_error());
+        }
+        let mut sizes = Vec::with_capacity(formats.len());
+        for format in formats {
+            sizes.push(stream_size_bytes(format)?);
+        }
+        return Ok(sizes);
+    }
+    Ok(vec![stream_size_bytes(info)?])
+}
+
+/// Safest defensible size: max of available `filesize` / `filesize_approx` (never under-estimate).
+fn stream_size_bytes(format: &Value) -> Result<u64, String> {
+    let mut best: Option<u64> = None;
+    for key in ["filesize", "filesize_approx"] {
+        if let Some(size) = format.get(key).and_then(json_positive_u64) {
+            best = Some(match best {
+                Some(current) => current.max(size),
+                None => size,
+            });
+        }
+    }
+    best.ok_or_else(unknown_size_error)
+}
+
+pub(crate) fn duration_seconds_from_info(info: &Value) -> Result<f64, String> {
+    let raw = info.get("duration").ok_or_else(|| {
+        "영상 길이를 확인하지 못했습니다. 네트워크와 영상 공개 여부를 확인한 뒤 다시 시도해 주세요."
+            .to_string()
+    })?;
+    let seconds = raw
+        .as_f64()
+        .or_else(|| raw.as_u64().map(|value| value as f64))
+        .or_else(|| {
+            raw.as_i64()
+                .filter(|value| *value > 0)
+                .map(|value| value as f64)
+        });
+    match seconds {
+        Some(value) if value.is_finite() && value > 0.0 => Ok(value),
+        _ => Err(
+            "영상 길이를 확인하지 못했습니다. 네트워크와 영상 공개 여부를 확인한 뒤 다시 시도해 주세요."
+                .into(),
+        ),
+    }
+}
+
+fn json_positive_u64(value: &Value) -> Option<u64> {
+    match value {
+        Value::Number(number) => {
+            if let Some(unsigned) = number.as_u64() {
+                return (unsigned > 0).then_some(unsigned);
+            }
+            if let Some(signed) = number.as_i64() {
+                return (signed > 0).then_some(signed as u64);
+            }
+            if let Some(float) = number.as_f64() {
+                if float.is_finite() && float > 0.0 && float <= u64::MAX as f64 {
+                    return Some(float.ceil() as u64);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn ensure_download_disk_space(
+    tools: &DownloadTools,
+    source_url: &str,
+    download_dir: &Path,
+    job_dir: &Path,
+    log_dir: &Path,
+    cancel_requested: &AtomicBool,
+) -> Result<(), AcquisitionError> {
+    if cancel_requested.load(Ordering::SeqCst) {
+        return Err(AcquisitionError::Cancelled);
+    }
+    let info = probe_download_metadata(tools, source_url, download_dir, log_dir, cancel_requested)?;
+    let stream_sizes = selected_stream_sizes_from_info(&info).map_err(AcquisitionError::Message)?;
+    let duration = duration_seconds_from_info(&info).map_err(AcquisitionError::Message)?;
+    // Product currently pins yt-dlp home and temp to download_dir; job_dir holds analysis workspace.
+    ensure_planned_download_space(&stream_sizes, duration, download_dir, download_dir, job_dir)
+        .map_err(AcquisitionError::Message)?;
+    Ok(())
+}
+
+/// Metadata-only yt-dlp probe (`--skip-download` + `--dump-single-json`). No media transfer.
+fn probe_download_metadata(
+    tools: &DownloadTools,
+    source_url: &str,
+    download_dir: &Path,
+    log_dir: &Path,
+    cancel_requested: &AtomicBool,
+) -> Result<Value, AcquisitionError> {
+    fs::create_dir_all(log_dir)?;
+    let mut command = Command::new(&tools.yt_dlp);
+    command
+        .args([
+            "--ignore-config",
+            "--no-playlist",
+            "--skip-download",
+            "--no-progress",
+            "--socket-timeout",
+            "30",
+            "--match-filter",
+            "!is_live",
+            "--format",
+            YT_DLP_FORMAT,
+            "--dump-single-json",
+        ])
+        .arg("--ffmpeg-location")
+        .arg(&tools.ffmpeg_dir)
+        .arg("--js-runtimes")
+        .arg(format!("deno:{}", tools.deno.display()))
+        // Keep metadata probe out of the media transfer paths; still pin cache away from user home.
+        .arg("--cache-dir")
+        .arg(download_dir.join("cache"))
+        .arg(source_url)
+        .current_dir(download_dir)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .env("NO_COLOR", "1");
+    crate::media::restrict_command_environment(&mut command);
+    command.env("NO_COLOR", "1");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    let mut child = command.spawn().map_err(|error| {
+        AcquisitionError::Message(format!(
+            "YouTube 영상 정보를 확인하지 못했습니다. yt-dlp 실행 실패: {error}"
+        ))
+    })?;
+    #[cfg(windows)]
+    let job_guard = match KillOnCloseJob::attach(&child) {
+        Ok(job) => Some(job),
+        Err(error) => {
+            terminate_child_tree(&mut child, None);
+            return Err(AcquisitionError::Message(format!(
+                "YouTube 정보 확인 프로세스에 강제 종료 보호를 설정하지 못했습니다: {error}"
+            )));
+        }
+    };
+
+    let stdout = child.stdout.take().ok_or_else(|| {
+        AcquisitionError::Message("YouTube 영상 정보 출력을 연결하지 못했습니다.".into())
+    })?;
+    let stderr = child.stderr.take().ok_or_else(|| {
+        AcquisitionError::Message("YouTube 영상 정보 진단 출력을 연결하지 못했습니다.".into())
+    })?;
+    let stdout_thread = thread::spawn(move || {
+        let mut buffer = Vec::new();
+        let mut reader = BufReader::new(stdout);
+        let _ = reader.read_to_end(&mut buffer);
+        buffer
+    });
+    let stderr_thread = thread::spawn(move || {
+        let mut buffer = Vec::new();
+        let mut reader = BufReader::new(stderr);
+        let _ = reader.read_to_end(&mut buffer);
+        buffer
+    });
+
+    let status = loop {
+        if cancel_requested.load(Ordering::SeqCst) {
+            #[cfg(windows)]
+            terminate_child_tree(&mut child, job_guard.as_ref());
+            #[cfg(not(windows))]
+            terminate_child_tree(&mut child);
+            let _ = stdout_thread.join();
+            let _ = stderr_thread.join();
+            return Err(AcquisitionError::Cancelled);
+        }
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        thread::sleep(Duration::from_millis(50));
+    };
+    let stdout_bytes = stdout_thread.join().unwrap_or_default();
+    let stderr_bytes = stderr_thread.join().unwrap_or_default();
+    let _ = fs::write(log_dir.join("yt-dlp.metadata.json"), &stdout_bytes);
+    let _ = fs::write(log_dir.join("yt-dlp.metadata.stderr.log"), &stderr_bytes);
+
+    if !status.success() {
+        let detail = String::from_utf8_lossy(&stderr_bytes);
+        return Err(AcquisitionError::Message(friendly_download_error(
+            status, &detail,
+        )));
+    }
+    if stdout_bytes.is_empty() {
+        return Err(AcquisitionError::Message(
+            "YouTube 영상 정보를 확인하지 못했습니다. 네트워크와 영상 공개 여부를 확인한 뒤 다시 시도해 주세요."
+                .into(),
+        ));
+    }
+    serde_json::from_slice(&stdout_bytes).map_err(|_| {
+        AcquisitionError::Message(
+            "YouTube 영상 정보를 해석하지 못했습니다. 잠시 후 다시 시도해 주세요.".into(),
+        )
+    })
+}
+
 fn run_yt_dlp<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     state: &Arc<AppState>,
@@ -318,7 +751,7 @@ fn run_yt_dlp<R: tauri::Runtime>(
             "--print",
             "after_move:VODSCOUT_RESULT=%(filepath)j",
             "--format",
-            "bv*[height<=720]+ba/b[height<=720]/b",
+            YT_DLP_FORMAT,
             "--continue",
             "--part",
             "--retries",
@@ -706,5 +1139,146 @@ mod tests {
         let complete = temp.path().join("source.webm");
         fs::write(&complete, b"complete").unwrap();
         assert_eq!(find_downloaded_media(temp.path()).unwrap(), Some(complete));
+    }
+
+    #[test]
+    fn download_peak_estimate_is_conservative_with_margin() {
+        // video 6_000 + audio 500 → streams 6_500 → peak 13_000 → +10% = 14_300
+        let peak = estimate_download_peak_bytes(&[6_000, 500]).unwrap();
+        assert_eq!(peak, 14_300);
+        assert!(estimate_download_peak_bytes(&[]).is_err());
+        assert!(estimate_download_peak_bytes(&[0]).is_err());
+        assert!(estimate_download_peak_bytes(&[u64::MAX, 1]).is_err());
+        assert!(estimate_download_peak_bytes(&[u64::MAX / 2 + 1]).is_err());
+    }
+
+    #[test]
+    fn selected_stream_sizes_use_max_of_size_fields() {
+        let multi = serde_json::json!({
+            "requested_formats": [
+                {"format_id": "298", "filesize": 100u64, "filesize_approx": 150u64},
+                {"format_id": "251", "filesize": null, "filesize_approx": 40u64}
+            ]
+        });
+        // Safest defensible: max(100,150)=150 and 40
+        assert_eq!(
+            selected_stream_sizes_from_info(&multi).unwrap(),
+            vec![150, 40]
+        );
+        let single = serde_json::json!({"filesize_approx": 1_024u64});
+        assert_eq!(
+            selected_stream_sizes_from_info(&single).unwrap(),
+            vec![1_024]
+        );
+        let missing = serde_json::json!({"requested_formats": [{"format_id": "x"}]});
+        let err = selected_stream_sizes_from_info(&missing).unwrap_err();
+        assert!(err.contains("예상 용량"));
+        assert!(err.contains("다시 시도"));
+    }
+
+    #[test]
+    fn pure_plan_same_volume_takes_max_of_download_peak_and_analysis() {
+        // S=10_000 → P=22_000; W = estimate_analysis_workspace_bytes(10000, 3600)
+        let streams = [7_000u64, 3_000];
+        let duration = 3600.0;
+        let s = sum_stream_sizes(&streams).unwrap();
+        let peak = download_peak_from_streams_total(s).unwrap();
+        let analysis = media::estimate_analysis_workspace_bytes(s, duration);
+        let analysis_phase = s.checked_add(analysis).unwrap(); // home+job same volume sums
+        let expected = peak.max(analysis_phase);
+
+        let plan =
+            plan_pre_download_volume_bytes(&streams, duration, "volA", "volA", "volA").unwrap();
+        assert_eq!(plan.len(), 1);
+        assert_eq!(plan.get("volA").copied().unwrap(), expected);
+        // Download peak alone must not ignore analysis when analysis phase is larger.
+        assert!(expected >= peak);
+        assert!(expected >= analysis_phase);
+    }
+
+    #[test]
+    fn pure_plan_distinct_home_temp_job_volumes() {
+        let streams = [5_000u64, 1_000];
+        let duration = 7200.0;
+        let s = sum_stream_sizes(&streams).unwrap();
+        let budget = stream_budget_with_margin(s).unwrap(); // S + S/10
+        let analysis = media::estimate_analysis_workspace_bytes(s, duration);
+
+        let plan =
+            plan_pre_download_volume_bytes(&streams, duration, "homeVol", "tempVol", "jobVol")
+                .unwrap();
+        assert_eq!(plan.len(), 3);
+        // home: max(download B, analysis S)
+        assert_eq!(plan["homeVol"], budget.max(s));
+        // temp: download B only
+        assert_eq!(plan["tempVol"], budget);
+        // job: analysis W only
+        assert_eq!(plan["jobVol"], analysis);
+    }
+
+    #[test]
+    fn pure_plan_overflow_and_unknown_sizes_fail_closed() {
+        assert!(plan_pre_download_volume_bytes(&[], 1.0, "a", "a", "a").is_err());
+        assert!(plan_pre_download_volume_bytes(&[0], 1.0, "a", "a", "a").is_err());
+        assert!(plan_pre_download_volume_bytes(&[u64::MAX, 1], 1.0, "a", "a", "a").is_err());
+        assert!(plan_pre_download_volume_bytes(&[u64::MAX / 2 + 1], 1.0, "a", "a", "a").is_err());
+        let err = duration_seconds_from_info(&serde_json::json!({})).unwrap_err();
+        assert!(err.contains("길이"));
+    }
+
+    #[test]
+    fn production_path_plan_uses_aggregate_and_matches_pure_same_volume() {
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("youtube-download");
+        let job = root.path().to_path_buf();
+        fs::create_dir_all(&home).unwrap();
+        let streams = [64u64, 32];
+        let duration = 60.0;
+        let pure = plan_pre_download_volume_bytes(
+            &streams,
+            duration,
+            &volume_identity(&home).unwrap(),
+            &volume_identity(&home).unwrap(),
+            &volume_identity(&job).unwrap(),
+        )
+        .unwrap();
+        let path_plan =
+            plan_pre_download_path_requirements(&streams, duration, &home, &home, &job).unwrap();
+        assert_eq!(path_plan.len(), pure.len());
+        for (id, _path, need) in &path_plan {
+            assert_eq!(pure.get(id).copied(), Some(*need));
+        }
+        // Tiny streams on a real temp volume must pass free-space check.
+        let need = ensure_planned_download_space(&streams, duration, &home, &home, &job).unwrap();
+        assert_eq!(need, *pure.values().max().unwrap());
+    }
+
+    #[test]
+    fn production_path_plan_shortage_message_is_actionable() {
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("dl");
+        let job = root.path().to_path_buf();
+        fs::create_dir_all(&home).unwrap();
+        let free = free_disk_space_bytes(&home).unwrap();
+        // Construct S so download peak P = 2S + floor(2S/10) strictly exceeds free without overflow.
+        // S = free/2 + 1 ⇒ 2S >= free + 1 > free ⇒ P > free. Overflow paths are covered elsewhere.
+        let stream = free
+            .checked_div(2)
+            .and_then(|half| half.checked_add(1))
+            .filter(|&s| s > 0 && s <= u64::MAX / 3)
+            .expect("free space too large to build a non-overflowing shortage fixture");
+        let peak = download_peak_from_streams_total(stream).expect("peak must compute");
+        assert!(
+            peak > free,
+            "fixture must require more free space than available (peak={peak}, free={free})"
+        );
+        let err = ensure_planned_download_space(&[stream], 3600.0, &home, &home, &job)
+            .expect_err("shortage guard must return Err when required peak exceeds free space");
+        assert!(
+            err.contains("저장 공간이 부족합니다"),
+            "expected shortage message, got: {err}"
+        );
+        assert!(err.contains("확보"), "{err}");
+        assert!(err.contains("내려받기"), "{err}");
     }
 }
