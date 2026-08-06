@@ -361,6 +361,62 @@ fn is_in_completed_chunks(seconds: f64, chunks: &[PlannedChunk]) -> bool {
     })
 }
 
+/// How media checkpoint progress was reconciled with the job snapshot's units.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CheckpointAlignResult {
+    /// Checkpoint and snapshot already agree on completed media chunks.
+    Aligned,
+    /// Checkpoint was ahead of the snapshot; intermediate media state was rewound.
+    Rewound,
+    /// Snapshot claimed more media progress than the checkpoint. Allowed only when
+    /// incompatible media intermediates were discarded and rebuilt (schema/fingerprint/etc.).
+    RestartMediaFromScratch,
+}
+
+/// Align checkpoint chunk progress with `job.completed_units`.
+///
+/// Job units encode media as: 0/1 acquire+tools, 2 probe, then one unit per completed chunk.
+/// When media intermediates were rebuilt (`media_intermediates_rebuilt`), lagging behind the
+/// snapshot must restart media work rather than hard-fail — the snapshot's advanced units are
+/// stale relative to the discarded checkpoint, not proof of durable media progress.
+fn align_checkpoint_with_job_units(
+    checkpoint: &mut MediaCheckpoint,
+    job_completed_units: u32,
+    media_intermediates_rebuilt: bool,
+) -> Result<CheckpointAlignResult, String> {
+    let chunk_count = checkpoint.planned_chunks.len().max(1) as u32;
+    let snapshot_chunks = job_completed_units.saturating_sub(2).min(chunk_count);
+    if checkpoint.completed_chunks > snapshot_chunks {
+        let completed = &checkpoint.planned_chunks[..snapshot_chunks as usize];
+        checkpoint
+            .segments
+            .retain(|segment| is_in_completed_chunks(segment.start_seconds, completed));
+        checkpoint
+            .energy
+            .retain(|point| is_in_completed_chunks(point.start_seconds, completed));
+        checkpoint.completed_chunks = snapshot_chunks;
+        checkpoint.chat_motion_completed = false;
+        checkpoint.chat_motion.clear();
+        Ok(CheckpointAlignResult::Rewound)
+    } else if checkpoint.completed_chunks < snapshot_chunks {
+        if media_intermediates_rebuilt {
+            Ok(CheckpointAlignResult::RestartMediaFromScratch)
+        } else {
+            Err(
+                "작업 스냅샷보다 미디어 체크포인트가 뒤에 있어 자동 재개할 수 없습니다."
+                    .into(),
+            )
+        }
+    } else {
+        Ok(CheckpointAlignResult::Aligned)
+    }
+}
+
+/// Job progress units after media intermediates were rebuilt (probe-complete + any chunks kept).
+fn job_units_after_media_restart(checkpoint: &MediaCheckpoint) -> u32 {
+    2 + checkpoint.completed_chunks
+}
+
 #[derive(Debug)]
 struct WindowScore {
     start: f64,
@@ -756,7 +812,11 @@ fn run<R: tauri::Runtime>(
         input_bytes,
         &runtime_sha256,
     )?;
+    // load_checkpoint returns None for missing, corrupt, or incompatible (schema/fingerprint/tools/ranker).
+    // In those cases we rebuild a fresh media checkpoint and must recompute intermediates only.
+    let mut media_intermediates_rebuilt = false;
     if checkpoint.is_none() {
+        media_intermediates_rebuilt = true;
         let probe_json = job_dir.join("ffprobe.json");
         run_command(
             &state.cancel_requested,
@@ -818,22 +878,39 @@ fn run<R: tauri::Runtime>(
     // chat-motion temp frames, and preview headroom for the selected source.
     ensure_analysis_disk_space(&job_dir, input_bytes, checkpoint.duration_seconds)?;
 
-    let snapshot_chunks = completed_units.saturating_sub(2).min(chunk_count);
-    if checkpoint.completed_chunks > snapshot_chunks {
-        let completed = &checkpoint.planned_chunks[..snapshot_chunks as usize];
-        checkpoint
-            .segments
-            .retain(|segment| is_in_completed_chunks(segment.start_seconds, completed));
-        checkpoint
-            .energy
-            .retain(|point| is_in_completed_chunks(point.start_seconds, completed));
-        checkpoint.completed_chunks = snapshot_chunks;
-        checkpoint.chat_motion_completed = false;
-        checkpoint.chat_motion.clear();
-    } else if checkpoint.completed_chunks < snapshot_chunks {
-        return Err(PipelineError::Message(
-            "작업 스냅샷보다 미디어 체크포인트가 뒤에 있어 자동 재개할 수 없습니다.".into(),
-        ));
+    let align = align_checkpoint_with_job_units(
+        &mut checkpoint,
+        completed_units,
+        media_intermediates_rebuilt,
+    )
+    .map_err(PipelineError::Message)?;
+
+    // After an incompatible discard, clamp job media progress to the rebuilt checkpoint so
+    // sequential progress updates work and a later mid-recompute resume does not hard-fail.
+    // Job id, source, and analysis settings are preserved; user data is not deleted.
+    let mut completed_units = completed_units;
+    if align == CheckpointAlignResult::RestartMediaFromScratch {
+        completed_units = job_units_after_media_restart(&checkpoint);
+        let duration = checkpoint.duration_seconds;
+        let _ = mutate_job(app, state, |job| {
+            job.total_units = total_units;
+            job.media_duration_seconds = Some(duration);
+            if job.completed_units > completed_units {
+                job.completed_units = completed_units;
+                job.candidates.clear();
+                job.current_stage_label = format!("미디어 확인 · {}개 청크", chunk_count);
+                job.error_message = None;
+                job.error_detail = None;
+                // Reverse media restart is not a normal forward transition (e.g. Transcribing→Probing).
+                job.status = JobStatus::Probing;
+                job.push_activity(
+                    "progress",
+                    "호환되지 않는 미디어 중간 결과를 버리고 음성 인식부터 다시 계산합니다.",
+                );
+            }
+            Ok(())
+        })
+        .map_err(PipelineError::Message)?;
     }
 
     if completed_units < 2 {
@@ -859,7 +936,7 @@ fn run<R: tauri::Runtime>(
             )
         })
         .map_err(PipelineError::Message)?;
-    } else {
+    } else if align != CheckpointAlignResult::RestartMediaFromScratch {
         let duration = checkpoint.duration_seconds;
         let _ = mutate_job(app, state, |job| {
             job.total_units = total_units;
@@ -2666,6 +2743,224 @@ mod tests {
             1024,
             &runtime,
         ));
+    }
+
+    #[test]
+    fn discarded_incompatible_checkpoint_restarts_media_when_job_units_advanced() {
+        // P0 F1: schema-3 / fingerprint-mismatched live is discarded → fresh CP with
+        // completed_chunks=0. An interrupted job snapshot with completed_units > 2 must
+        // recompute media intermediates, not hard-fail resume.
+        let runtime = HashMap::from([("ffmpeg/ffmpeg.exe".into(), "aaa".into())]);
+        let planned = vec![
+            PlannedChunk {
+                offset_seconds: 0.0,
+                length_seconds: 600.0,
+            },
+            PlannedChunk {
+                offset_seconds: 600.0,
+                length_seconds: 600.0,
+            },
+            PlannedChunk {
+                offset_seconds: 1200.0,
+                length_seconds: 600.0,
+            },
+            PlannedChunk {
+                offset_seconds: 1800.0,
+                length_seconds: 600.0,
+            },
+        ];
+        let mut schema3 = MediaCheckpoint::fresh(
+            "C:/media/source.mp4",
+            2400.0,
+            AnalysisMode::Full,
+            0,
+            2400,
+            planned.clone(),
+            "fp-old".into(),
+            4096,
+            runtime.clone(),
+        );
+        schema3.schema_version = 3;
+        schema3.completed_chunks = 3;
+        schema3.segments.push(TranscriptSegment {
+            start_seconds: 10.0,
+            end_seconds: 12.0,
+            text: "이전 스키마 결과".into(),
+        });
+        assert!(!checkpoint_is_compatible(
+            &schema3,
+            "C:/media/source.mp4",
+            AnalysisMode::Full,
+            0,
+            None,
+            "fp-new",
+            4096,
+            &runtime,
+        ));
+
+        // Simulate load_checkpoint → None then MediaCheckpoint::fresh (completed_chunks = 0).
+        let mut rebuilt = MediaCheckpoint::fresh(
+            "C:/media/source.mp4",
+            2400.0,
+            AnalysisMode::Full,
+            0,
+            2400,
+            planned,
+            "fp-new".into(),
+            4096,
+            runtime.clone(),
+        );
+        // Job snapshot advanced past probe + 3 chunks (units = 2 + 3 = 5).
+        let outcome =
+            align_checkpoint_with_job_units(&mut rebuilt, 5, true).expect("must restart, not fail");
+        assert_eq!(outcome, CheckpointAlignResult::RestartMediaFromScratch);
+        assert_eq!(rebuilt.completed_chunks, 0);
+        assert!(rebuilt.segments.is_empty());
+        assert_eq!(job_units_after_media_restart(&rebuilt), 2);
+
+        // Fingerprint mismatch rebuild path is the same: allow restart with advanced units.
+        let mut fp_mismatch_fresh = MediaCheckpoint::fresh(
+            "C:/media/source.mp4",
+            2400.0,
+            AnalysisMode::Full,
+            0,
+            2400,
+            vec![PlannedChunk {
+                offset_seconds: 0.0,
+                length_seconds: 600.0,
+            }],
+            "fp-current".into(),
+            4096,
+            runtime.clone(),
+        );
+        assert_eq!(
+            align_checkpoint_with_job_units(&mut fp_mismatch_fresh, 4, true).unwrap(),
+            CheckpointAlignResult::RestartMediaFromScratch
+        );
+
+        // Compatible checkpoint lagging the snapshot remains a hard integrity error.
+        let mut partial = MediaCheckpoint::fresh(
+            "C:/media/source.mp4",
+            2400.0,
+            AnalysisMode::Full,
+            0,
+            2400,
+            vec![
+                PlannedChunk {
+                    offset_seconds: 0.0,
+                    length_seconds: 600.0,
+                },
+                PlannedChunk {
+                    offset_seconds: 600.0,
+                    length_seconds: 600.0,
+                },
+                PlannedChunk {
+                    offset_seconds: 1200.0,
+                    length_seconds: 600.0,
+                },
+            ],
+            "fp-current".into(),
+            4096,
+            runtime,
+        );
+        partial.completed_chunks = 1;
+        partial.segments.push(TranscriptSegment {
+            start_seconds: 1.0,
+            end_seconds: 2.0,
+            text: "부분 완료".into(),
+        });
+        let err = align_checkpoint_with_job_units(&mut partial, 5, false).unwrap_err();
+        assert!(err.contains("작업 스냅샷보다 미디어 체크포인트가 뒤에"));
+        assert_eq!(partial.completed_chunks, 1);
+        assert_eq!(partial.segments.len(), 1);
+
+        // Compatible rewind path still trims intermediate media to the snapshot.
+        let mut ahead = partial.clone();
+        ahead.completed_chunks = 3;
+        ahead.segments.push(TranscriptSegment {
+            start_seconds: 700.0,
+            end_seconds: 702.0,
+            text: "스냅샷 이후".into(),
+        });
+        assert_eq!(
+            align_checkpoint_with_job_units(&mut ahead, 3, false).unwrap(),
+            CheckpointAlignResult::Rewound
+        );
+        assert_eq!(ahead.completed_chunks, 1);
+        assert!(ahead
+            .segments
+            .iter()
+            .all(|segment| segment.start_seconds < 600.0));
+    }
+
+    #[test]
+    fn load_incompatible_schema3_does_not_resume_prev_and_align_restarts() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("media-checkpoint.json");
+        let runtime = HashMap::from([("ffmpeg/ffmpeg.exe".into(), "aaa".into())]);
+        let mut schema3 = MediaCheckpoint::fresh(
+            "source.mp4",
+            1200.0,
+            AnalysisMode::Full,
+            0,
+            1200,
+            vec![
+                PlannedChunk {
+                    offset_seconds: 0.0,
+                    length_seconds: 600.0,
+                },
+                PlannedChunk {
+                    offset_seconds: 600.0,
+                    length_seconds: 600.0,
+                },
+            ],
+            "fp".into(),
+            2048,
+            runtime.clone(),
+        );
+        schema3.schema_version = 3;
+        schema3.completed_chunks = 2;
+        save_checkpoint(&path, &schema3).unwrap();
+
+        let loaded = load_checkpoint(
+            &path,
+            "source.mp4",
+            AnalysisMode::Full,
+            None,
+            None,
+            "fp",
+            2048,
+            &runtime,
+        )
+        .unwrap();
+        assert!(loaded.is_none(), "schema-3 live must be discarded");
+
+        // Fresh rebuild + advanced job units must restart media chunks from 0.
+        let mut fresh = MediaCheckpoint::fresh(
+            "source.mp4",
+            1200.0,
+            AnalysisMode::Full,
+            0,
+            1200,
+            vec![
+                PlannedChunk {
+                    offset_seconds: 0.0,
+                    length_seconds: 600.0,
+                },
+                PlannedChunk {
+                    offset_seconds: 600.0,
+                    length_seconds: 600.0,
+                },
+            ],
+            "fp".into(),
+            2048,
+            runtime,
+        );
+        let outcome = align_checkpoint_with_job_units(&mut fresh, 5, true).unwrap();
+        assert_eq!(outcome, CheckpointAlignResult::RestartMediaFromScratch);
+        assert_eq!(fresh.completed_chunks, 0);
+        // Job identity/source fields stay on the job snapshot; media units clamp to probe.
+        assert_eq!(job_units_after_media_restart(&fresh), 2);
     }
 
     #[test]
