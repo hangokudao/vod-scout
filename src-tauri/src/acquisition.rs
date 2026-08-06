@@ -608,7 +608,25 @@ fn ensure_download_disk_space(
     Ok(())
 }
 
-/// Metadata-only yt-dlp probe (`--skip-download` + `--dump-single-json`). No media transfer.
+/// User-visible message for metadata-only probe failures.
+/// Must not include tool names, raw stderr, exit codes, or spawn error text.
+pub(crate) fn metadata_probe_user_message() -> String {
+    "YouTube 영상 정보를 확인하지 못했습니다. 네트워크 연결과 영상 공개 여부를 확인한 뒤 다시 시도해 주세요."
+        .into()
+}
+
+fn write_probe_diagnostic_log(log_dir: &Path, file_name: &str, contents: impl AsRef<[u8]>) {
+    let _ = fs::create_dir_all(log_dir);
+    let _ = fs::write(log_dir.join(file_name), contents);
+}
+
+fn probe_metadata_failed(log_dir: &Path, diagnostic_name: &str, detail: impl AsRef<[u8]>) -> AcquisitionError {
+    write_probe_diagnostic_log(log_dir, diagnostic_name, detail);
+    AcquisitionError::Message(metadata_probe_user_message())
+}
+
+/// Metadata-only probe (`--skip-download` + `--dump-single-json`). No media transfer.
+/// User-facing errors stay free of tool names; raw diagnostics go only to `log_dir`.
 fn probe_download_metadata(
     tools: &DownloadTools,
     source_url: &str,
@@ -616,7 +634,13 @@ fn probe_download_metadata(
     log_dir: &Path,
     cancel_requested: &AtomicBool,
 ) -> Result<Value, AcquisitionError> {
-    fs::create_dir_all(log_dir)?;
+    if let Err(error) = fs::create_dir_all(log_dir) {
+        return Err(probe_metadata_failed(
+            log_dir,
+            "yt-dlp.metadata.spawn.log",
+            format!("create_dir_all log_dir failed: {error}"),
+        ));
+    }
     let mut command = Command::new(&tools.yt_dlp);
     command
         .args([
@@ -652,28 +676,58 @@ fn probe_download_metadata(
         use std::os::windows::process::CommandExt;
         command.creation_flags(CREATE_NO_WINDOW);
     }
-    let mut child = command.spawn().map_err(|error| {
-        AcquisitionError::Message(format!(
-            "YouTube 영상 정보를 확인하지 못했습니다. yt-dlp 실행 실패: {error}"
-        ))
-    })?;
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            // Spawn failed before stderr exists — keep raw detail in a dedicated log only.
+            return Err(probe_metadata_failed(
+                log_dir,
+                "yt-dlp.metadata.spawn.log",
+                format!("spawn failed: {error}"),
+            ));
+        }
+    };
     #[cfg(windows)]
     let job_guard = match KillOnCloseJob::attach(&child) {
         Ok(job) => Some(job),
         Err(error) => {
             terminate_child_tree(&mut child, None);
-            return Err(AcquisitionError::Message(format!(
-                "YouTube 정보 확인 프로세스에 강제 종료 보호를 설정하지 못했습니다: {error}"
-            )));
+            return Err(probe_metadata_failed(
+                log_dir,
+                "yt-dlp.metadata.spawn.log",
+                format!("job attach failed: {error}"),
+            ));
         }
     };
 
-    let stdout = child.stdout.take().ok_or_else(|| {
-        AcquisitionError::Message("YouTube 영상 정보 출력을 연결하지 못했습니다.".into())
-    })?;
-    let stderr = child.stderr.take().ok_or_else(|| {
-        AcquisitionError::Message("YouTube 영상 정보 진단 출력을 연결하지 못했습니다.".into())
-    })?;
+    let stdout = match child.stdout.take() {
+        Some(stdout) => stdout,
+        None => {
+            #[cfg(windows)]
+            terminate_child_tree(&mut child, job_guard.as_ref());
+            #[cfg(not(windows))]
+            terminate_child_tree(&mut child);
+            return Err(probe_metadata_failed(
+                log_dir,
+                "yt-dlp.metadata.spawn.log",
+                "stdout pipe missing after spawn",
+            ));
+        }
+    };
+    let stderr = match child.stderr.take() {
+        Some(stderr) => stderr,
+        None => {
+            #[cfg(windows)]
+            terminate_child_tree(&mut child, job_guard.as_ref());
+            #[cfg(not(windows))]
+            terminate_child_tree(&mut child);
+            return Err(probe_metadata_failed(
+                log_dir,
+                "yt-dlp.metadata.spawn.log",
+                "stderr pipe missing after spawn",
+            ));
+        }
+    };
     let stdout_thread = thread::spawn(move || {
         let mut buffer = Vec::new();
         let mut reader = BufReader::new(stdout);
@@ -697,31 +751,47 @@ fn probe_download_metadata(
             let _ = stderr_thread.join();
             return Err(AcquisitionError::Cancelled);
         }
-        if let Some(status) = child.try_wait()? {
-            break status;
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {}
+            Err(error) => {
+                #[cfg(windows)]
+                terminate_child_tree(&mut child, job_guard.as_ref());
+                #[cfg(not(windows))]
+                terminate_child_tree(&mut child);
+                let _ = stdout_thread.join();
+                let _ = stderr_thread.join();
+                return Err(probe_metadata_failed(
+                    log_dir,
+                    "yt-dlp.metadata.spawn.log",
+                    format!("try_wait failed: {error}"),
+                ));
+            }
         }
         thread::sleep(Duration::from_millis(50));
     };
     let stdout_bytes = stdout_thread.join().unwrap_or_default();
     let stderr_bytes = stderr_thread.join().unwrap_or_default();
-    let _ = fs::write(log_dir.join("yt-dlp.metadata.json"), &stdout_bytes);
-    let _ = fs::write(log_dir.join("yt-dlp.metadata.stderr.log"), &stderr_bytes);
+    // Preserve raw probe diagnostics for support; never surface them in the UI message.
+    write_probe_diagnostic_log(log_dir, "yt-dlp.metadata.json", &stdout_bytes);
+    write_probe_diagnostic_log(log_dir, "yt-dlp.metadata.stderr.log", &stderr_bytes);
 
     if !status.success() {
-        let detail = String::from_utf8_lossy(&stderr_bytes);
-        return Err(AcquisitionError::Message(friendly_download_error(
-            status, &detail,
-        )));
+        write_probe_diagnostic_log(
+            log_dir,
+            "yt-dlp.metadata.spawn.log",
+            format!("probe exit code: {:?}\n", status.code()),
+        );
+        return Err(AcquisitionError::Message(metadata_probe_user_message()));
     }
     if stdout_bytes.is_empty() {
-        return Err(AcquisitionError::Message(
-            "YouTube 영상 정보를 확인하지 못했습니다. 네트워크와 영상 공개 여부를 확인한 뒤 다시 시도해 주세요."
-                .into(),
-        ));
+        return Err(AcquisitionError::Message(metadata_probe_user_message()));
     }
-    serde_json::from_slice(&stdout_bytes).map_err(|_| {
-        AcquisitionError::Message(
-            "YouTube 영상 정보를 해석하지 못했습니다. 잠시 후 다시 시도해 주세요.".into(),
+    serde_json::from_slice(&stdout_bytes).map_err(|error| {
+        probe_metadata_failed(
+            log_dir,
+            "yt-dlp.metadata.spawn.log",
+            format!("json parse failed: {error}"),
         )
     })
 }
@@ -1224,6 +1294,29 @@ mod tests {
         assert!(plan_pre_download_volume_bytes(&[u64::MAX / 2 + 1], 1.0, "a", "a", "a").is_err());
         let err = duration_seconds_from_info(&serde_json::json!({})).unwrap_err();
         assert!(err.contains("길이"));
+    }
+
+    #[test]
+    fn metadata_probe_user_message_excludes_tool_names_and_stays_actionable() {
+        let msg = metadata_probe_user_message();
+        let lower = msg.to_ascii_lowercase();
+        assert!(
+            !lower.contains("yt-dlp") && !lower.contains("ytdlp"),
+            "probe UI must not name yt-dlp: {msg}"
+        );
+        assert!(
+            !lower.contains("ffmpeg"),
+            "probe UI must not name ffmpeg: {msg}"
+        );
+        assert!(
+            !msg.contains("종료 코드") && !lower.contains("exit"),
+            "probe UI must not expose exit codes: {msg}"
+        );
+        assert!(
+            msg.contains("확인") && msg.contains("다시 시도"),
+            "probe UI must stay actionable Korean: {msg}"
+        );
+        assert!(msg.contains("네트워크") || msg.contains("공개"));
     }
 
     #[test]
