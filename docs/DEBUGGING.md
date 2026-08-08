@@ -2,6 +2,23 @@
 
 실제로 재현하거나 로그로 확인한 문제만 기록한다. 원인이 확정되지 않은 항목은 `HOLD`로 표시한다.
 
+## 2026-08-07 · Unreleased · YouTube 내려받기 직전 저장 공간 가드
+
+- 증상: 분석 단계에는 여유 공간 확인이 있으나, yt-dlp 미디어 전송 전에는 선택 스트림 크기 기반 차단이 없어 장시간 내려받기 중 디스크 고갈 위험이 남았다. (P0 분석 가드 이후 남은 항목)
+- 원인(1차): `run_yt_dlp`가 메타데이터 용량 조회 없이 바로 전송 자식을 띄웠다. 병합 피크는 분리 스트림+임시 병합 출력으로 최종 크기보다 크게 관측된다.
+- 원인(REV1): 1차 가드가 `download_dir`에 2.2×스트림만 적용해 home/temp/job 단계와 분석 workspace를 빠뜨렸고, `aggregate_required_bytes_by_volume`이 생산 경로에서 쓰이지 않았다.
+- 수정: 메타데이터 전용 조회로 정확한 `filesize`·`format_id`·길이를 읽고, 순차 단계(max)·동시 필요(sum) 플래너로 볼륨별 필요 여유를 계산한다. 내려받기 피크 `P=2S+⌊2S/10⌋`, 분리 볼륨 `B=S+⌊S/10⌋`, 분석 `W=estimate_analysis_workspace_bytes(S,duration)`. 실제 전송은 probe가 고른 `format_id` 조합(`298+251` 형태)으로 고정한다. `filesize_approx`만 있거나 포맷/크기 불명이면 fail closed. probe stdout 2MiB·stderr 256KiB 상한 초과 시 자식 정리 후 중단. 원시 전체 JSON/stderr는 저장하지 않고 `tool-logs/yt-dlp.metadata.json`에 duration·formatIds·streamFilesizes 등 최소 구조화 필드만 기록. 네트워크·로컬 로그/권한·도구 실행·안전 용량 불가 안내를 분리.
+- 회귀 테스트: exact filesize·format pin, cap 읽기, 최소 로그, 메시지 분리, pure plan, overflow, production path; integrity 볼륨 합산; `scripts/sample-disk-usage.test.mjs`. 실제 YouTube 장시간·부족 E2E·403 원인 분리는 미실행 → `HOLD`.
+- 상태: 단위 `PASS` (cargo lib 54 pass / 0 fail / 1 ignored), 샘플러·canonical 게이트는 본 세션 재실행, 실제 YouTube 부족 차단·신선 전체 다운로드 E2E·403 원인 분리 `HOLD`
+
+## 2026-08-07 · Unreleased · 디스크 샘플러와 체크포인트 교체 간섭
+
+- 증상: 장시간 피크 측정 중 제품이 체크포인트를 live→`.prev`로 교체할 때 샘플러가 대상 트리를 건드리면 교체가 실패하거나 내용이 바뀔 수 있다는 우려.
+- 원인: 샘플러가 대상 안에서 쓰기를 하면 측정 부풀림·교체 경쟁이 생긴다. 기존 구현은 lstat 합산과 출력 경로 외부 강제였으나 체크포인트 교체 스모크가 없었다.
+- 수정: 샘플러는 대상 트리에 write/rename/unlink를 하지 않음을 주석·계약으로 고정하고, 출력·stop-file이 target 안이면 exit 2. 스모크에서 샘플 중 `media-checkpoint` 교체 후 live/`.prev` 내용·비관련 `acquisition.json` 해시 불변을 검증한다.
+- 회귀 테스트: `node --test scripts/sample-disk-usage.test.mjs` → 3 pass
+- 상태: 스모크 `PASS`
+
 ## 2026-08-06 · v0.3.4 · 설정 버튼을 알아보기 어려움
 
 - 사용자 제보: 화면 오른쪽 위의 작은 아이콘과 버전 표시가 설정 버튼처럼 보이지 않아, 처음 보는 사용자가 설정 화면의 위치를 알아보기 어렵다. (최초 기록 v0.3.3)
