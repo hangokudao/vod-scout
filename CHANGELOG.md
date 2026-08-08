@@ -12,6 +12,7 @@
 
 ### Fixed
 
+- 인증된 Actions가 초안 Release를 태그 조회로 찾지 못해 설치 검사가 시작 전에 멈추던 문제를 고쳤다. 정확한 태그의 초안 또는 공개 Release와 설치 파일 하나만 선택해 인증 다운로드한다.
 - 호환되지 않는 미디어 체크포인트를 버린 뒤 작업 진행 정보가 앞서 있으면 재개가 멈추던 문제를 고쳤다. 작업 설정은 유지하고 미디어 중간 결과만 다시 계산한다.
 - 내려받기 직전 가드가 download 폴더 피크만 보던 한계를 고쳤다. home/temp/job 볼륨과 분석 workspace(`estimate_analysis_workspace_bytes`)를 한 플래너로 묶고, 동일 볼륨 합산은 `aggregate_required_bytes_by_volume` 생산 경로로 검증한다.
 - 메타데이터 조회에서 고른 정확한 `format_id` 조합을 실제 미디어 전송에 고정하고, 정확한 `filesize`만으로 공간 계획을 세운다. `filesize_approx`만 있거나 크기·포맷이 불명이면 전송 전에 중단한다.
