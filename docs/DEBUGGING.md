@@ -2,14 +2,45 @@
 
 실제로 재현하거나 로그로 확인한 문제만 기록한다. 원인이 확정되지 않은 항목은 `HOLD`로 표시한다.
 
+## 2026-08-08 · v0.4.0 P0 · exact HEAD 전체 검증 완료
+
+- 재현 조건: PR #13 exact HEAD `e18b73efcb0ea40be812b7da12572e1207854863`, 승인된 장시간 YouTube 영상, 격리된 작업 폴더와 FAT32 저용량 USB 시험 환경.
+- 확인 결과: 저용량 차단은 첫 미디어 바이트 전에 동작했고, 쿠키 없는 짧은 전송 약 154 MB와 전체 다운로드·약 8시간 53분 분석이 완료됐다. 최종 상태 `REVIEW_READY`, 후보 8개, 처리 약 4,004.51초, 최종 작업 크기 7,068,418,335 bytes, 피크 Working Set 합 약 2,054,066,176 bytes였다. 취소·hang·체크포인트 사본과 종료 후 자식 프로세스 없음도 확인했다.
+- 회귀 테스트: 프런트 34, 보안 6, Rust 본체 54(1 ignored), fixture-worker 5, 디스크 샘플러 3, 프런트 빌드 모두 PASS.
+- 상태: 기능 P0 `PASS`. PR #13은 main `16c35f2dfa601790689d7295ceaea12af42169b8`로 squash 병합됐다.
+- 측정 한계: exact HEAD의 순간 임시 파일 최대값은 다시 측정하지 않았다. 같은 영상의 기존 측정 peak 14,045,353,616 bytes와 최종 7,068,902,876 bytes를 참고값으로 사용하며 현재 HEAD의 정밀 측정값이라고 표시하지 않는다.
+
+## 2026-08-08 · YouTube 후속 재시도의 봇 확인
+
+- 증상: 앞선 성공 뒤 측정 보완을 위한 후속 요청에서 `Sign in to confirm you're not a bot`가 반환됐다.
+- 원인: YouTube 측의 일시적 접근 제한이다. 제품 자동·로컬 경로는 정상이고 exact HEAD의 앞선 전체 성공이 별도로 존재한다.
+- 조치: 로그인 자동화, 쿠키 수집, CAPTCHA 우회 없이 중단했다. 이 외부 제한만을 이유로 장시간 영상을 다시 처리하지 않는다.
+- 상태: 알려진 외부 제한. 제품 결함 및 출시 차단으로 분류하지 않음.
+
+## 2026-08-06 · v0.4.0 P0 · 비호환 체크포인트 폐기 후 재개 실패
+
+- 증상: schema 3 또는 입력·도구·언어·후보 계산 버전 불일치로 중간 결과를 버린 뒤, 작업 진행 정보가 앞서 있으면 `작업 스냅샷보다 미디어 체크포인트가 뒤에 있어 자동 재개할 수 없습니다.`로 멈췄다.
+- 원인: 호환 체크포인트가 실제로 뒤처진 경우와, 호환되지 않는 중간 결과를 의도적으로 버리고 다시 계산하는 경우를 구분하지 않았다.
+- 수정: `media_intermediates_rebuilt`일 때 작업 설정은 유지하고 미디어 단계부터 다시 계산한다. 호환 체크포인트가 실제로 뒤처진 경우는 기존 오류를 유지한다.
+- 회귀 테스트: 관련 재개 테스트와 장시간 전체 실행의 체크포인트 사본 검증 PASS.
+- 상태: `PASS`.
+
+## 2026-08-06 · 장시간 측정 도구의 체크포인트 파일 잠금
+
+- 증상: 외부 측정 도구가 체크포인트 파일을 공유 없이 읽는 동안 제품의 정상 파일 교체가 `os error 32`로 실패했다.
+- 원인: 제품 로직이 아니라 검증 도구의 파일 공유 방식이 atomic rename과 충돌했다.
+- 조치: 측정 도구가 대상 트리를 열거나 수정하지 않도록 바꾸고, 제품 샘플러는 대상 밖에 출력하도록 고정했다.
+- 회귀 테스트: 디스크 샘플러 3개 테스트와 전체 작업 `REVIEW_READY` PASS.
+- 상태: 제품 결함 아님. 검증 도구 수정 `PASS`.
+
 ## 2026-08-07 · Unreleased · YouTube 내려받기 직전 저장 공간 가드
 
 - 증상: 분석 단계에는 여유 공간 확인이 있으나, yt-dlp 미디어 전송 전에는 선택 스트림 크기 기반 차단이 없어 장시간 내려받기 중 디스크 고갈 위험이 남았다. (P0 분석 가드 이후 남은 항목)
 - 원인(1차): `run_yt_dlp`가 메타데이터 용량 조회 없이 바로 전송 자식을 띄웠다. 병합 피크는 분리 스트림+임시 병합 출력으로 최종 크기보다 크게 관측된다.
 - 원인(REV1): 1차 가드가 `download_dir`에 2.2×스트림만 적용해 home/temp/job 단계와 분석 workspace를 빠뜨렸고, `aggregate_required_bytes_by_volume`이 생산 경로에서 쓰이지 않았다.
 - 수정: 메타데이터 전용 조회로 정확한 `filesize`·`format_id`·길이를 읽고, 순차 단계(max)·동시 필요(sum) 플래너로 볼륨별 필요 여유를 계산한다. 내려받기 피크 `P=2S+⌊2S/10⌋`, 분리 볼륨 `B=S+⌊S/10⌋`, 분석 `W=estimate_analysis_workspace_bytes(S,duration)`. 실제 전송은 probe가 고른 `format_id` 조합(`298+251` 형태)으로 고정한다. `filesize_approx`만 있거나 포맷/크기 불명이면 fail closed. probe stdout 2MiB·stderr 256KiB 상한 초과 시 자식 정리 후 중단. 원시 전체 JSON/stderr는 저장하지 않고 `tool-logs/yt-dlp.metadata.json`에 duration·formatIds·streamFilesizes 등 최소 구조화 필드만 기록. 네트워크·로컬 로그/권한·도구 실행·안전 용량 불가 안내를 분리.
-- 회귀 테스트: exact filesize·format pin, cap 읽기, 최소 로그, 메시지 분리, pure plan, overflow, production path; integrity 볼륨 합산; `scripts/sample-disk-usage.test.mjs`. 실제 YouTube 장시간·부족 E2E·403 원인 분리는 미실행 → `HOLD`.
-- 상태: 단위 `PASS` (cargo lib 54 pass / 0 fail / 1 ignored), 샘플러·canonical 게이트는 본 세션 재실행, 실제 YouTube 부족 차단·신선 전체 다운로드 E2E·403 원인 분리 `HOLD`
+- 회귀 테스트: exact filesize·format pin, cap 읽기, 최소 로그, 메시지 분리, pure plan, overflow, production path, 볼륨 합산과 `scripts/sample-disk-usage.test.mjs`; 실제 저용량 차단·짧은 전송·장시간 전체 작업.
+- 상태: 자동 검사와 실제 제품 경로 `PASS`.
 
 ## 2026-08-07 · Unreleased · 디스크 샘플러와 체크포인트 교체 간섭
 
