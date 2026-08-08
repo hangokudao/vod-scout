@@ -9,7 +9,8 @@ on:
         default: v0.4.0
 
 permissions:
-  contents: read
+  # GitHub hides draft releases from a read-only Actions token.
+  contents: write
 
 jobs:
   install-and-run:
@@ -19,7 +20,24 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release download "${{ inputs.release_tag }}" --repo "${{ github.repository }}" --pattern "*_x64-setup.exe" --dir "$env:RUNNER_TEMP\installer"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tag = "${{ inputs.release_tag }}"
+          $releases = gh api "repos/${{ github.repository }}/releases?per_page=100" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "release list request failed" }
+          $matchingReleases = @($releases | Where-Object { $_.tag_name -eq $tag })
+          if ($matchingReleases.Count -ne 1) { throw "expected one release for $tag, found $($matchingReleases.Count)" }
+          $assets = @($matchingReleases[0].assets | Where-Object { $_.name -match "_x64-setup\.exe$" })
+          if ($assets.Count -ne 1) { throw "expected one installer asset for $tag, found $($assets.Count)" }
+          $downloadDir = "$env:RUNNER_TEMP\installer"
+          New-Item -ItemType Directory -Path $downloadDir -Force | Out-Null
+          $destination = Join-Path $downloadDir $assets[0].name
+          curl.exe --fail-with-body --location --output $destination `
+            --header "Accept: application/octet-stream" `
+            --header "Authorization: Bearer $env:GH_TOKEN" `
+            --header "X-GitHub-Api-Version: 2022-11-28" `
+            $assets[0].url
+          if ($LASTEXITCODE -ne 0) { throw "installer asset download failed" }
       - name: Install, verify ACL and launch headless
         shell: pwsh
         run: |
