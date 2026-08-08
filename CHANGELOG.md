@@ -4,50 +4,40 @@
 
 ## Unreleased
 
-### v0.4.0 P0 (개발 경로 · 제품 버전 0.3.4 유지 · 릴리스 아님 · 병합 보류)
+### Added
 
-공개 제품 버전 정본·설치 EXE·태그·배포는 **0.3.4 그대로**다. v0.4.0 공개 릴리스로 읽지 않는다.
-**모든 P0가 PASS가 아니므로 코드 PR과 문서 PR을 병합하지 않으며, v0.4.0 버전·설치·배포 계획을 확정하거나 포함하지 않았다.**
+- 체크포인트 schema 4에 입력 지문·크기·런타임 해시·언어·후보 계산 버전을 기록하고, 호환되지 않는 중간 결과만 다시 계산한다.
+- 분석 범위 밖이거나 음량·대화 근거가 없는 후보를 제외하고 마지막 정상 체크포인트 세대를 보존한다.
+- YouTube 미디어 전송 전에 선택 스트림 메타데이터(용량·길이)만으로 다단계 저장 공간 계획을 세운다. 내려받기 피크와 이어지는 분석 workspace를 볼륨별로 반영하고, 동시 필요는 합산·순차 단계는 최댓값으로 계산한다. 용량·길이·여유 공간·계산 오버플로를 알 수 없으면 전송을 시작하지 않고 한국어로 조치를 안내한다.
 
-#### Fixed (main · PR #11 이미 병합)
+### Fixed
 
-- 호환되지 않는 미디어 체크포인트(schema 3·입력 지문·도구/모델 해시·언어·후보 계산 버전 불일치)를 버린 뒤 작업 진행 단위가 이미 앞서 있으면, “작업 스냅샷보다 미디어 체크포인트가 뒤에 있어…”로 재개가 멈추던 문제를 수정했다. 미디어 중간 결과만 다시 계산하고 작업 id·소스·분석 설정은 유지한다 (H5F / PR #11 `d13b864` · main `cca7a9e…`).
+- 호환되지 않는 미디어 체크포인트를 버린 뒤 작업 진행 정보가 앞서 있으면 재개가 멈추던 문제를 고쳤다. 작업 설정은 유지하고 미디어 중간 결과만 다시 계산한다.
+- 내려받기 직전 가드가 download 폴더 피크만 보던 한계를 고쳤다. home/temp/job 볼륨과 분석 workspace(`estimate_analysis_workspace_bytes`)를 한 플래너로 묶고, 동일 볼륨 합산은 `aggregate_required_bytes_by_volume` 생산 경로로 검증한다.
+- 메타데이터 조회에서 고른 정확한 `format_id` 조합을 실제 미디어 전송에 고정하고, 정확한 `filesize`만으로 공간 계획을 세운다. `filesize_approx`만 있거나 크기·포맷이 불명이면 전송 전에 중단한다.
+- 메타데이터 probe stdout/stderr에 상한을 두고 초과 시 자식을 정리하며, 원시 JSON·stderr 대신 duration·format_id·filesize 등 최소 구조화 로그만 남긴다. 네트워크·로컬 환경·도구 실행·안전 용량 계산 불가 안내를 분리한다.
+- 장시간 디스크 샘플러(`scripts/sample-disk-usage.mjs`)가 측정 대상 트리를 수정하지 않음을 체크포인트 교체 스모크로 고정했다. 표본 출력은 대상 밖이어야 하며, 실행 중 `media-checkpoint` live→`.prev` 교체가 방해받지 않는다.
 
-#### Added (개발 경로 · 미배포)
+### Validation
 
-- (main) 체크포인트 schema 4: 입력 지문·바이트·런타임 SHA-256·언어·`rules-v0.4.0-p0` 후보 계산 버전.
-- (main) 범위 지정 후보를 분석 구간 안으로 제한하고 음량·발화 근거 없는 창 제외.
-- (main) 체크포인트·스냅샷 등의 마지막 정상 세대(`.prev`) 보존 후 교체.
-- (main) 분석 시작 전 작업 폴더 볼륨 여유 공간 검사(부족 시 한국어 설명).
-- (**PR #13 draft/open/unmerged**, 정적 고정 HEAD `e18b73efcb0ea40be812b7da12572e1207854863`) YouTube 다운로드 저장 공간 가드·메타데이터 점검. Oracle 후속: 메타 점검이 고른 정확한 `format_id`를 실제 `--format`에 결박, **exact `filesize`만** 허용(대략 크기 거부), stdout **2 MiB**/stderr **256 KiB** 상한·자식 정리, 최소 구조화 로그, 실패 안내 분리. **main 미병합.**
+- PR #13 exact HEAD `e18b73efcb0ea40be812b7da12572e1207854863`에서 자동·보안 테스트, 실제 저용량 차단, 짧은 전송, 장시간 전체 다운로드·분석, 취소·재개·체크포인트와 자식 프로세스 정리를 확인했다.
+- 장시간 전체 작업은 `REVIEW_READY`, 후보 8개, 약 4,004.51초로 완료됐고 PR #13은 `16c35f2dfa601790689d7295ceaea12af42169b8`로 main에 squash 병합됐다.
 
-#### Validation (2026-08-07 · 현재 정본)
+### Security
 
-증거: `D:\vod-scout-p0-evidence-20260807-023415-pr13-4597010\reports\P0-validation-report-ko.md` · `evidence-index.json` · `ORACLE-final-review-4597010-01a3f6b.md` · `PR13-final-rereview-e18b73e.md`.
+- 메타데이터 원문과 진단 출력 전체를 저장하지 않고, 외부 AI·유료 API·API 키 저장 경로를 추가하지 않았다.
+- `npm audit` high 1건은 Vite→PostCSS의 개발용 `nanoid@3.3.16` 경로이며 제품 실행 코드에서 취약 조건인 사용자 정의 0길이 생성기를 호출하지 않는다.
 
-- PR #13: **draft · open · unmerged**. 코드 정적 고정 HEAD **`e18b73efcb0ea40be812b7da12572e1207854863`**. 최종 독립 재리뷰 **PASS** · 정규(canonical) 6개 명령 **PASS** · 샘플러 3/3 **PASS** (`PR13-final-rereview-e18b73e.md` · SHA-256 `A4B6752524146DD9BDC9033D80DD6CF4D7E37DC5CDCC31CF0F8A2A4EBC340099` · `evidence-index.json` `postOracleCodeFix`). 제품 P0 merge readiness **아님**.
-- 실제 제품 E2E는 기존 HEAD **`4597010c99bf8432f1fe15ba34269fd63d5daa7c`**에서 **한 번만** 수행했다. 새 HEAD `e18b73e…`에서는 실제 YouTube·low-space·장시간 분석을 **재실행하지 않았다** → 제품 P0는 계속 **BLOCKED/HOLD**.
-- 유일한 신규 제품 작업 `fd8c1cc5-3bfc-4e02-b97a-036ff1009f5e` (`4597010…`): 메타데이터·저장 공간 점검 **PASS** → 부분 전송 약 **10 MB** 후 YouTube **HTTP 403** → 전체 신선 내려받기 **BLOCKED** · 중단 없는 장시간 분석 **BLOCKED**. 재시도·재개 없음. 403 원인 귀속(제공처·네트워크 vs PR #13 2단계 acquisition 회귀) **HOLD** — 외부 문제로 단정하지 않음.
-- 실제 low-space E2E: **HOLD** (`safe low-space E2E environment unavailable`). 자원 메트릭 요약 **HOLD**. 설치 폴더 `D:\VOD Scout` 전후 총 **453,110,594** bytes / **47** files 동일이나 파일별 SHA 매니페스트 없음 → 내용 불변 **HOLD**. WebView 캐시·사용자 jobs before-after **HOLD**.
-- 검증용 release `vod-scout.exe`(`4597010…` 빌드) 크기 **15,270,400** · SHA-256 **`2914E618F4F99A075C91E8CC888BD2E277ACFF57CEB34ED2F324519AE49B7D98`** — **설치본·공개 릴리스 자산이 아님**.
-- Oracle 최종 리뷰 **exactly once**: 판정 **BLOCKED** · Run `689ab803-0a7b-4695-ad8e-5a495c3b4991` · 보고 SHA-256 `DB59D334824C07A4F0922C454C476D93CDEADED10980C0910839AFFD00A19815` · 요청 모델 `GPT-5.6 Sol` · picker `unavailable`/선택 **검증되지 않음**. 재호출 없음.
-- 종합 판정: **BLOCKED**. 코드 PR #13·문서 PR 모두 **merge 금지**. v0.4.0 버전·설치·태그·배포 계획 **미포함**.
+### Known issues
 
-#### Historical note (H8–H11 · 원샷 PASS 근거 아님)
+- exact HEAD의 순간 임시 파일 최대값은 다시 측정하지 않았다. 같은 승인 영상의 기존 측정값과 이번 최종 작업 크기를 릴리스 기록에 함께 남긴다.
+- YouTube가 후속 재시도에서 봇 확인을 요구할 수 있다. 앞선 exact HEAD 성공과 로컬 분석 결과에는 영향을 주지 않는다.
+- Windows Authenticode 인증서가 없어 첫 설치에서 SmartScreen 경고가 표시될 수 있다. updater 서명은 별도 필수 게이트다.
 
-- 2026-08-06 main `cca7a9e` 시점 H8 범위 overall PASS, H10 취소·재개 PASS, H11 full 재개 overall PASS 등은 **과거 기록**이다. 이번 PR #13 원샷 실제 미디어 PASS나 P0 마감 근거로 승격하지 않는다.
+### v0.4.0 이후 아이디어
 
-#### Known issues (P0 잔여)
-
-- full download·무중단 장시간 분석 **BLOCKED**, live low-space·자원 요약·설치 폴더 내용 불변·사용자 데이터 before-after·403 귀속 **HOLD**가 해소될 때까지 **PR 병합·v0.4.0 버전·설치 배포 계획을 진행하지 않는다**.
-- probe 취소·hang 실제 E2E, 실행 시 yt-dlp/Deno/FFmpeg/Whisper·DLL·model 매니페스트 결박, 실제 체크포인트 마이그레이션은 단위·정적과 분리해 **미실행 HOLD**.
-- Authenticode/SmartScreen 및 P1–P7은 기존과 같이 HOLD.
-
-### v0.4.0 이후 계획 (P1~ · P0 완료 후)
-
-- YouTube 원문 자막 우선 혼합 분석, 검색과 원본 시각 이동, 이야기 후보를 구현한다.
-- 필요한 Whisper 음성 인식은 실제 시험을 통과한 GPU를 우선 사용하고 실패한 청크만 CPU로 처리한다.
-- 상세 범위와 완료 조건은 `docs/V0.4.0-PLAN.md`를 따른다.
+- YouTube 원문 자막 우선 혼합 분석, 검색과 원본 시각 이동, 이야기 후보, 선택형 GPU·외부 AI는 후속 아이디어다.
+- 이 항목들은 v0.4.0 출시 조건이 아니다.
 
 ## 0.3.4 - 2026-08-06
 

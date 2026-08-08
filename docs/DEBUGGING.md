@@ -2,33 +2,53 @@
 
 실제로 재현하거나 로그로 확인한 문제만 기록한다. 원인이 확정되지 않은 항목은 `HOLD`로 표시한다.
 
-## 2026-08-07 · v0.4.0-P0 · PR #13 신선 YouTube full — 메타·공간 점검 후 HTTP 403 (BLOCKED)
+## 2026-08-08 · v0.4.0 P0 · exact HEAD 전체 검증 완료
 
-- 증상과 재현 조건: PR #13 **draft/open/unmerged**. 실제 제품 E2E는 고정 HEAD `4597010c99bf8432f1fe15ba34269fd63d5daa7c`에서 **1회만** 수행. 검증용 `tauri build --no-bundle` release `vod-scout.exe` 메타 **0.3.4** · 크기 **15,270,400** · SHA-256 **`2914E618F4F99A075C91E8CC888BD2E277ACFF57CEB34ED2F324519AE49B7D98`**(설치·릴리스 자산 아님). 승인 URL `JN3BO9GLuFU`, `analysisMode=full`, 데이터 루트 `D:\vod-scout-p0-evidence-20260807-023415-pr13-4597010`. 유일한 제품 작업 `fd8c1cc5-3bfc-4e02-b97a-036ff1009f5e`에서 `create_job`+`start_job` 1회. 이후 정적 고정 HEAD는 Oracle 후속 코드가 들어간 **`e18b73efcb0ea40be812b7da12572e1207854863`**이며, 이 HEAD에서는 실제 YouTube·low-space·장시간 분석을 **재실행하지 않음**.
-- 확인한 로그·파일: 활동 3 `YouTube 영상 정보를 확인하고 저장 공간을 점검한 뒤 최대 720p로 다운로드합니다.` → `tool-logs/yt-dlp.metadata.json` (748,069 bytes) · 길이 32,000 s · 스트림 합 7,070,731,050 · 피크 추정 15,555,608,310 bytes (~15.56 GB / ~14.49 GiB). 전송 시작 후 `source.f298.mp4.part` **10,033,007** bytes(~10 MB). stderr: `ERROR: unable to download video data: HTTP Error 403: Forbidden`. status `FAILED` · `YouTube 영상을 다운로드하지 못했습니다.` · 단계 `YouTube 다운로드 실패`. 재시도·재개 없음. 증거: `reports/evidence-index.json` · `reports/P0-validation-report-ko.md` · Oracle `reports/ORACLE-final-review-4597010-01a3f6b.md` (SHA-256 `DB59D334824C07A4F0922C454C476D93CDEADED10980C0910839AFFD00A19815`) · 후속 코드 재리뷰 `reports/PR13-final-rereview-e18b73e.md` (SHA-256 `A4B6752524146DD9BDC9033D80DD6CF4D7E37DC5CDCC31CF0F8A2A4EBC340099`).
-- 원인: 메타데이터·저장 공간 점검 이후 **미디어 바이트 전송 단계**에서 HTTP 403. 제품 내부 디스크 가드 실패로 분류하지 않음. Python 3.10 deprecation 경고는 stderr에 동반됐으나 403 원인으로 확정하지 않음. **제공처·네트워크 vs PR #13 2단계(메타 probe → 전송) acquisition 회귀 원인 분리가 안 됨** → 귀속 **HOLD**. 외부 문제로 단정하지 않음. 제품 코드 결함도 단정하지 않음.
-- 수정(코드 PR #13, 미병합 · `e18b73e…`): Oracle 지적 후속 — 정확한 `format_id`를 실제 `--format`에 결박, exact `filesize`만 허용, stdout 2 MiB/stderr 256 KiB 상한·자식 정리, 최소 구조화 로그, 실패 안내 분리. **이 기록 세션은 문서만.** 검증 정책상 같은 작업 재개·두 번째 다운로드 없음. 새 HEAD 제품 E2E 미실행.
-- 회귀 테스트 / 게이트: `e18b73e…` 독립 재리뷰 **PASS** · 정규 6 명령 **PASS** · 샘플러 **PASS**. `4597010…` 메타·공간 점검 **PASS** · full download **BLOCKED** · 장시간 무중단 분석 **BLOCKED** · low-space E2E **HOLD** · 자원 요약 **HOLD** · `D:\VOD Scout` 총 bytes/count 동일·파일별 SHA 없음 → 내용 불변 **HOLD** · WebView 캐시·jobs before-after **HOLD** · 403 귀속 **HOLD**. probe 취소·hang 실제 E2E·runtime 매니페스트 결박·실제 체크포인트 마이그레이션 **미실행 HOLD**. 종합 **BLOCKED**.
-- Oracle: **exactly once** · 판정 **BLOCKED** · Run `689ab803-0a7b-4695-ad8e-5a495c3b4991` · 요청 `GPT-5.6 Sol` · picker `unavailable`/선택 검증되지 않음 · 재호출 없음.
-- 상태: 문서 반영 중 · 실제 full 경로 `BLOCKED` · P0 마감·PR 병합·v0.4 버전·설치·태그·배포 계획 **보류**
-- 참고: 과거 H8–H11(main `cca7a9e`) overall 결과는 **역사적 맥락**이며 이번 원샷 PASS로 승격하지 않는다. 이전 문서 독립 리뷰는 **미커밋 스냅샷** 대상이었으므로 고정 HEAD PASS로 과장하지 않으며, 이번 최종 문서 커밋 후 exact HEAD 리뷰가 필요하다.
+- 재현 조건: PR #13 exact HEAD `e18b73efcb0ea40be812b7da12572e1207854863`, 승인된 장시간 YouTube 영상, 격리된 작업 폴더와 FAT32 저용량 USB 시험 환경.
+- 확인 결과: 저용량 차단은 첫 미디어 바이트 전에 동작했고, 쿠키 없는 짧은 전송 약 154 MB와 전체 다운로드·약 8시간 53분 분석이 완료됐다. 최종 상태 `REVIEW_READY`, 후보 8개, 처리 약 4,004.51초, 최종 작업 크기 7,068,418,335 bytes, 피크 Working Set 합 약 2,054,066,176 bytes였다. 취소·hang·체크포인트 사본과 종료 후 자식 프로세스 없음도 확인했다.
+- 회귀 테스트: 프런트 34, 보안 6, Rust 본체 54(1 ignored), fixture-worker 5, 디스크 샘플러 3, 프런트 빌드 모두 PASS.
+- 상태: 기능 P0 `PASS`. PR #13은 main `16c35f2dfa601790689d7295ceaea12af42169b8`로 squash 병합됐다.
+- 측정 한계: exact HEAD의 순간 임시 파일 최대값은 다시 측정하지 않았다. 같은 영상의 기존 측정 peak 14,045,353,616 bytes와 최종 7,068,902,876 bytes를 참고값으로 사용하며 현재 HEAD의 정밀 측정값이라고 표시하지 않는다.
 
-## 2026-08-06 · v0.4.0-P0 · 비호환 체크포인트 폐기 후 재개 하드 실패 (H5 / H5F)
+## 2026-08-08 · YouTube 후속 재시도의 봇 확인
 
-- 증상과 재현 조건: schema 3 또는 지문·도구·언어·ranker 불일치로 미디어 체크포인트가 호환 실패하면 `load_checkpoint`가 `None`을 반환하고 빈 체크포인트(`completed_chunks = 0`)를 만든다. 작업 스냅샷 `completed_units`가 이미 probe 이후(예: 5)이면 정렬이 `0 < snapshot_chunks`를 무결성 오류로 보고 하드 실패했다. 메시지: `작업 스냅샷보다 미디어 체크포인트가 뒤에 있어 자동 재개할 수 없습니다.`
-- 원인: 정렬 로직이 **호환 체크포인트가 작업보다 뒤처진 경우**와 **의도적으로 비호환 중간 결과를 버리고 다시 계산하는 경우**를 구분하지 않았다. P0가 schema 4·지문 검사를 강화하면서 v0.3.x 중단 작업 재개 경로가 노출됐다.
-- 수정 (PR #11 후속 `d13b864`, main squash `cca7a9e…`에 포함): `media_intermediates_rebuilt`일 때 `RestartMediaFromScratch` — 하드 실패 대신 작업 `completed_units`를 probe 완료로 맞추고 미디어 청크부터 다시 계산. 호환 체크포인트가 뒤처진 경우는 기존처럼 하드 실패 유지.
-- 회귀 테스트: `discarded_incompatible_checkpoint_restarts_media_when_job_units_advanced`, `load_incompatible_schema3_does_not_resume_prev_and_align_restarts` 포함 `cargo test --lib` **41 pass / 1 ignored**. H5B 독립 재리뷰 PASS 후 병합.
-- 상태: 단위·리뷰·병합 `PASS`. 실제 미디어에서의 비호환 폐기 재개는 별도 시나리오 미실행 → 필요 시 후속 측정.
+- 증상: 앞선 성공 뒤 측정 보완을 위한 후속 요청에서 `Sign in to confirm you're not a bot`가 반환됐다.
+- 원인: YouTube 측의 일시적 접근 제한이다. 제품 자동·로컬 경로는 정상이고 exact HEAD의 앞선 전체 성공이 별도로 존재한다.
+- 조치: 로그인 자동화, 쿠키 수집, CAPTCHA 우회 없이 중단했다. 이 외부 제한만을 이유로 장시간 영상을 다시 처리하지 않는다.
+- 상태: 알려진 외부 제한. 제품 결함 및 출시 차단으로 분류하지 않음.
 
-## 2026-08-06 · v0.4.0-P0 · H11 검증 하니스 파일 잠금 (os error 32) — 제품 결함 아님
+## 2026-08-06 · v0.4.0 P0 · 비호환 체크포인트 폐기 후 재개 실패
 
-- 증상과 재현 조건: main `cca7a9e` release `vod-scout.exe`로 H8 `source.mkv`(7,060,479,026 bytes, 31,999.981 s) **full** 분석. 제품 청크 34/54 완료 직후 상태가 `FAILED`가 되고 `errorDetail`에 `다른 프로세스가 파일을 사용 중이기 때문에 프로세스가 액세스 할 수 없습니다. (os error 32)`가 남았다. live `completedChunks=34` 보존.
-- 확인한 원인: **제품 Whisper/미디어 로직 결함이 아니라** out-of-tree H11 증거 샘플러가 `media-checkpoint.json`을 공유 없이 연 채(예: `Get-Content` 계열) 제품 `replace_file_preserving_previous`의 atomic rename(`live` → `.prev`)과 충돌했다.
-- 조치: 제품 코드 변경 없음. 샘플러를 `FileShare.ReadWrite|Delete` share-safe 방식으로 교체한 뒤 **같은 jobId**에 `start_job` 재개 → **REVIEW_READY** 54/54 · 후보 8.
-- 측정(완료 경로): 유효 연산 ~3643.4 s · 달력 start–end ~3831.5 s · 집계 RAM peak ~507 MB · job tree peak ~31 MB · 최종 job ~10 MB · 사용자 작업·H8 소스 delta 0.
-- 회귀/경계: overall 장시간 P0 **PASS**(재개 포함). **무중단 single-shot 서브게이트 HOLD** — share-safe 샘플링으로 처음부터 재실행 필요. 이 항목을 제품 체크포인트 버그로 기록하지 않는다.
-- 상태: 하니스 사고 문서화 `PASS` · 제품 결함 아님 · 무중단 재검증 `HOLD`
+- 증상: schema 3 또는 입력·도구·언어·후보 계산 버전 불일치로 중간 결과를 버린 뒤, 작업 진행 정보가 앞서 있으면 `작업 스냅샷보다 미디어 체크포인트가 뒤에 있어 자동 재개할 수 없습니다.`로 멈췄다.
+- 원인: 호환 체크포인트가 실제로 뒤처진 경우와, 호환되지 않는 중간 결과를 의도적으로 버리고 다시 계산하는 경우를 구분하지 않았다.
+- 수정: `media_intermediates_rebuilt`일 때 작업 설정은 유지하고 미디어 단계부터 다시 계산한다. 호환 체크포인트가 실제로 뒤처진 경우는 기존 오류를 유지한다.
+- 회귀 테스트: 관련 재개 테스트와 장시간 전체 실행의 체크포인트 사본 검증 PASS.
+- 상태: `PASS`.
+
+## 2026-08-06 · 장시간 측정 도구의 체크포인트 파일 잠금
+
+- 증상: 외부 측정 도구가 체크포인트 파일을 공유 없이 읽는 동안 제품의 정상 파일 교체가 `os error 32`로 실패했다.
+- 원인: 제품 로직이 아니라 검증 도구의 파일 공유 방식이 atomic rename과 충돌했다.
+- 조치: 측정 도구가 대상 트리를 열거나 수정하지 않도록 바꾸고, 제품 샘플러는 대상 밖에 출력하도록 고정했다.
+- 회귀 테스트: 디스크 샘플러 3개 테스트와 전체 작업 `REVIEW_READY` PASS.
+- 상태: 제품 결함 아님. 검증 도구 수정 `PASS`.
+
+## 2026-08-07 · Unreleased · YouTube 내려받기 직전 저장 공간 가드
+
+- 증상: 분석 단계에는 여유 공간 확인이 있으나, yt-dlp 미디어 전송 전에는 선택 스트림 크기 기반 차단이 없어 장시간 내려받기 중 디스크 고갈 위험이 남았다. (P0 분석 가드 이후 남은 항목)
+- 원인(1차): `run_yt_dlp`가 메타데이터 용량 조회 없이 바로 전송 자식을 띄웠다. 병합 피크는 분리 스트림+임시 병합 출력으로 최종 크기보다 크게 관측된다.
+- 원인(REV1): 1차 가드가 `download_dir`에 2.2×스트림만 적용해 home/temp/job 단계와 분석 workspace를 빠뜨렸고, `aggregate_required_bytes_by_volume`이 생산 경로에서 쓰이지 않았다.
+- 수정: 메타데이터 전용 조회로 정확한 `filesize`·`format_id`·길이를 읽고, 순차 단계(max)·동시 필요(sum) 플래너로 볼륨별 필요 여유를 계산한다. 내려받기 피크 `P=2S+⌊2S/10⌋`, 분리 볼륨 `B=S+⌊S/10⌋`, 분석 `W=estimate_analysis_workspace_bytes(S,duration)`. 실제 전송은 probe가 고른 `format_id` 조합(`298+251` 형태)으로 고정한다. `filesize_approx`만 있거나 포맷/크기 불명이면 fail closed. probe stdout 2MiB·stderr 256KiB 상한 초과 시 자식 정리 후 중단. 원시 전체 JSON/stderr는 저장하지 않고 `tool-logs/yt-dlp.metadata.json`에 duration·formatIds·streamFilesizes 등 최소 구조화 필드만 기록. 네트워크·로컬 로그/권한·도구 실행·안전 용량 불가 안내를 분리.
+- 회귀 테스트: exact filesize·format pin, cap 읽기, 최소 로그, 메시지 분리, pure plan, overflow, production path, 볼륨 합산과 `scripts/sample-disk-usage.test.mjs`; 실제 저용량 차단·짧은 전송·장시간 전체 작업.
+- 상태: 자동 검사와 실제 제품 경로 `PASS`.
+
+## 2026-08-07 · Unreleased · 디스크 샘플러와 체크포인트 교체 간섭
+
+- 증상: 장시간 피크 측정 중 제품이 체크포인트를 live→`.prev`로 교체할 때 샘플러가 대상 트리를 건드리면 교체가 실패하거나 내용이 바뀔 수 있다는 우려.
+- 원인: 샘플러가 대상 안에서 쓰기를 하면 측정 부풀림·교체 경쟁이 생긴다. 기존 구현은 lstat 합산과 출력 경로 외부 강제였으나 체크포인트 교체 스모크가 없었다.
+- 수정: 샘플러는 대상 트리에 write/rename/unlink를 하지 않음을 주석·계약으로 고정하고, 출력·stop-file이 target 안이면 exit 2. 스모크에서 샘플 중 `media-checkpoint` 교체 후 live/`.prev` 내용·비관련 `acquisition.json` 해시 불변을 검증한다.
+- 회귀 테스트: `node --test scripts/sample-disk-usage.test.mjs` → 3 pass
+- 상태: 스모크 `PASS`
 
 ## 2026-08-06 · v0.3.4 · 설정 버튼을 알아보기 어려움
 

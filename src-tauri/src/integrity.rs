@@ -155,6 +155,53 @@ pub(crate) fn source_fingerprint(path: &Path) -> Result<(String, u64), String> {
     Ok((format!("{:x}", hasher.finalize()), length))
 }
 
+/// Resolve an existing path (or nearest parent) so volume queries succeed.
+fn probe_existing_path(path: &Path) -> PathBuf {
+    if path.exists() {
+        path.to_path_buf()
+    } else if let Some(parent) = path.parent() {
+        parent.to_path_buf()
+    } else {
+        path.to_path_buf()
+    }
+}
+
+/// Stable identity for the volume that holds `path`.
+/// Same volume → same key so multi-target needs can be summed without double-counting free space.
+pub(crate) fn volume_identity(path: &Path) -> Result<String, String> {
+    let probe = probe_existing_path(path);
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Storage::FileSystem::GetVolumePathNameW;
+        let wide = probe
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect::<Vec<u16>>();
+        let mut buffer = [0u16; 512];
+        let ok =
+            unsafe { GetVolumePathNameW(wide.as_ptr(), buffer.as_mut_ptr(), buffer.len() as u32) };
+        if ok == 0 {
+            return Err("저장 공간 볼륨을 확인하지 못했습니다.".into());
+        }
+        let end = buffer.iter().position(|&c| c == 0).unwrap_or(buffer.len());
+        Ok(String::from_utf16_lossy(&buffer[..end]).to_ascii_uppercase())
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let meta = fs::metadata(&probe)
+            .map_err(|_| "저장 공간 볼륨을 확인하지 못했습니다.".to_string())?;
+        Ok(format!("dev:{}", meta.dev()))
+    }
+    #[cfg(not(any(windows, unix)))]
+    {
+        let _ = probe;
+        Err("이 환경에서는 저장 공간 볼륨을 확인하지 못합니다.".into())
+    }
+}
+
 /// Free bytes available to the current user on the volume that holds `path`.
 /// `path` should already exist (file or directory) so the OS can resolve the volume.
 pub(crate) fn free_disk_space_bytes(path: &Path) -> Result<u64, String> {
@@ -162,13 +209,7 @@ pub(crate) fn free_disk_space_bytes(path: &Path) -> Result<u64, String> {
     {
         use std::os::windows::ffi::OsStrExt;
         use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
-        let probe = if path.exists() {
-            path.to_path_buf()
-        } else if let Some(parent) = path.parent() {
-            parent.to_path_buf()
-        } else {
-            path.to_path_buf()
-        };
+        let probe = probe_existing_path(path);
         let wide = probe
             .as_os_str()
             .encode_wide()
@@ -193,11 +234,7 @@ pub(crate) fn free_disk_space_bytes(path: &Path) -> Result<u64, String> {
     #[cfg(unix)]
     {
         use std::ffi::CString;
-        let probe = if path.exists() {
-            path
-        } else {
-            path.parent().unwrap_or(path)
-        };
+        let probe = probe_existing_path(path);
         let c_path = CString::new(probe.to_string_lossy().as_bytes())
             .map_err(|_| "저장 공간 경로가 올바르지 않습니다.".to_string())?;
         let mut stat = unsafe { std::mem::zeroed::<libc::statvfs>() };
@@ -205,7 +242,10 @@ pub(crate) fn free_disk_space_bytes(path: &Path) -> Result<u64, String> {
         if rc != 0 {
             return Err("저장 공간 여유량을 확인하지 못했습니다.".into());
         }
-        Ok((stat.f_bavail as u64).saturating_mul(stat.f_frsize as u64))
+        // Prefer checked mul; overflow is treated as unreadable free space (block callers).
+        (stat.f_bavail as u64)
+            .checked_mul(stat.f_frsize as u64)
+            .ok_or_else(|| "저장 공간 여유량을 확인하지 못했습니다.".to_string())
     }
     #[cfg(not(any(windows, unix)))]
     {
@@ -229,6 +269,32 @@ pub(crate) fn format_bytes_for_message(bytes: u64) -> String {
     } else {
         format!("{bytes} bytes")
     }
+}
+
+/// Sum required bytes per volume without double-counting free space on the same volume.
+/// Returns `(volume_id, probe_path, required_bytes)` sorted by volume id.
+pub(crate) fn aggregate_required_bytes_by_volume(
+    targets: &[(PathBuf, u64)],
+) -> Result<Vec<(String, PathBuf, u64)>, String> {
+    use std::collections::BTreeMap;
+    let mut by_volume: BTreeMap<String, (PathBuf, u64)> = BTreeMap::new();
+    for (path, need) in targets {
+        let id = volume_identity(path)?;
+        match by_volume.get_mut(&id) {
+            Some((_probe, total)) => {
+                *total = total.checked_add(*need).ok_or_else(|| {
+                    "예상 용량 계산 중 값이 너무 커서 작업을 시작하지 않습니다. 디스크 공간을 확인한 뒤 다시 시도해 주세요.".to_string()
+                })?;
+            }
+            None => {
+                by_volume.insert(id, (path.clone(), *need));
+            }
+        }
+    }
+    Ok(by_volume
+        .into_iter()
+        .map(|(id, (probe, required))| (id, probe, required))
+        .collect())
 }
 
 #[cfg(test)]
@@ -259,5 +325,28 @@ mod tests {
         let second = source_fingerprint(&path).unwrap();
         assert_ne!(first.0, second.0);
         assert_eq!(second.1, 3);
+    }
+
+    #[test]
+    fn same_volume_requirements_are_summed_once() {
+        let directory = tempdir().unwrap();
+        let a = directory.path().join("download");
+        let b = directory.path().join("temp");
+        fs::create_dir_all(&a).unwrap();
+        fs::create_dir_all(&b).unwrap();
+        let id_a = volume_identity(&a).unwrap();
+        let id_b = volume_identity(&b).unwrap();
+        assert_eq!(id_a, id_b);
+        let aggregated = aggregate_required_bytes_by_volume(&[(a, 1_000), (b, 2_500)]).unwrap();
+        assert_eq!(aggregated.len(), 1);
+        assert_eq!(aggregated[0].0, id_a);
+        assert_eq!(aggregated[0].2, 3_500);
+    }
+
+    #[test]
+    fn free_disk_space_bytes_reads_existing_directory() {
+        let directory = tempdir().unwrap();
+        let free = free_disk_space_bytes(directory.path()).unwrap();
+        assert!(free > 0);
     }
 }
