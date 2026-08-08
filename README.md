@@ -118,6 +118,6 @@ cargo test --manifest-path src-tauri/fixture-worker/Cargo.toml
 
 ## 다음 순서
 
-1. v0.4.0 P0 체크포인트·범위·취소·저장 공간 정확성 공개
+1. v0.4.0 P0 체크포인트·범위·취소·저장 공간 정확성 공개 완료
 2. 이후 필요성이 확인되면 YouTube 자막 검색과 이야기 후보를 별도 버전에서 검토
 3. GPU·외부 AI·채팅 글자 인식은 로컬 CPU 경로를 대체하지 않는 선택 기능으로만 검토
