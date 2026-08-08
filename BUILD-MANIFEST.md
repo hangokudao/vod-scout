@@ -1,5 +1,57 @@
 # VOD Scout 빌드 명세
 
+## v0.4.0 release PR 사전 빌드
+
+상태: **HOLD — 소스·버전·로컬 NSIS 본문은 PASS, updater 서명과 공개 자산은 `v0.4.0` 태그 Actions 실행 전**
+
+- release 기준 main: `ea7aa08c1f217a0f537e0252ae5ed4b25143b374` (PR #12)
+- 기능 코드 exact HEAD: `e18b73efcb0ea40be812b7da12572e1207854863` (PR #13 squash `16c35f2dfa601790689d7295ceaea12af42169b8`)
+- 버전 정본: `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, README와 설치 파일명 모두 `0.4.0`
+- 도구: Node.js `v24.18.0`, npm `11.16.0`, rustc/cargo `1.97.1`, Tauri CLI `2.11.4`, Windows 11
+- yt-dlp: pinned/bundled/latestStable `2026.07.04` · **PASS**
+- SPDX SBOM: SPDX-2.3 · 루트 `vod-scout@0.4.0` · 656 packages · 개인 절대 경로 없음
+- GitHub Actions updater secret: `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 이름 존재 확인. 값은 읽지 않음
+- `npm audit --omit=dev`: 취약점 0개
+- 전체 `npm audit`: high 1 · Vite→PostCSS의 개발용 `nanoid@3.3.16`; 제품 실행 코드는 취약 조건인 사용자 정의 0길이 생성기를 호출하지 않음
+
+### 소스 검사
+
+| 검사 | 결과 |
+|---|---|
+| `npm.cmd test` | **PASS** · 34 tests |
+| `npm.cmd run test:security` | **PASS** · 6 tests |
+| `npm.cmd run build` | **PASS** |
+| `cargo test --manifest-path src-tauri/Cargo.toml` | **PASS** · 54 passed, 1 ignored |
+| `cargo test --manifest-path src-tauri/fixture-worker/Cargo.toml` | **PASS** · 5 passed |
+| 내장 runtime 재해시 | **PASS** · 28 files |
+
+### 로컬 패키징 참고 (공개 자산 아님)
+
+| 파일 | 크기(bytes) | SHA-256 | 버전 |
+|---|---:|---|---|
+| `vod-scout.exe` | 15,292,416 | `DB341C2B22D6803964A58D957EE1A658FBB66FCECE205DFFCABA1D1D3AB82703` | 0.4.0 |
+| `VOD Scout_0.4.0_x64-setup.exe` | 233,881,664 | `E3CE705383F346FE06AD4410E06E88EBD7758424A06BD37CFA14BC09C128E29B` | 0.4.0 |
+
+- 로컬 환경에는 updater 개인키가 없어 NSIS 본문 생성 뒤 `.sig` 단계에서 예상대로 중단됐다. GitHub Actions secret이 있는 공개 태그 빌드에서 서명한다.
+- 로컬 앱 바이너리는 로컬 체크아웃 경로 문자열을 포함하므로 공개하지 않는다. release workflow의 `RUSTFLAGS --remap-path-prefix`가 적용된 CI 바이너리에서 경로 부재를 다시 확인한다.
+- 로컬 EXE와 설치 파일은 Authenticode `NotSigned`다. Authenticode 인증서 구매·생성은 이번 범위가 아니다.
+
+### 실제 P0 자원 근거
+
+- 승인된 약 8시간 53분 입력 전체 작업: `REVIEW_READY`, 후보 8개, 처리 약 4,004.51초
+- 최종 작업 크기 7,068,418,335 bytes, 피크 Working Set 합 약 2,054,066,176 bytes
+- exact HEAD 순간 임시 파일 최대값은 미재측정. 같은 영상의 기존 측정 peak 14,045,353,616, final 7,068,902,876, peak-final 6,976,450,740 bytes를 구분해 참고
+
+### 공개 자산 예정
+
+- `VOD.Scout_0.4.0_x64-setup.exe`
+- `VOD.Scout_0.4.0_x64-setup.exe.sig`
+- `latest.json`
+- `SHA256SUMS.txt`
+- `SBOM.spdx.json`
+
+실제 공개 크기·SHA-256·Actions run·직접 다운로드 결과는 공개 후 문서 PR에서 이 절을 `PASS`로 마감한다.
+
 ## v0.3.4 공개 빌드
 
 상태: **PASS** — exact merge에서 태그·CI·공개 자산·minisign·인앱 v0.3.3→v0.3.4·DisplayVersion·작업 보존을 확인했다. Authenticode는 승인된 예외로 `HOLD`다.
