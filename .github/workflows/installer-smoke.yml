@@ -9,7 +9,8 @@ on:
         default: v0.4.0
 
 permissions:
-  contents: read
+  # GitHub hides draft releases from a read-only Actions token.
+  contents: write
 
 jobs:
   install-and-run:

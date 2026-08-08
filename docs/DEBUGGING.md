@@ -4,9 +4,9 @@
 
 ## 2026-08-08 · v0.4.0 · 초안 Release 설치 파일 조회 실패
 
-- 증상: installer smoke run `31240213255`가 제품 설치 전 `gh release download v0.4.0`에서 `release not found`로 실패했다.
-- 원인: 태그 기반 `gh release download` 경로는 Actions의 제한된 토큰으로 아직 공개하지 않은 초안 Release를 찾지 못했다.
-- 수정: 인증된 Release 목록에서 입력 태그와 정확히 일치하는 항목 하나와 `_x64-setup.exe` 자산 하나를 선택하고 asset API로 내려받는다. 일치 항목이 없거나 여러 개면 중단한다.
+- 증상: installer smoke run `31240213255`가 제품 설치 전 `gh release download v0.4.0`에서 `release not found`로 실패했다. 목록 조회로 바꾼 run `31240340766`에서도 정확한 태그의 Release가 0개로 표시됐다.
+- 원인: `contents: read`인 Actions 토큰에는 아직 공개하지 않은 초안 Release가 보이지 않았다. 태그 기반 다운로드와 Release 목록 조회가 모두 같은 권한 경계에서 실패했다.
+- 수정: 수동 installer smoke에만 `contents: write`를 부여해 초안을 읽고, 인증된 Release 목록에서 입력 태그와 정확히 일치하는 항목 하나와 `_x64-setup.exe` 자산 하나를 선택해 asset API로 내려받는다. 쓰기 API는 호출하지 않으며 일치 항목이 없거나 여러 개면 중단한다.
 - 회귀 테스트: 같은 `v0.4.0` 초안 Release를 대상으로 installer smoke를 다시 실행해 설치·버전·권한·빌드 사용자 경로·내장 파일 해시·실행·재실행을 확인한다.
 - 상태: 수정 workflow 재실행 전 `HOLD`
 
