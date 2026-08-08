@@ -4,30 +4,33 @@
 
 ## Windows 설치 파일
 
-[**VOD Scout v0.3.4 다운로드 (.exe)**](https://github.com/hangokudao/vod-scout/releases/download/v0.3.4/VOD.Scout_0.3.4_x64-setup.exe)
+[**VOD Scout v0.4.0 다운로드 (.exe)**](https://github.com/hangokudao/vod-scout/releases/download/v0.4.0/VOD.Scout_0.4.0_x64-setup.exe)
 
-[변경 내용·SHA-256·서명 파일 보기](https://github.com/hangokudao/vod-scout/releases/tag/v0.3.4)
+[변경 내용·SHA-256·서명 파일 보기](https://github.com/hangokudao/vod-scout/releases/tag/v0.4.0)
 
-Windows 코드 서명 인증서가 없어 처음 설치할 때 SmartScreen 경고가 표시될 수 있습니다. 설치 파일 크기·SHA-256·updater 서명은 [v0.3.4 릴리스 기록](docs/V0.3.4-RELEASE.md)과 [빌드 명세](BUILD-MANIFEST.md)를 따릅니다.
+Windows 코드 서명 인증서가 없어 처음 설치할 때 SmartScreen 경고가 표시될 수 있습니다. 설치 파일 크기·SHA-256·updater 서명은 [v0.4.0 릴리스 기록](docs/V0.4.0-RELEASE.md)과 [빌드 명세](BUILD-MANIFEST.md)를 따릅니다.
 
-## 0.3.4에서 되는 것
+## 0.4.0에서 되는 것
 
 `로컬 영상 또는 YouTube URL → 로컬 영상 확보 → ffprobe → 10분 오디오 청크 → 한국어 Whisper 음성 인식 → 오디오·발화·채팅 움직임 점수 → 겹치지 않는 후보 → 앱 내 영상 검토`
 
-v0.3.3 기능에 더해 설정 진입점 가시성, 어두운 화면 입력 카드 대비, 취소 완료 감독, 내려받기 임시 용량 측정 도구를 보완합니다.
+v0.3.4 기능에 더해 긴 영상 처리의 재개 정확성, 후보 범위, 취소 정리와 YouTube 저장 공간 확인을 보완합니다. 승인된 약 8시간 53분 입력으로 전체 다운로드·분석과 후보 생성을 확인했지만, 모든 장시간 영상에서 같은 처리 시간을 보장하지는 않습니다.
 
 - MP4, MKV, WebM, MOV, AVI, FLV 로컬 파일 선택
 - 공개 YouTube 단일 영상을 `yt-dlp`로 최대 720p 다운로드
 - Deno 런타임까지 내장해 별도 프로그램 설치 없이 YouTube 추출
 - 다운로드 진행률, 취소, `.part` 이어받기와 완료 파일 체크포인트
+- 선택된 YouTube 스트림의 정확한 크기와 분석 공간을 전송 전에 확인하고, 부족하면 미디어 전송 전에 중단
 - FFmpeg 8.1과 다국어 Whisper `base` 모델 내장
 - API 키·구독료·클라우드 업로드 없이 PC 안에서 분석
 - `빠른 분석`(최소 30분·최대 120분 분산 음성 인식), `구간 지정`, `전체 정밀 분석`
 - 청크마다 음성 인식 결과·오디오 신호·작업 상태 저장
+- 입력·도구·모델·언어·분석 범위가 맞는 체크포인트만 재사용하고 마지막 정상 세대에서 복구
 - 실행 중 FFmpeg/Whisper 종료, 취소 후 완료 청크 다음부터 재개
 - 한국어 고정 음성 인식과 무음·영어 반복 환각 억제
 - 우측 화면을 5초 간격 키프레임으로 비교한 채팅 움직임 신호
 - 시간·음성 인식 문장 유사도를 함께 사용한 겹치는 후보 제거
+- 분석 범위 밖이거나 음량·대화 근거가 없는 후보 제외
 - 후보 클릭 시 FFmpeg가 만든 H.264/AAC 검토 프록시를 앱 안에서 해당 시점부터 재생
 - 경과 시간과 최근 청크 처리 속도 기반 예상 남은 시간
 - 후보별 타임코드, 음성 인식 문장, 오디오 반응·발화 밀도·채팅 움직임 근거
@@ -98,9 +101,10 @@ cargo test --manifest-path src-tauri/fixture-worker/Cargo.toml
 - [v0.3.3 UI·검토 개선 계획](docs/V0.3.3-PLAN.md)
 - [v0.3.4 안정성·접근성 후속 패치 계획](docs/V0.3.4-PLAN.md)
 - [v0.3.4 릴리스 기록](docs/V0.3.4-RELEASE.md)
-- [v0.4.0 장시간 최적화·이야기 구간 계획](docs/V0.4.0-PLAN.md)
+- [v0.4.0 P0와 후속 아이디어 계획](docs/V0.4.0-PLAN.md)
 - [v0.4.0 Oracle 설계 검토 기록](docs/V0.4.0-ORACLE-REVIEW.md)
-- [v0.4.0 릴리스 기록 초안](docs/V0.4.0-RELEASE.md)
+- [v0.4.0 릴리스 기록](docs/V0.4.0-RELEASE.md)
+- [v0.4.0 앱 내 업데이트 안내](docs/V0.4.0-UPDATER-NOTES.md)
 - [오픈소스 라이선스 결정 기록](docs/LICENSE-DECISION.md)
 - [제품·개발 계획](docs/PLAN.md)
 - [아키텍처와 상태 모델](docs/ARCHITECTURE.md)
@@ -114,9 +118,6 @@ cargo test --manifest-path src-tauri/fixture-worker/Cargo.toml
 
 ## 다음 순서
 
-1. v0.3.4 공개·인앱 업데이트·DisplayVersion·데이터 보존 검증 완료 (Authenticode는 계속 `HOLD`)
-2. v0.4.0 P0 체크포인트·범위·취소·저장 공간 정확성
-3. YouTube 자막 확보·품질 검사·검색과 전체 저비용 시간축
-4. 이야기 구간 탐색과 필요한 Whisper의 GPU 우선·CPU 자동 전환
-5. 1~2시간 품질 비교 뒤 8시간 처리 시간·메모리·저장 공간 검증
-6. 후순위 채팅 영역 지정·선별 글자 인식·자동 영역 탐색
+1. v0.4.0 P0 체크포인트·범위·취소·저장 공간 정확성 공개
+2. 이후 필요성이 확인되면 YouTube 자막 검색과 이야기 후보를 별도 버전에서 검토
+3. GPU·외부 AI·채팅 글자 인식은 로컬 CPU 경로를 대체하지 않는 선택 기능으로만 검토

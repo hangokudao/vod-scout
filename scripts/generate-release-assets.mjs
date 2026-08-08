@@ -5,20 +5,20 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * Local packaging helper aligned with the public v0.3.4 artifact contract:
+ * Local packaging helper aligned with the public v0.4.0 artifact contract:
  * - Installer / updater: VOD.Scout_<version>_x64-setup.exe (+ .sig)
  * - Optional NSIS updater zip public name: VOD.Scout_<version>_x64-setup.nsis.zip
  * - latest.json, SHA256SUMS.txt, SBOM.spdx.json
  *
  * Bundle lookup is exact and version-scoped. Accepts only the known Tauri
  * product basename variants (dotted public name and space-containing local
- * productName) for 0.3.4. Never picks an arbitrary *.nsis.zip.
+ * productName) for 0.4.0. Never picks an arbitrary *.nsis.zip.
  * Fails closed on missing or ambiguous expected assets.
  * Preserves updater signature embedding and checksum/SBOM copies.
  * Does not invent Authenticode signing or delete files.
  */
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const version = "0.3.4";
+const version = "0.4.0";
 const bundleDir = join(projectRoot, "src-tauri", "target", "release", "bundle", "nsis");
 const releaseDir = join(projectRoot, "release", `v${version}`);
 const publicInstallerName = `VOD.Scout_${version}_x64-setup.exe`;
@@ -102,7 +102,7 @@ await copyFile(builtSignature, join(releaseDir, signatureName));
 await copyFile(join(projectRoot, "SBOM.spdx.json"), join(releaseDir, "SBOM.spdx.json"));
 
 const signature = (await readFile(builtSignature, "utf8")).trim();
-const notes = await readFile(join(projectRoot, "docs", "V0.3.4-UPDATER-NOTES.md"), "utf8");
+const notes = await readFile(join(projectRoot, "docs", "V0.4.0-UPDATER-NOTES.md"), "utf8");
 const latest = {
   version,
   notes,

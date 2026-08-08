@@ -2,6 +2,14 @@
 
 실제로 재현하거나 로그로 확인한 문제만 기록한다. 원인이 확정되지 않은 항목은 `HOLD`로 표시한다.
 
+## 2026-08-08 · v0.4.0 · 릴리스 workflow의 이전 버전 고정값
+
+- 증상: 제품 버전 정본을 올려도 release workflow의 릴리스 문서 경로, installer smoke의 기본 태그·제품 버전, 로컬 자산 생성 스크립트와 README가 `0.3.4`를 계속 가리켰다.
+- 원인: 이전 릴리스에서 버전별로 고정한 값을 v0.4.0 release PR 전까지 의도적으로 유지했다.
+- 수정: 세 버전 정본과 잠금 파일, `src/releaseNotes.ts`, README, updater 안내, 두 workflow와 자산 생성 스크립트를 `0.4.0`으로 맞춘다.
+- 회귀 테스트: 버전 검색, installer smoke, GitHub Release Actions, 공개 자산 이름·해시·직접 다운로드를 순서대로 확인한다.
+- 상태: 소스 정렬·로컬 NSIS 본문 버전 `PASS`; 로컬 updater 서명은 개인키가 없어 태그 Actions로 이관. 공개 CI 자산의 경로 치환·서명·installer smoke는 배포 게이트에서 확인한다.
+
 ## 2026-08-08 · v0.4.0 P0 · exact HEAD 전체 검증 완료
 
 - 재현 조건: PR #13 exact HEAD `e18b73efcb0ea40be812b7da12572e1207854863`, 승인된 장시간 YouTube 영상, 격리된 작업 폴더와 FAT32 저용량 USB 시험 환경.

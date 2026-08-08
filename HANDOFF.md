@@ -1,6 +1,6 @@
 # VOD Scout 인계서 (v0.4.0 출시 준비)
 
-현재 게이트: **v0.4.0 P0 기능 검증 PASS · PR #13 main 병합 완료 · 문서 PR #12 갱신 중 · 제품 버전은 release PR 전까지 0.3.4 유지**
+현재 게이트: **v0.4.0 P0 기능 검증 PASS · PR #13과 문서 PR #12 병합 완료 · `codex/v0.4.0-release`에서 버전·설치본·배포 검증 진행 중**
 
 ## 저장소 상태
 
@@ -8,9 +8,9 @@
 |---|---|
 | 저장소 | `hangokudao/vod-scout` |
 | PR #13 | **MERGED** · squash `16c35f2dfa601790689d7295ceaea12af42169b8` |
-| PR #12 | 최신 성공 결과와 출시 범위로 갱신 후 병합 대상 |
-| 현재 제품 버전 | `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` 모두 `0.3.4` |
-| 다음 버전 | `0.4.0` |
+| PR #12 | **MERGED** · squash `ea7aa08c1f217a0f537e0252ae5ed4b25143b374` |
+| release 브랜치 | `codex/v0.4.0-release` |
+| 현재 제품 버전 | `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` 모두 `0.4.0` |
 | 직전 공개 버전 | `v0.3.4` · https://github.com/hangokudao/vod-scout/releases/tag/v0.3.4 |
 
 ## v0.4.0 범위
@@ -58,14 +58,13 @@ exact 코드 HEAD: `e18b73efcb0ea40be812b7da12572e1207854863`
 - 후속 YouTube 요청에서 `Sign in to confirm you're not a bot`가 발생할 수 있다. 로그인 우회 없이 외부 제한으로 처리한다.
 - Windows Authenticode 인증서가 없어 SmartScreen 경고가 표시될 수 있다. updater 서명은 릴리스 필수 게이트다.
 - `npm audit` high 1건은 개발용 Vite→PostCSS→`nanoid@3.3.16` 경로다. 제품 실행 경로는 해당 사용자 정의 생성기를 호출하지 않는다.
+- 로컬 NSIS 본문은 버전 0.4.0과 runtime 28개 해시를 확인했지만 updater 개인키가 없어 서명하지 않았다. 로컬 빌드 경로 문자열도 포함하므로 공개하지 않고 GitHub Actions 산출물만 배포한다.
 
 ## 다음 작업
 
-1. PR #12 문서를 검증하고 squash 병합한다.
-2. 새 release 브랜치에서 버전 정본과 workflow를 `0.4.0`으로 맞춘다.
-3. 필수 테스트, SBOM, Windows 설치 EXE, updater 서명과 체크섬을 생성한다.
-4. release PR을 병합하고 exact merge SHA에 `v0.4.0` 태그를 붙인다.
-5. draft Release 자산과 installer smoke를 검증한 뒤 공개한다.
-6. 공개 자산의 실제 크기·SHA-256·URL을 후속 문서 PR에 기록하고 병합한다.
+1. 필수 테스트, SBOM, Windows 설치 EXE, updater 서명과 체크섬을 생성한다.
+2. release PR을 병합하고 exact merge SHA에 `v0.4.0` 태그를 붙인다.
+3. draft Release 자산과 installer smoke를 검증한 뒤 공개한다.
+4. 공개 자산의 실제 크기·SHA-256·URL을 후속 문서 PR에 기록하고 병합한다.
 
 원본 작업 폴더, 기존 설치 폴더, 기존 작업 데이터와 개인 파일은 수정하거나 삭제하지 않는다. 공개 문서에는 비밀값과 개인 절대 경로를 넣지 않는다.
