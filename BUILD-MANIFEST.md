@@ -1,10 +1,15 @@
 # VOD Scout 빌드 명세
 
-## v0.4.0 release PR 사전 빌드
+## v0.4.0 공개 빌드
 
-상태: **HOLD — 소스·버전·로컬 NSIS 본문은 PASS, updater 서명과 공개 자산은 `v0.4.0` 태그 Actions 실행 전**
+상태: **PASS — exact tag·updater 서명·공개 자산·installer smoke·토큰 없는 직접 다운로드 확인 완료**. Authenticode `NotSigned`는 알려진 한계다.
 
-- release 기준 main: `ea7aa08c1f217a0f537e0252ae5ed4b25143b374` (PR #12)
+- release PR #14 squash: `a39d62eda4666ac848fe2e7aadaa1e74c7b9a53e`
+- annotated tag `v0.4.0`: object `b744801716374c9e10bdbf02e14397467dd43a17` → peel `a39d62eda4666ac848fe2e7aadaa1e74c7b9a53e`
+- Release: https://github.com/hangokudao/vod-scout/releases/tag/v0.4.0 · `draft=false` · `prerelease=false` · Latest
+- release workflow: run `31239478473` · exact tag SHA · **PASS**
+- installer smoke: run `31240405719` · 버전 0.4.0 · runtime 28개 · 재실행 · **PASS**
+- draft 조회 workflow 수정 PR #15: squash `2f132d017f384c33d8010a7e4c7edc6665ca38aa`
 - 기능 코드 exact HEAD: `e18b73efcb0ea40be812b7da12572e1207854863` (PR #13 squash `16c35f2dfa601790689d7295ceaea12af42169b8`)
 - 버전 정본: `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, README와 설치 파일명 모두 `0.4.0`
 - 도구: Node.js `v24.18.0`, npm `11.16.0`, rustc/cargo `1.97.1`, Tauri CLI `2.11.4`, Windows 11
@@ -32,8 +37,8 @@
 | `vod-scout.exe` | 15,292,416 | `DB341C2B22D6803964A58D957EE1A658FBB66FCECE205DFFCABA1D1D3AB82703` | 0.4.0 |
 | `VOD Scout_0.4.0_x64-setup.exe` | 233,881,664 | `E3CE705383F346FE06AD4410E06E88EBD7758424A06BD37CFA14BC09C128E29B` | 0.4.0 |
 
-- 로컬 환경에는 updater 개인키가 없어 NSIS 본문 생성 뒤 `.sig` 단계에서 예상대로 중단됐다. GitHub Actions secret이 있는 공개 태그 빌드에서 서명한다.
-- 로컬 앱 바이너리는 로컬 체크아웃 경로 문자열을 포함하므로 공개하지 않는다. release workflow의 `RUSTFLAGS --remap-path-prefix`가 적용된 CI 바이너리에서 경로 부재를 다시 확인한다.
+- 로컬 환경에는 updater 개인키가 없어 NSIS 본문 생성 뒤 `.sig` 단계에서 예상대로 중단됐다. 공개 태그 빌드는 GitHub Actions secret으로 서명해 PASS했다.
+- 로컬 앱 바이너리는 로컬 체크아웃 경로 문자열을 포함해 공개하지 않았다. release workflow의 `RUSTFLAGS --remap-path-prefix`가 적용된 CI 바이너리는 installer smoke에서 빌드 사용자 경로 부재를 확인했다.
 - 로컬 EXE와 설치 파일은 Authenticode `NotSigned`다. Authenticode 인증서 구매·생성은 이번 범위가 아니다.
 
 ### 실제 P0 자원 근거
@@ -42,15 +47,21 @@
 - 최종 작업 크기 7,068,418,335 bytes, 피크 Working Set 합 약 2,054,066,176 bytes
 - exact HEAD 순간 임시 파일 최대값은 미재측정. 같은 영상의 기존 측정 peak 14,045,353,616, final 7,068,902,876, peak-final 6,976,450,740 bytes를 구분해 참고
 
-### 공개 자산 예정
+### 공개 자산
 
-- `VOD.Scout_0.4.0_x64-setup.exe`
-- `VOD.Scout_0.4.0_x64-setup.exe.sig`
-- `latest.json`
-- `SHA256SUMS.txt`
-- `SBOM.spdx.json`
+| 파일 | 크기(bytes) | SHA-256 |
+|---|---:|---|
+| `VOD.Scout_0.4.0_x64-setup.exe` | 233,879,794 | `5ba960e35ae9d55512ecc79b8c49da611e7bb3fec12210f87e5496056a3f578a` |
+| `VOD.Scout_0.4.0_x64-setup.exe.sig` | 420 | `3d640c525b3101dd63b3299811676598a298c972bde8204e3d965ba3bb1ed887` |
+| `latest.json` | 10,882 | `66fc58ff771a4f5f3809b00bf4cfc51e625d333f82445e39d5b99f7ba603214a` |
+| `SBOM.spdx.json` | 615,471 | `2485ac5bf74e594da2b0f250709c61f78c63b52effd9d56e1e5e4e92c18600bc` |
+| `SHA256SUMS.txt` | 359 | `469908605c31a79de5ad179747796676e5795f0801561228a004e5ea068e08c9` |
 
-실제 공개 크기·SHA-256·Actions run·직접 다운로드 결과는 공개 후 문서 PR에서 이 절을 `PASS`로 마감한다.
+- `SHA256SUMS.txt`의 설치 파일·서명·`latest.json`·SBOM 해시와 새로 내려받은 파일 해시 일치.
+- GitHub asset digest와 내려받은 파일 해시 일치.
+- 토큰 없는 공개 URL 5개 모두 HTTP 200.
+- 공개 설치 파일 ProductVersion/FileVersion 0.4.0, updater 서명과 `latest.json` 서명 일치.
+- 공개 설치 파일 Authenticode는 `NotSigned`이며 첫 설치 SmartScreen 경고 가능성을 릴리스 노트에 알렸다.
 
 ## v0.3.4 공개 빌드
 
