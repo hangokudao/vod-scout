@@ -8,7 +8,7 @@
 - 원인: `contents: read`인 Actions 토큰에는 아직 공개하지 않은 초안 Release가 보이지 않았다. 태그 기반 다운로드와 Release 목록 조회가 모두 같은 권한 경계에서 실패했다.
 - 수정: 수동 installer smoke에만 `contents: write`를 부여해 초안을 읽고, 인증된 Release 목록에서 입력 태그와 정확히 일치하는 항목 하나와 `_x64-setup.exe` 자산 하나를 선택해 asset API로 내려받는다. 쓰기 API는 호출하지 않으며 일치 항목이 없거나 여러 개면 중단한다.
 - 회귀 테스트: 같은 `v0.4.0` 초안 Release를 대상으로 installer smoke를 다시 실행해 설치·버전·권한·빌드 사용자 경로·내장 파일 해시·실행·재실행을 확인한다.
-- 상태: 수정 workflow 재실행 전 `HOLD`
+- 상태: installer smoke run `31240405719`에서 다운로드·설치·버전 0.4.0·권한·빌드 사용자 경로 부재·내장 파일 28개 해시·실행·재실행 `PASS`
 
 ## 2026-08-08 · v0.4.0 · 릴리스 workflow의 이전 버전 고정값
 
