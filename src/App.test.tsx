@@ -9,6 +9,9 @@ import App, {
   resolveCandidateContext,
   resolveTheme,
   resolveUpdateStatus,
+  safeCandidateDerivedText,
+  safeTranscriptText,
+  hasStartedRecognitionRun,
   selectionStorageKey,
   sortCandidates,
   writeUiSettings,
@@ -110,6 +113,68 @@ describe("selection stays with the candidate id across a reorder", () => {
   it("scopes the stored selection key to a job", () => {
     expect(selectionStorageKey("job-1")).toBe("vod-scout.selected-candidate.job-1");
     expect(selectionStorageKey("job-2")).not.toBe(selectionStorageKey("job-1"));
+  });
+});
+
+describe("transcript quality display", () => {
+  it("masks replacement characters and uncertain source text", () => {
+    expect(safeTranscriptText("깨진 � 문장")).toContain("불확실");
+    expect(safeTranscriptText("원문", "UNCERTAIN")).toContain("불확실");
+    expect(safeTranscriptText("정상 문장", "CERTAIN")).toBe("정상 문장");
+  });
+
+  it("keeps audio evidence visible while masking uncertain candidate text", () => {
+    const uncertain = candidate({
+      id: "uncertain",
+      title: "음성 인식 결과 불확실 · 오디오 근거 구간",
+      summary: "음성 인식 결과 불확실 · 오디오 반응 91 · 발화 밀도 64",
+      transcriptExcerpt: "음성 인식 결과가 불확실해 원문을 표시하지 않습니다.",
+      transcriptQualityStatus: "UNCERTAIN"
+    });
+    expect(safeCandidateDerivedText(uncertain.title)).toContain("오디오 근거 구간");
+    expect(safeCandidateDerivedText(uncertain.summary)).toContain("오디오 반응 91");
+    expect(safeTranscriptText(uncertain.transcriptExcerpt, uncertain.transcriptQualityStatus)).toContain("불확실");
+  });
+
+  it("masks unsafe derived text even when its status is unavailable", () => {
+    expect(safeCandidateDerivedText("제목 � 손상")).toContain("불확실");
+    expect(safeCandidateDerivedText("오디오 반응 91 · 채팅 움직임 84")).toBe("오디오 반응 91 · 채팅 움직임 84");
+  });
+
+  it("masks only context lines that contain unsafe text", () => {
+    const context = resolveCandidateContext({
+      ...candidate({ id: "context" }),
+      contextTranscript: [
+        { startSeconds: 8, endSeconds: 10, text: "안전한 앞 맥락" },
+        { startSeconds: 22, endSeconds: 24, text: "깨진 � 원문" },
+        { startSeconds: 35, endSeconds: 37, text: "안전한 뒤 맥락" }
+      ]
+    }, 60);
+    expect(context.lines.map((line) => line.text)).toEqual([
+      "안전한 앞 맥락",
+      "음성 인식 결과가 불확실해 원문을 표시하지 않습니다.",
+      "안전한 뒤 맥락"
+    ]);
+  });
+});
+
+describe("manual recognition busy state", () => {
+  it("stays busy when a started run belongs to a non-selected candidate", () => {
+    expect(hasStartedRecognitionRun([
+      {
+        id: "run-other",
+        candidateId: "candidate-other",
+        status: "STARTED",
+        startedAt: "2026-08-18T00:00:00.000Z",
+        completedAt: null,
+        resultRevision: 1,
+        originalResult: "기존 결과",
+        rawResult: null,
+        displayResult: null,
+        failureReason: null,
+        backendEvidence: "CPU 시도"
+      }
+    ])).toBe(true);
   });
 });
 

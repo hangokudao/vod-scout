@@ -19,6 +19,8 @@ export type JobStatus =
   | "REVIEW_READY";
 
 export type CandidateDecision = "PENDING" | "ACCEPTED" | "REJECTED";
+export type TranscriptQualityStatus = "CERTAIN" | "UNCERTAIN";
+export type RecognitionRunStatus = "STARTED" | "COMPLETED" | "FAILED";
 export type CaptionSource = "creator" | "automatic";
 export type CaptionVerificationState = "UNVERIFIED" | "VERIFIED" | "FAILED";
 export type WhisperDeviceMode = "auto" | "gpu" | "cpu";
@@ -85,6 +87,9 @@ export interface Candidate {
   chatScore: number | null;
   totalScore: number;
   decision: CandidateDecision;
+  /** 음성 인식 결과의 진단 상태. v0.4 후보에는 없을 수 있다. */
+  transcriptQualityStatus?: TranscriptQualityStatus;
+  transcriptQualityReasons?: string[];
   /**
    * 맥락 구간. worker가 아직 보내지 않는 작업도 열 수 있어야 하므로 선택 항목이다.
    * 값이 없으면 화면에서 기본 여유 구간을 계산해 사용한다.
@@ -92,6 +97,21 @@ export interface Candidate {
   contextStartSeconds?: number | null;
   contextEndSeconds?: number | null;
   contextTranscript?: ContextLine[] | null;
+}
+
+export interface CandidateRecognitionRun {
+  id: string;
+  candidateId: string;
+  status: RecognitionRunStatus;
+  startedAt: string;
+  completedAt: string | null;
+  resultRevision: number;
+  /** 다시 실행하기 전 선택 후보에 저장돼 있던 음성 인식 결과. */
+  originalResult?: string | null;
+  rawResult: string | null;
+  displayResult: string | null;
+  failureReason: string | null;
+  backendEvidence: string;
 }
 
 export interface ActivityEvent {
@@ -127,6 +147,7 @@ export interface JobSnapshot {
   captions: CaptionSummary | null;
   whisper: WhisperSettings;
   whisperRuntime: WhisperRuntimeState;
+  recognitionRuns?: CandidateRecognitionRun[];
 }
 
 export interface RuntimeInfo {

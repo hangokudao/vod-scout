@@ -7,7 +7,8 @@ mod storage;
 mod whisper;
 
 use crate::domain::{
-    AnalysisMode, Candidate, CandidateDecision, JobSnapshot, JobStatus, Scenario, SourceKind,
+    AnalysisMode, Candidate, CandidateDecision, CandidateRecognitionRun, JobSnapshot, JobStatus,
+    RecognitionRunStatus, Scenario, SourceKind, TranscriptQualityStatus,
 };
 use crate::whisper::WhisperSettings;
 use crate::storage::JobStore;
@@ -30,6 +31,7 @@ struct AppState {
     job: Mutex<Option<JobSnapshot>>,
     running: AtomicBool,
     cancel_requested: AtomicBool,
+    manual_running: AtomicBool,
 }
 
 impl AppState {
@@ -40,6 +42,7 @@ impl AppState {
             job: Mutex::new(None),
             running: AtomicBool::new(false),
             cancel_requested: AtomicBool::new(false),
+            manual_running: AtomicBool::new(false),
         })
     }
 }
@@ -233,6 +236,25 @@ fn migrate_snapshot(mut loaded: JobSnapshot) -> (JobSnapshot, bool) {
     (loaded, false)
 }
 
+const APP_INTERRUPTED_RECOGNITION_REASON: &str = "앱 종료로 음성 인식이 중단됐습니다.";
+
+fn recover_started_recognition_runs(job: &mut JobSnapshot) -> bool {
+    let mut recovered = false;
+    for run in &mut job.recognition_runs {
+        if run.status != RecognitionRunStatus::Started {
+            continue;
+        }
+        let evidence = run.backend_evidence.clone();
+        if run.fail(Utc::now(), APP_INTERRUPTED_RECOGNITION_REASON.into(), evidence).is_ok() {
+            recovered = true;
+        }
+    }
+    if recovered {
+        job.push_activity("recovery", "앱 종료로 진행 중이던 후보 음성 인식을 실패 처리했습니다.");
+    }
+    recovered
+}
+
 #[tauri::command]
 fn bootstrap(
     app: tauri::AppHandle,
@@ -245,17 +267,31 @@ fn bootstrap(
 
     let (mut loaded, migrated) = migrate_snapshot(loaded);
 
+    let recovered_runs = recover_started_recognition_runs(&mut loaded);
     if loaded.status.is_active() {
         loaded.status = JobStatus::Interrupted;
         loaded.error_message = Some("이전 실행이 끝나기 전에 앱이 종료됐습니다.".into());
         loaded.error_detail = Some("마지막 완료 단위 다음부터 재개할 수 있습니다.".into());
         loaded.push_activity("recovery", "중단된 작업을 복원했습니다.");
     }
-    if migrated || loaded.status == JobStatus::Interrupted {
+    if migrated || recovered_runs || loaded.status == JobStatus::Interrupted {
         state
             .store
             .save(&loaded)
             .map_err(|error| error.to_string())?;
+        if recovered_runs {
+            if let Some(event) = loaded
+                .activity
+                .iter()
+                .rev()
+                .find(|event| event.kind == "recovery" && event.message.contains("음성 인식"))
+            {
+                state
+                    .store
+                    .append_event(&loaded.id, event)
+                    .map_err(|error| error.to_string())?;
+            }
+        }
     }
 
     *state
@@ -623,6 +659,51 @@ async fn start_job(
     Ok(snapshot)
 }
 
+#[tauri::command]
+async fn rerun_candidate_transcription(
+    app: tauri::AppHandle,
+    state: State<'_, Arc<AppState>>,
+    job_id: String,
+    candidate_id: String,
+) -> Result<JobSnapshot, String> {
+    if state.running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+        return Err("분석 또는 다른 음성 인식이 실행 중입니다.".into());
+    }
+    state.cancel_requested.store(false, Ordering::SeqCst);
+    state.manual_running.store(true, Ordering::SeqCst);
+    let run_id = Uuid::new_v4().to_string();
+    let started = mutate_job(&app, &state, |job| {
+        if job.id != job_id || job.status != JobStatus::ReviewReady {
+            return Err("검토 준비가 끝난 현재 작업에서만 다시 음성 인식을 실행할 수 있습니다.".into());
+        }
+        let candidate = job.candidates.iter().find(|candidate| candidate.id == candidate_id)
+            .ok_or_else(|| "선택한 후보를 찾을 수 없습니다.".to_string())?;
+        let revision = job.recognition_runs.iter().filter(|run| run.candidate_id == candidate.id)
+            .map(|run| run.result_revision).max().unwrap_or(0).saturating_add(1);
+        job.recognition_runs.push(CandidateRecognitionRun {
+            id: run_id.clone(), candidate_id: candidate_id.clone(), status: RecognitionRunStatus::Started,
+            started_at: Utc::now(), completed_at: None, result_revision: revision,
+            original_result: Some(candidate.transcript_excerpt.clone()), raw_result: None,
+            display_result: None, failure_reason: None,
+            backend_evidence: "요청됨 · 내장 G2 Whisper 런타임·모델 사용".into(),
+        });
+        job.current_stage_label = "선택 후보 음성 인식 중".into();
+        job.push_activity("recognition", "선택한 후보의 음성을 다시 인식하기 시작했습니다.");
+        Ok(())
+    });
+    let started = match started {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            state.manual_running.store(false, Ordering::SeqCst);
+            state.running.store(false, Ordering::SeqCst);
+            return Err(error);
+        }
+    };
+    let state_arc = Arc::clone(state.inner());
+    tauri::async_runtime::spawn_blocking(move || media::run_candidate_recognition(app, state_arc, job_id, candidate_id, run_id));
+    Ok(started)
+}
+
 /// Validate `job_id` against the active job, then set `cancel_requested`.
 /// Mismatched IDs must not arm the global cancel flag. The check+set stays
 /// under the job lock and never touches disk, so tool loops can stop before
@@ -653,6 +734,16 @@ fn cancel_job(
     job_id: String,
 ) -> Result<JobSnapshot, String> {
     arm_cancel_signal(&state, &job_id)?;
+    if state.manual_running.load(Ordering::SeqCst) {
+        return mutate_job(&app, &state, |job| {
+            if job.id != job_id || job.status != JobStatus::ReviewReady {
+                return Err("현재 선택 후보 음성 인식 상태가 아닙니다.".into());
+            }
+            job.current_stage_label = "선택 후보 음성 인식 취소 중".into();
+            job.push_activity("cancel", "선택 후보 음성 인식 취소를 요청했습니다.");
+            Ok(())
+        });
+    }
     let snapshot = mutate_job(&app, &state, |job| {
         if job.id != job_id {
             return Err("현재 작업과 요청한 작업이 다릅니다.".into());
@@ -738,6 +829,20 @@ fn csv_field(value: &str) -> String {
     format!("\"{}\"", safe.replace('"', "\"\""))
 }
 
+fn safe_candidate_text(value: &str, status: TranscriptQualityStatus) -> String {
+    if status == TranscriptQualityStatus::Uncertain || value.contains('\u{fffd}') {
+        "음성 인식 결과가 불확실해 원문을 표시하지 않습니다.".into()
+    } else { value.into() }
+}
+
+fn safe_candidate_derived_text(value: &str) -> String {
+    if value.contains('\u{fffd}') {
+        "음성 인식 결과가 불확실해 원문을 표시하지 않습니다.".into()
+    } else {
+        value.into()
+    }
+}
+
 #[tauri::command]
 fn export_candidates_csv(
     app: tauri::AppHandle,
@@ -775,8 +880,8 @@ fn export_candidates_csv(
                     .map(|score| score.to_string())
                     .unwrap_or_default(),
                 candidate.decision,
-                csv_field(&candidate.title),
-                csv_field(&candidate.transcript_excerpt),
+                csv_field(&safe_candidate_derived_text(&candidate.title)),
+                csv_field(&safe_candidate_text(&candidate.transcript_excerpt, candidate.transcript_quality_status)),
             ));
         }
         rows
@@ -941,6 +1046,9 @@ fn set_candidate_decision(
     candidate_id: String,
     decision: CandidateDecision,
 ) -> Result<JobSnapshot, String> {
+    if state.manual_running.load(Ordering::SeqCst) {
+        return Err("선택 후보 음성 인식이 끝난 뒤 후보를 판정할 수 있습니다.".into());
+    }
     mutate_job(&app, &state, |job| {
         if job.id != job_id || job.status != JobStatus::ReviewReady {
             return Err("검토 준비가 끝난 현재 작업에서만 후보를 판정할 수 있습니다.".into());
@@ -985,6 +1093,17 @@ mod tests {
         }
         assert_eq!(csv_field("normal"), "\"normal\"");
         assert!(!csv_field("a\0b").contains('\0'));
+    }
+
+    #[test]
+    fn csv_hides_uncertain_transcript_text_and_replacement_characters() {
+        let safe = safe_candidate_text("원문", TranscriptQualityStatus::Uncertain);
+        assert!(safe.contains("불확실"));
+        let safe = safe_candidate_text("깨진 � 원문", TranscriptQualityStatus::Certain);
+        assert!(!safe.contains('�'));
+        assert!(safe.contains("불확실"));
+        assert_eq!(safe_candidate_derived_text("오디오 근거 구간"), "오디오 근거 구간");
+        assert!(safe_candidate_derived_text("깨진 � 제목").contains("불확실"));
     }
 
     /// Holds AppState and its temp data dir. Field order matters: Rust drops
@@ -1053,6 +1172,47 @@ mod tests {
             elapsed < Duration::from_millis(500),
             "arm_cancel_signal must stay in-memory and return quickly, took {elapsed:?}"
         );
+    }
+
+    #[test]
+    fn recovery_fails_each_started_recognition_run_once_and_preserves_evidence() {
+        let mut job = JobSnapshot::new(
+            "job-recovery".into(), SourceKind::Demo, "fixture".into(), Scenario::Normal,
+            AnalysisMode::Full, None, None,
+        );
+        job.status = JobStatus::ReviewReady;
+        job.candidates.push(Candidate {
+            id: "candidate-other".into(), start_seconds: 10, end_seconds: 20,
+            title: "제목".into(), summary: "요약".into(), transcript_excerpt: "기존 결과".into(),
+            audio_score: 80, dialogue_score: 70, chat_score: Some(60), total_score: 75,
+            decision: CandidateDecision::Accepted, transcript_quality_status: TranscriptQualityStatus::Certain,
+            transcript_quality_reasons: Vec::new(), context_start_seconds: 0.0, context_end_seconds: 30.0,
+            context_transcript: Vec::new(),
+        });
+        let candidate_before = job.candidates[0].clone();
+        job.recognition_runs.push(CandidateRecognitionRun {
+            id: "run-started".into(), candidate_id: "candidate-other".into(), status: RecognitionRunStatus::Started,
+            started_at: Utc::now(), completed_at: None, result_revision: 1, original_result: Some("old".into()),
+            raw_result: None, display_result: None, failure_reason: None, backend_evidence: "CPU 시도; 실제 백엔드=whisper.cpp-cpu".into(),
+        });
+        job.recognition_runs.push(CandidateRecognitionRun {
+            id: "run-failed".into(), candidate_id: "candidate-done".into(), status: RecognitionRunStatus::Failed,
+            started_at: Utc::now(), completed_at: Some(Utc::now()), result_revision: 1, original_result: Some("done".into()),
+            raw_result: None, display_result: None, failure_reason: Some("기존 실패".into()), backend_evidence: "기존 증거".into(),
+        });
+        let original_activity = job.activity.len();
+        assert!(recover_started_recognition_runs(&mut job));
+        assert_eq!(job.status, JobStatus::ReviewReady);
+        let recovered = &job.recognition_runs[0];
+        assert_eq!(recovered.status, RecognitionRunStatus::Failed);
+        assert!(recovered.completed_at.is_some());
+        assert_eq!(recovered.failure_reason.as_deref(), Some(APP_INTERRUPTED_RECOGNITION_REASON));
+        assert_eq!(recovered.backend_evidence, "CPU 시도; 실제 백엔드=whisper.cpp-cpu");
+        assert_eq!(job.candidates[0].id, candidate_before.id);
+        assert_eq!(job.candidates[0].decision, candidate_before.decision);
+        assert!(job.activity.len() > original_activity);
+        assert!(!recover_started_recognition_runs(&mut job));
+        assert_eq!(job.activity.len(), original_activity + 1);
     }
 
     #[test]
@@ -1170,6 +1330,7 @@ pub fn run() {
             export_candidates_csv,
             prepare_candidate_preview,
             prepare_candidate_context_preview,
+            rerun_candidate_transcription,
             set_candidate_decision,
             get_runtime_info
         ])

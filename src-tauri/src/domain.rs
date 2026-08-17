@@ -160,6 +160,14 @@ pub struct ContextTranscriptEntry {
     pub text: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum TranscriptQualityStatus {
+    #[default]
+    Certain,
+    Uncertain,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Candidate {
@@ -175,11 +183,69 @@ pub struct Candidate {
     pub total_score: u8,
     pub decision: CandidateDecision,
     #[serde(default)]
+    pub transcript_quality_status: TranscriptQualityStatus,
+    #[serde(default)]
+    pub transcript_quality_reasons: Vec<String>,
+    #[serde(default)]
     pub context_start_seconds: f64,
     #[serde(default)]
     pub context_end_seconds: f64,
     #[serde(default)]
     pub context_transcript: Vec<ContextTranscriptEntry>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum RecognitionRunStatus {
+    Started,
+    Completed,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CandidateRecognitionRun {
+    pub id: String,
+    pub candidate_id: String,
+    pub status: RecognitionRunStatus,
+    pub started_at: DateTime<Utc>,
+    #[serde(default)]
+    pub completed_at: Option<DateTime<Utc>>,
+    pub result_revision: u32,
+    #[serde(default)]
+    pub original_result: Option<String>,
+    #[serde(default)]
+    pub raw_result: Option<String>,
+    #[serde(default)]
+    pub display_result: Option<String>,
+    #[serde(default)]
+    pub failure_reason: Option<String>,
+    pub backend_evidence: String,
+}
+
+impl CandidateRecognitionRun {
+    pub fn complete(&mut self, completed_at: DateTime<Utc>, raw_result: String, display_result: String, backend_evidence: String) -> Result<(), String> {
+        if self.status != RecognitionRunStatus::Started || self.completed_at.is_some() {
+            return Err("음성 인식 실행은 이미 종료됐습니다.".into());
+        }
+        self.status = RecognitionRunStatus::Completed;
+        self.completed_at = Some(completed_at);
+        self.raw_result = Some(raw_result);
+        self.display_result = Some(display_result);
+        self.backend_evidence = backend_evidence;
+        Ok(())
+    }
+
+    pub fn fail(&mut self, completed_at: DateTime<Utc>, reason: String, evidence: String) -> Result<(), String> {
+        if self.status != RecognitionRunStatus::Started || self.completed_at.is_some() {
+            return Err("음성 인식 실행은 이미 종료됐습니다.".into());
+        }
+        self.status = RecognitionRunStatus::Failed;
+        self.completed_at = Some(completed_at);
+        self.failure_reason = Some(reason);
+        self.backend_evidence = evidence;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -268,6 +334,8 @@ pub struct JobSnapshot {
     pub whisper: WhisperSettings,
     #[serde(default)]
     pub whisper_runtime: WhisperRuntimeState,
+    #[serde(default)]
+    pub recognition_runs: Vec<CandidateRecognitionRun>,
 }
 
 fn legacy_whisper_settings() -> WhisperSettings {
@@ -315,6 +383,7 @@ impl JobSnapshot {
             captions: None,
             whisper: WhisperSettings::default(),
             whisper_runtime: WhisperRuntimeState::default(),
+            recognition_runs: Vec::new(),
         };
         job.push_activity("job", "새 분석 작업을 만들었습니다.");
         job
@@ -458,6 +527,7 @@ mod tests {
         assert_eq!(loaded.analysis_mode, AnalysisMode::Full);
         assert_eq!(loaded.whisper, legacy_whisper_settings());
         assert_eq!(loaded.whisper_runtime, WhisperRuntimeState::default());
+        assert!(loaded.recognition_runs.is_empty());
     }
 
     #[test]
@@ -474,6 +544,8 @@ mod tests {
             chat_score: None,
             total_score: 75,
             decision: CandidateDecision::Pending,
+            transcript_quality_status: TranscriptQualityStatus::Certain,
+            transcript_quality_reasons: Vec::new(),
             context_start_seconds: 5.0,
             context_end_seconds: 55.0,
             context_transcript: vec![ContextTranscriptEntry {
@@ -505,7 +577,40 @@ mod tests {
             "decision": "PENDING"
         });
         let legacy = serde_json::from_value::<Candidate>(old).unwrap();
+        assert_eq!(legacy.transcript_quality_status, TranscriptQualityStatus::Certain);
+        assert!(legacy.transcript_quality_reasons.is_empty());
         assert_eq!(legacy.context_start_seconds, 0.0);
         assert!(legacy.context_transcript.is_empty());
+    }
+
+    #[test]
+    fn recognition_run_has_exactly_one_terminal_transition() {
+        let now = Utc::now();
+        let mut run = CandidateRecognitionRun {
+            id: "run".into(), candidate_id: "candidate".into(), status: RecognitionRunStatus::Started,
+            started_at: now, completed_at: None, result_revision: 1, original_result: Some("before".into()), raw_result: None,
+            display_result: None, failure_reason: None, backend_evidence: "started".into(),
+        };
+        run.complete(now, "raw".into(), "display".into(), "cpu".into()).unwrap();
+        assert_eq!(run.status, RecognitionRunStatus::Completed);
+        assert!(run.fail(now, "late".into(), "late".into()).is_err());
+    }
+
+    #[test]
+    fn legacy_recognition_run_defaults_original_result_to_none() {
+        let value = serde_json::json!({
+            "id": "legacy-run",
+            "candidateId": "candidate",
+            "status": "FAILED",
+            "startedAt": Utc::now(),
+            "completedAt": Utc::now(),
+            "resultRevision": 1,
+            "rawResult": "old",
+            "displayResult": "old",
+            "failureReason": null,
+            "backendEvidence": "legacy"
+        });
+        let run: CandidateRecognitionRun = serde_json::from_value(value).unwrap();
+        assert_eq!(run.original_result, None);
     }
 }

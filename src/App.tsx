@@ -48,6 +48,7 @@ import {
   isDesktopRuntime,
   prepareCandidateContextPreview,
   previewMediaUrl,
+  rerunCandidateTranscription,
   saveCandidatesCsv,
   setCandidateDecision,
   startJob,
@@ -56,6 +57,7 @@ import {
 import type {
   Candidate,
   CandidateDecision,
+  CandidateRecognitionRun,
   CaptionSummary,
   ContextLine,
   AnalysisMode,
@@ -66,6 +68,7 @@ import type {
   Scenario,
   SourceKind,
   StoredJobInfo,
+  TranscriptQualityStatus,
   WhisperDeviceMode,
   WhisperProfile
 } from "./types";
@@ -316,6 +319,23 @@ export function resolveTheme(preference: ThemePreference, prefersDark: boolean):
 /** worker가 맥락 구간을 보내지 않는 작업에서 사용할 기본 여유 시간. */
 export const DEFAULT_CONTEXT_PADDING_SECONDS = 15;
 
+export function safeTranscriptText(text: string, status?: TranscriptQualityStatus | null): string {
+  return status === "UNCERTAIN" || text.includes("\uFFFD")
+    ? "음성 인식 결과가 불확실해 원문을 표시하지 않습니다."
+    : text;
+}
+
+/** 불확실한 후보의 제목·요약은 오디오·채팅 같은 안전한 근거를 계속 보여준다. */
+export function safeCandidateDerivedText(text: string): string {
+  return text.includes("\uFFFD")
+    ? "음성 인식 결과가 불확실해 원문을 표시하지 않습니다."
+    : text;
+}
+
+export function hasStartedRecognitionRun(runs: CandidateRecognitionRun[] | null | undefined): boolean {
+  return (runs ?? []).some((run) => run.status === "STARTED");
+}
+
 export interface CandidateContext {
   startSeconds: number;
   endSeconds: number;
@@ -339,7 +359,9 @@ export function resolveCandidateContext(
   return {
     startSeconds: clamp(requestedStart, 0, candidate.startSeconds),
     endSeconds: clamp(requestedEnd, candidate.endSeconds, sourceEnd),
-    lines: [...(candidate.contextTranscript ?? [])].sort((a, b) => a.startSeconds - b.startSeconds),
+    lines: [...(candidate.contextTranscript ?? [])]
+      .map((line) => ({ ...line, text: safeTranscriptText(line.text) }))
+      .sort((a, b) => a.startSeconds - b.startSeconds),
     fromWorker: candidate.contextStartSeconds != null || candidate.contextEndSeconds != null
   };
 }
@@ -587,6 +609,10 @@ function App() {
   const timing = job ? estimateJobTiming(job, new Date(clock)) : null;
   const audioSignalsReady = !!job && PIPELINE_STATUS_ORDER.indexOf(job.status) >= PIPELINE_STATUS_ORDER.indexOf("AUDIO_SIGNALS");
   const chatSignalsReady = !!job && PIPELINE_STATUS_ORDER.indexOf(job.status) >= PIPELINE_STATUS_ORDER.indexOf("CHAT_SIGNALS");
+  const selectedRun = selected && job
+    ? [...(job.recognitionRuns ?? [])].filter((run) => run.candidateId === selected.id).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0]
+    : undefined;
+  const recognitionBusy = hasStartedRecognitionRun(job?.recognitionRuns);
 
   useEffect(() => {
     if (!job?.id || !selected) return;
@@ -672,7 +698,7 @@ function App() {
   }
 
   async function requestCancel() {
-    if (!job || !active || job.status === "CANCELLING") return;
+    if (!job || (!active && !recognitionBusy) || job.status === "CANCELLING") return;
     setActionBusy(true);
     setUiError(null);
     try {
@@ -689,6 +715,19 @@ function App() {
     setActionBusy(true);
     try {
       setJob(await setCandidateDecision(job.id, selected.id, decision));
+    } catch (error) {
+      setUiError(messageFrom(error));
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function rerunSelectedCandidate() {
+    if (!job || job.status !== "REVIEW_READY" || !selected || actionBusy || recognitionBusy) return;
+    setActionBusy(true);
+    setUiError(null);
+    try {
+      setJob(await rerunCandidateTranscription(job.id, selected.id));
     } catch (error) {
       setUiError(messageFrom(error));
     } finally {
@@ -1130,9 +1169,9 @@ function App() {
               <div className="job-actions">
                 {storageBytes !== null ? <span className="storage-label"><HardDrive size={14} /> {formatBytes(storageBytes)}</span> : null}
                 {job.status === "REVIEW_READY" ? <button className="button ghost" disabled={actionBusy} onClick={() => void exportCsv()}><Download size={15} /> CSV</button> : null}
-                {!active ? <button className="button ghost" onClick={() => setNewJobMode(true)}><Square size={15} /> 새 작업</button> : null}
-                {!active ? <button className="button danger" disabled={actionBusy || previewLoading} onClick={() => void removeCurrentJob()}><Trash2 size={15} /> 작업 삭제</button> : null}
-                {active ? (
+                {!active && !recognitionBusy ? <button className="button ghost" onClick={() => setNewJobMode(true)}><Square size={15} /> 새 작업</button> : null}
+                {!active && !recognitionBusy ? <button className="button danger" disabled={actionBusy || previewLoading} onClick={() => void removeCurrentJob()}><Trash2 size={15} /> 작업 삭제</button> : null}
+                {active || recognitionBusy ? (
                   <button className="button danger" disabled={job.status === "CANCELLING" || actionBusy} onClick={() => void requestCancel()}>
                     <Pause size={16} /> {job.status === "CANCELLING" ? "취소 중…" : "안전하게 취소"}
                   </button>
@@ -1190,8 +1229,8 @@ function App() {
                           <span className="candidate-rank">{String(index + 1).padStart(2, "0")}</span>
                           <span className="candidate-copy">
                             <span className="candidate-time">{formatTime(candidate.startSeconds)} — {formatTime(candidate.endSeconds)}</span>
-                            <strong>{candidate.title}</strong>
-                            <small>{candidate.summary}</small>
+                            <strong>{safeCandidateDerivedText(candidate.title)}</strong>
+                            <small>{safeCandidateDerivedText(candidate.summary)}</small>
                           </span>
                           <span className="candidate-score">{candidate.totalScore}</span>
                           <DecisionMark decision={candidate.decision} />
@@ -1233,11 +1272,22 @@ function App() {
                     <div className="detail-title">
                       <div>
                         <span className="eyebrow">CANDIDATE {String(selectedIndex + 1).padStart(2, "0")}</span>
-                        <h2>{selected.title}</h2>
+                        <h2>{safeCandidateDerivedText(selected.title)}</h2>
                       </div>
                       <span className="total-score"><small>TOTAL</small>{selected.totalScore}</span>
                     </div>
-                    <blockquote>“{selected.transcriptExcerpt}”</blockquote>
+                    <blockquote>“{safeTranscriptText(selected.transcriptExcerpt, selected.transcriptQualityStatus)}”</blockquote>
+                    {selected.transcriptQualityStatus === "UNCERTAIN" || selected.transcriptExcerpt.includes("\uFFFD") ? (
+                      <p className="quality-warning" role="status">
+                        <AlertTriangle size={14} /> 음성 인식 결과 불확실 · {selected.transcriptQualityReasons?.join(" · ") || "원문을 후보 제목과 화면 문구에 표시하지 않았습니다."}
+                      </p>
+                    ) : null}
+                    {selectedRun ? (
+                      <p className="quality-warning" role="status">
+                        <Mic2 size={14} /> 다시 음성 인식: {selectedRun.status === "STARTED" ? "진행 중" : selectedRun.status === "COMPLETED" ? "완료" : "실패"} · 실행 ID {selectedRun.id} · 개정 {selectedRun.resultRevision}
+                        {selectedRun.failureReason ? ` · ${selectedRun.failureReason}` : ""}
+                      </p>
+                    ) : null}
                     <SignalRail candidate={selected} />
                     {context ? (
                       <section className="context-panel" aria-labelledby="context-title">
@@ -1299,6 +1349,9 @@ function App() {
                       </section>
                     ) : null}
                     <div className="candidate-tools">
+                      <button className="button ghost compact" disabled={actionBusy || recognitionBusy} onClick={() => void rerunSelectedCandidate()}>
+                        <Mic2 size={15} /> {recognitionBusy ? "다시 음성 인식 중…" : "다시 음성 인식"}
+                      </button>
                       <button className="button ghost compact" onClick={() => void copyTimecode()}><Copy size={15} /> 타임코드 복사</button>
                       <button className="button ghost compact" disabled={actionBusy} onClick={() => void exportCsv()}><Download size={15} /> CSV 내보내기</button>
                     </div>
