@@ -32,6 +32,10 @@ const YT_DLP_FORMAT_PROBE: &str = "bv*[height<=720]+ba/b[height<=720]/b";
 const PROBE_STDOUT_BYTE_LIMIT: usize = 2 * 1024 * 1024;
 const PROBE_STDERR_BYTE_LIMIT: usize = 256 * 1024;
 
+fn youtube_extractor_args() -> [&'static str; 2] {
+    ["--extractor-args", "youtube:skip=translated_subs"]
+}
+
 #[derive(Debug)]
 enum AcquisitionError {
     Cancelled,
@@ -119,6 +123,12 @@ pub(crate) fn validate_youtube_url(value: &str) -> Result<(), String> {
         .host_str()
         .map(|host| host.to_ascii_lowercase())
         .ok_or_else(|| "YouTube 영상 주소 형식을 확인해 주세요.".to_string())?;
+    if parsed
+        .query_pairs()
+        .any(|(key, _)| key.eq_ignore_ascii_case("tlang"))
+    {
+        return Err("번역 자막 주소는 사용할 수 없습니다.".into());
+    }
     let segments = parsed
         .path_segments()
         .map(|segments| segments.filter(|part| !part.is_empty()).collect::<Vec<_>>())
@@ -922,7 +932,10 @@ fn probe_download_metadata(
             "--format",
             YT_DLP_FORMAT_PROBE,
             "--dump-single-json",
+            "--write-subs",
+            "--write-auto-subs",
         ])
+        .args(youtube_extractor_args())
         .arg("--ffmpeg-location")
         .arg(&tools.ffmpeg_dir)
         .arg("--js-runtimes")
@@ -1252,6 +1265,7 @@ fn run_yt_dlp<R: tauri::Runtime>(
             "--output",
             "source.%(ext)s",
         ])
+        .args(youtube_extractor_args())
         .args(caption_download_args(caption_track))
         .arg("--paths")
         .arg(format!("home:{}", download_dir.display()))
@@ -1598,10 +1612,7 @@ fn caption_download_args(caption_track: Option<&CaptionTrack>) -> Vec<String> {
 }
 
 fn find_caption_file(download_dir: &Path, track: &CaptionTrack) -> Option<PathBuf> {
-    let mut expected_names = vec![format!("source.{}.vtt", track.language)];
-    if track.source == captions::CaptionSource::Automatic {
-        expected_names.push(format!("source.{}.auto.vtt", track.language));
-    }
+    let expected_name = format!("source.{}.vtt", track.language);
     let mut candidates = fs::read_dir(download_dir)
         .ok()?
         .filter_map(Result::ok)
@@ -1609,9 +1620,7 @@ fn find_caption_file(download_dir: &Path, track: &CaptionTrack) -> Option<PathBu
         .filter(|path| {
             path.is_file()
                 && path.file_name().is_some_and(|name| {
-                    expected_names.iter().any(|expected| {
-                        name.to_string_lossy().eq_ignore_ascii_case(expected)
-                    })
+                    name.to_string_lossy().eq_ignore_ascii_case(&expected_name)
                 })
         })
         .collect::<Vec<_>>();
@@ -1620,13 +1629,8 @@ fn find_caption_file(download_dir: &Path, track: &CaptionTrack) -> Option<PathBu
 }
 
 fn clear_caption_files(download_dir: &Path, language: &str) {
-    let names = [
-        format!("source.{language}.vtt"),
-        format!("source.{language}.auto.vtt"),
-    ];
-    for name in names {
-        fs::remove_file(download_dir.join(name)).ok();
-    }
+    let name = format!("source.{language}.vtt");
+    fs::remove_file(download_dir.join(name)).ok();
 }
 
 #[cfg(test)]
@@ -1647,6 +1651,7 @@ mod tests {
             "http://www.youtube.com/watch?v=BaW_jenozKc",
             "https://www.youtube.com.evil.test/watch?v=BaW_jenozKc",
             "https://www.youtube.com/playlist?list=abc",
+            "https://www.youtube.com/watch?v=BaW_jenozKc&tlang=ko",
             "https://example.com/watch?v=BaW_jenozKc",
         ] {
             assert!(validate_youtube_url(invalid).is_err(), "{invalid}");
@@ -1715,8 +1720,25 @@ mod tests {
         };
         assert_eq!(
             fs::read_to_string(find_caption_file(temp.path(), &automatic).unwrap()).unwrap(),
-            "automatic"
+            "creator"
         );
+    }
+
+    #[test]
+    fn clears_only_the_selected_common_caption_output() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(temp.path().join("source.ko.vtt"), b"selected stale").unwrap();
+        fs::write(temp.path().join("source.ko.auto.vtt"), b"unrelated legacy").unwrap();
+        fs::write(temp.path().join("source.en.vtt"), b"other language").unwrap();
+        clear_caption_files(temp.path(), "ko");
+        assert!(!temp.path().join("source.ko.vtt").exists());
+        assert!(temp.path().join("source.ko.auto.vtt").exists());
+        assert!(temp.path().join("source.en.vtt").exists());
+    }
+
+    #[test]
+    fn extractor_args_skip_only_translated_subtitles() {
+        assert_eq!(youtube_extractor_args(), ["--extractor-args", "youtube:skip=translated_subs"]);
     }
 
     #[test]

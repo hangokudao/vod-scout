@@ -6,8 +6,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
+use url::Url;
 
 pub const CAPTION_SCHEMA_VERSION: u8 = 1;
 
@@ -81,6 +83,8 @@ pub struct CaptionProvenance {
     pub sha256: String,
     pub verification_state: VerificationState,
     pub diagnostics: Vec<CaptionDiagnostic>,
+    #[serde(skip)]
+    pub content_sha256: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -130,10 +134,12 @@ fn select_track_group(value: Option<&Value>, source: CaptionSource) -> Option<Ca
                 format
                     .get("url")
                     .and_then(Value::as_str)
-                    .is_some_and(|url| !url.trim().is_empty())
+                    .is_some_and(|url| !url.trim().is_empty() && !is_rejected_url(url))
             });
+            let format = format?;
             let track_id = format
-                .and_then(|format| format.get("vss_id").or_else(|| format.get("name")))
+                .get("vss_id")
+                .or_else(|| format.get("name"))
                 .and_then(Value::as_str)
                 .unwrap_or(language)
                 .trim();
@@ -141,11 +147,12 @@ fn select_track_group(value: Option<&Value>, source: CaptionSource) -> Option<Ca
                 return None;
             }
             let url = format
-                .and_then(|format| format.get("url"))
+                .get("url")
                 .and_then(Value::as_str)
                 .map(str::to_string);
             let revision = format
-                .and_then(|format| format.get("vss_id").or_else(|| format.get("name")))
+                .get("vss_id")
+                .or_else(|| format.get("name"))
                 .and_then(Value::as_str)
                 .unwrap_or(track_id)
                 .to_string();
@@ -173,6 +180,16 @@ fn is_korean_language(language: &str) -> bool {
 
 fn is_rejected_track(language: &str, formats: &Value) -> bool {
     is_rejected_text(language) || is_rejected_text(&formats.to_string())
+}
+
+fn is_rejected_url(value: &str) -> bool {
+    Url::parse(value)
+        .map(|url| url.query_pairs().any(|(key, _)| key.eq_ignore_ascii_case("tlang")))
+        .unwrap_or_else(|_| value.split('?').nth(1).is_some_and(|query| {
+            query.split('&').any(|pair| {
+                pair.split('=').next().is_some_and(|key| key.eq_ignore_ascii_case("tlang"))
+            })
+        }))
 }
 
 fn is_rejected_text(value: &str) -> bool {
@@ -306,28 +323,7 @@ pub fn validate_intervals(
                 detail: "자막에 깨진 문자가 포함되어 있습니다.".into(),
             });
         }
-        if let Some((previous_index, previous_interval)) = &previous {
-            if interval.start_seconds < previous_interval.end_seconds {
-                diagnostics.push(CaptionDiagnostic {
-                    kind: CaptionDiagnosticKind::Overlap,
-                    interval_index: Some(index),
-                    start_seconds: Some(interval.start_seconds),
-                    end_seconds: Some(interval.end_seconds),
-                    detail: format!("이전 구간 {previous_index}와 겹칩니다."),
-                });
-            }
-            if interval.start_seconds == previous_interval.start_seconds
-                && interval.end_seconds == previous_interval.end_seconds
-                && interval.text.trim() == previous_interval.text.trim()
-            {
-                diagnostics.push(CaptionDiagnostic {
-                    kind: CaptionDiagnosticKind::Duplicate,
-                    interval_index: Some(index),
-                    start_seconds: Some(interval.start_seconds),
-                    end_seconds: Some(interval.end_seconds),
-                    detail: "같은 시간과 내용의 중복 구간입니다.".into(),
-                });
-            }
+        if let Some((_previous_index, previous_interval)) = &previous {
             if interval.start_seconds > previous_interval.end_seconds {
                 diagnostics.push(CaptionDiagnostic {
                     kind: CaptionDiagnosticKind::GapObserved,
@@ -350,6 +346,13 @@ pub fn validate_intervals(
             {
                 diagnostics.push(CaptionDiagnostic {
                     kind: CaptionDiagnosticKind::Overlap,
+                    interval_index: Some(index),
+                    start_seconds: Some(interval.start_seconds),
+                    end_seconds: Some(interval.end_seconds),
+                    detail: format!("구간 {other_index}와 겹칩니다."),
+                });
+                diagnostics.push(CaptionDiagnostic {
+                    kind: CaptionDiagnosticKind::Overlap,
                     interval_index: Some(other_index),
                     start_seconds: Some(other.start_seconds),
                     end_seconds: Some(other.end_seconds),
@@ -360,6 +363,13 @@ pub fn validate_intervals(
                 && interval.end_seconds == other.end_seconds
                 && interval.text.trim() == other.text.trim()
             {
+                diagnostics.push(CaptionDiagnostic {
+                    kind: CaptionDiagnosticKind::Duplicate,
+                    interval_index: Some(index),
+                    start_seconds: Some(interval.start_seconds),
+                    end_seconds: Some(interval.end_seconds),
+                    detail: format!("구간 {other_index}와 같은 시간과 내용의 중복 구간입니다."),
+                });
                 diagnostics.push(CaptionDiagnostic {
                     kind: CaptionDiagnosticKind::Duplicate,
                     interval_index: Some(other_index),
@@ -387,35 +397,29 @@ pub fn validate_intervals(
 }
 
 pub fn plan_fallbacks(validation: &CaptionValidation, duration_seconds: f64) -> CaptionPlan {
-    let structural_error = |index: usize| {
-        validation.diagnostics.iter().any(|diagnostic| {
-            diagnostic.interval_index == Some(index)
-                && matches!(
-                    diagnostic.kind,
-                    CaptionDiagnosticKind::StartAfterEnd
-                        | CaptionDiagnosticKind::OutOfRange
-                        | CaptionDiagnosticKind::Overlap
-                        | CaptionDiagnosticKind::Duplicate
-                        | CaptionDiagnosticKind::EmptyText
-                        | CaptionDiagnosticKind::QualityWarning
-                )
+    let invalid_indices = validation
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| {
+            matches!(
+                diagnostic.kind,
+                CaptionDiagnosticKind::StartAfterEnd
+                    | CaptionDiagnosticKind::OutOfRange
+                    | CaptionDiagnosticKind::Overlap
+                    | CaptionDiagnosticKind::Duplicate
+                    | CaptionDiagnosticKind::EmptyText
+                    | CaptionDiagnosticKind::QualityWarning
+            )
         })
-    };
-    let has_structural_error = validation.diagnostics.iter().any(|diagnostic| {
-        matches!(
-            diagnostic.kind,
-            CaptionDiagnosticKind::StartAfterEnd
-                | CaptionDiagnosticKind::OutOfRange
-                | CaptionDiagnosticKind::Overlap
-                | CaptionDiagnosticKind::Duplicate
-                | CaptionDiagnosticKind::EmptyText
-                | CaptionDiagnosticKind::QualityWarning
-                | CaptionDiagnosticKind::ProvenanceInvalid
-        )
-    });
+        .filter_map(|diagnostic| diagnostic.interval_index)
+        .collect::<HashSet<_>>();
+    let provenance_invalid = validation
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.kind == CaptionDiagnosticKind::ProvenanceInvalid);
     let full_whisper = validation.intervals.is_empty()
         || validation.verification_state != VerificationState::Verified
-        || has_structural_error;
+        || provenance_invalid;
     if full_whisper {
         return CaptionPlan {
             trusted: Vec::new(),
@@ -424,8 +428,6 @@ pub fn plan_fallbacks(validation: &CaptionValidation, duration_seconds: f64) -> 
                 end_seconds: duration_seconds.max(0.0),
                 reason: if validation.intervals.is_empty() {
                     "caption_unavailable".into()
-                } else if has_structural_error {
-                    "caption_invalid".into()
                 } else {
                     "caption_unverified".into()
                 },
@@ -439,10 +441,12 @@ pub fn plan_fallbacks(validation: &CaptionValidation, duration_seconds: f64) -> 
     let mut trusted = Vec::new();
     let mut fallback = Vec::new();
     for (index, interval) in validation.intervals.iter().enumerate() {
-        if structural_error(index) {
+        if invalid_indices.contains(&index) {
+            let start = interval.start_seconds.min(interval.end_seconds).max(0.0);
+            let end = interval.start_seconds.max(interval.end_seconds).min(duration_seconds);
             fallback.push(FallbackInterval {
-                start_seconds: interval.start_seconds.max(0.0),
-                end_seconds: interval.end_seconds.min(duration_seconds),
+                start_seconds: start,
+                end_seconds: end,
                 reason: "caption_interval_invalid".into(),
             });
         } else {
@@ -559,6 +563,7 @@ pub fn persist_provenance(
         sha256: sha256_bytes(bytes),
         verification_state,
         diagnostics,
+        content_sha256: sha256_bytes(bytes),
     };
     let encoded = serde_json::to_vec_pretty(&provenance).map_err(|error| error.to_string())?;
     fs::write(job_dir.join("caption-provenance.json"), encoded)
@@ -572,14 +577,30 @@ pub fn read_provenance(job_dir: &Path) -> Result<Option<(CaptionProvenance, Vec<
         return Ok(None);
     }
     let bytes = fs::read(&path).map_err(|error| error.to_string())?;
-    let provenance: CaptionProvenance =
+    let mut provenance: CaptionProvenance =
         serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
-    let original = job_dir.join(&provenance.original_file);
+    let original = safe_caption_path(job_dir, &provenance.original_file)?;
     let caption_bytes = fs::read(&original).map_err(|error| error.to_string())?;
     if sha256_bytes(&caption_bytes) != provenance.sha256 {
         return Err("원본 자막 파일의 SHA-256이 저장된 provenance와 다릅니다.".into());
     }
+    provenance.content_sha256 = sha256_bytes(&caption_bytes);
     Ok(Some((provenance, caption_bytes)))
+}
+
+fn safe_caption_path(job_dir: &Path, original_file: &str) -> Result<PathBuf, String> {
+    let relative = Path::new(original_file);
+    if relative.is_absolute() {
+        return Err("자막 provenance 경로가 절대 경로입니다.".into());
+    }
+    let components = relative.components().collect::<Vec<_>>();
+    if components.len() != 2
+        || !matches!(components[0], Component::Normal(value) if value == "captions")
+        || !matches!(components[1], Component::Normal(_))
+    {
+        return Err("자막 provenance 경로가 작업 폴더의 captions 안에 있지 않습니다.".into());
+    }
+    Ok(job_dir.join(relative))
 }
 
 /// Read provenance without turning a damaged caption artifact into an acquisition failure.
@@ -589,10 +610,23 @@ pub fn read_provenance_with_diagnostics(
     job_dir: &Path,
 ) -> Result<Option<(CaptionProvenance, Vec<u8>)>, String> {
     let path = job_dir.join("caption-provenance.json");
-    if !path.is_file() {
+    if !path.exists() {
         return Ok(None);
     }
-    let bytes = fs::read(&path).map_err(|error| error.to_string())?;
+    if !path.is_file() {
+        return Ok(Some((
+            failed_provenance("자막 provenance 파일 형식이 올바르지 않습니다.".into()),
+            Vec::new(),
+        )));
+    }
+    let bytes = match fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            return Ok(Some((failed_provenance(format!(
+                "자막 provenance를 읽지 못했습니다: {error}"
+            )), Vec::new())));
+        }
+    };
     let mut provenance = match serde_json::from_slice::<CaptionProvenance>(&bytes) {
         Ok(value) => value,
         Err(error) => CaptionProvenance {
@@ -612,6 +646,7 @@ pub fn read_provenance_with_diagnostics(
                 end_seconds: None,
                 detail: format!("자막 provenance를 읽지 못했습니다: {error}"),
             }],
+            content_sha256: String::new(),
         },
     };
     if provenance.verification_state == VerificationState::Failed
@@ -635,7 +670,20 @@ pub fn read_provenance_with_diagnostics(
             detail: "자막 provenance 버전이 현재 형식과 다릅니다.".into(),
         });
     }
-    let original = job_dir.join(&provenance.original_file);
+    let original = match safe_caption_path(job_dir, &provenance.original_file) {
+        Ok(path) => path,
+        Err(detail) => {
+            provenance.verification_state = VerificationState::Failed;
+            provenance.diagnostics.push(CaptionDiagnostic {
+                kind: CaptionDiagnosticKind::ProvenanceInvalid,
+                interval_index: None,
+                start_seconds: None,
+                end_seconds: None,
+                detail,
+            });
+            return Ok(Some((provenance, Vec::new())));
+        }
+    };
     let caption_bytes = match fs::read(&original) {
         Ok(caption_bytes) if sha256_bytes(&caption_bytes) == provenance.sha256 => caption_bytes,
         Ok(caption_bytes) => {
@@ -661,7 +709,30 @@ pub fn read_provenance_with_diagnostics(
             Vec::new()
         }
     };
+    provenance.content_sha256 = sha256_bytes(&caption_bytes);
     Ok(Some((provenance, caption_bytes)))
+}
+
+fn failed_provenance(detail: String) -> CaptionProvenance {
+    CaptionProvenance {
+        schema_version: CAPTION_SCHEMA_VERSION,
+        source_url: String::new(),
+        source: CaptionSource::Automatic,
+        language: String::new(),
+        track_id: String::new(),
+        revision: String::new(),
+        original_file: String::new(),
+        sha256: String::new(),
+        verification_state: VerificationState::Failed,
+        diagnostics: vec![CaptionDiagnostic {
+            kind: CaptionDiagnosticKind::ProvenanceInvalid,
+            interval_index: None,
+            start_seconds: None,
+            end_seconds: None,
+            detail,
+        }],
+        content_sha256: String::new(),
+    }
 }
 
 #[cfg(test)]
@@ -704,6 +775,28 @@ mod tests {
         let track = select_track(&info).unwrap();
         assert_eq!(track.source, CaptionSource::Automatic);
         assert_eq!(track.track_id, "ko-auto");
+    }
+
+    #[test]
+    fn accepts_native_automatic_ko_or_ko_orig_but_rejects_translated_urls() {
+        let ko_orig = serde_json::json!({
+            "subtitles": {},
+            "automatic_captions": {
+                "ko": [{"url": "https://example.test/native?tlang=ko"}],
+                "ko-orig": [{"url": "https://example.test/native"}],
+                "ko-live_chat": [{"url": "https://example.test/chat"}],
+                "ko-translation": [{"url": "https://example.test/translated"}],
+                "en": [{"url": "https://example.test/en"}]
+            }
+        });
+        let track = select_track(&ko_orig).unwrap();
+        assert_eq!(track.language, "ko-orig");
+        assert_eq!(track.source, CaptionSource::Automatic);
+        assert!(select_track(&serde_json::json!({
+            "subtitles": {"ko": [{"url": "https://example.test/caption?tlang=ko"}]},
+            "automatic_captions": {}
+        }))
+        .is_none());
     }
 
     #[test]
@@ -758,21 +851,51 @@ mod tests {
     }
 
     #[test]
-    fn invalid_verified_caption_uses_full_whisper_with_failure_diagnostic() {
+    fn verified_caption_falls_back_only_for_invalid_intervals_and_keeps_unrelated_cues() {
         let validation = validate_intervals(
-            vec![interval(2.0, 5.0, "one"), interval(4.0, 6.0, "overlap")],
+            vec![
+                interval(2.0, 5.0, "one"),
+                interval(4.0, 6.0, "overlap"),
+                interval(8.0, 9.0, "trusted"),
+            ],
             10.0,
             VerificationState::Verified,
         );
         let plan = plan_fallbacks(&validation, 10.0);
-        assert!(plan.full_whisper);
-        assert!(plan.trusted.is_empty());
-        assert_eq!(plan.fallback[0].start_seconds, 0.0);
-        assert_eq!(plan.fallback[0].end_seconds, 10.0);
+        assert!(!plan.full_whisper);
+        assert_eq!(plan.trusted, vec![interval(8.0, 9.0, "trusted")]);
+        assert!(plan
+            .fallback
+            .iter()
+            .any(|range| range.start_seconds <= 2.0 && range.end_seconds >= 6.0));
         assert!(plan
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.kind == CaptionDiagnosticKind::Overlap));
+    }
+
+    #[test]
+    fn invalid_index_set_covers_both_overlap_duplicate_sides_and_other_bad_cues() {
+        let validation = validate_intervals(
+            vec![
+                interval(1.0, 4.0, "overlap"),
+                interval(3.0, 5.0, "other overlap"),
+                interval(6.0, 7.0, "duplicate"),
+                interval(6.0, 7.0, "duplicate"),
+                interval(8.0, 7.0, "inverted"),
+                interval(-1.0, 9.0, "out"),
+                interval(9.0, 10.0, ""),
+                interval(10.0, 11.0, "broken �"),
+                interval(12.0, 13.0, "trusted"),
+            ],
+            14.0,
+            VerificationState::Verified,
+        );
+        let plan = plan_fallbacks(&validation, 14.0);
+        assert!(!plan.full_whisper);
+        assert_eq!(plan.trusted, vec![interval(12.0, 13.0, "trusted")]);
+        assert!(plan.fallback.iter().any(|range| range.start_seconds <= 1.0));
+        assert!(plan.fallback.iter().any(|range| range.end_seconds >= 11.0));
     }
 
     #[test]
@@ -894,5 +1017,38 @@ mod tests {
             .unwrap();
         assert_eq!(resumed.verification_state, saved.verification_state);
         assert_eq!(resumed.diagnostics, diagnostics);
+    }
+
+    #[test]
+    fn unsafe_provenance_path_is_rejected_without_reading_outside_captions() {
+        let directory = tempdir().unwrap();
+        let outside = directory.path().join("outside.vtt");
+        fs::write(&outside, b"must not read").unwrap();
+        let metadata = serde_json::json!({
+            "schemaVersion": CAPTION_SCHEMA_VERSION,
+            "sourceUrl": "video-url",
+            "source": "creator",
+            "language": "ko",
+            "trackId": "ko",
+            "revision": "r1",
+            "originalFile": "captions/../outside.vtt",
+            "sha256": sha256_bytes(b"must not read"),
+            "verificationState": "VERIFIED",
+            "diagnostics": []
+        });
+        fs::write(
+            directory.path().join("caption-provenance.json"),
+            serde_json::to_vec(&metadata).unwrap(),
+        )
+        .unwrap();
+        let (provenance, bytes) = read_provenance_with_diagnostics(directory.path())
+            .unwrap()
+            .unwrap();
+        assert!(bytes.is_empty());
+        assert_eq!(provenance.verification_state, VerificationState::Failed);
+        assert!(provenance
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.kind == CaptionDiagnosticKind::ProvenanceInvalid));
     }
 }

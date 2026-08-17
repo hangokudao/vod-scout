@@ -70,10 +70,20 @@ import type {
 
 function captionSummaryLabel(captions: CaptionSummary | null | undefined): string | null {
   if (!captions) return null;
-  const source = captions.source === "creator" ? "제작자 한국어 자막" : captions.source === "automatic" ? "한국어 자동 자막" : "자막 없음";
+  const source = captions.provenance?.verificationState === "FAILED"
+    ? "출처 알 수 없는 자막"
+    : captions.source === "creator" ? "제작자 한국어 자막" : captions.source === "automatic" ? "한국어 자동 자막" : "자막 없음";
   if (captions.fallbackIntervals > 0) return `${source} · Whisper 대체 ${captions.fallbackIntervals}구간`;
   const quality = captions.quality === "trusted" ? "검증된 구간" : captions.quality === "mixed" ? "일부 구간 대체" : "검증 전";
   return `${source} · ${quality}`;
+}
+
+function captionDiagnosticLabel(kind: string): string {
+  if (["StartAfterEnd", "OutOfRange", "Overlap", "Duplicate", "EmptyText", "QualityWarning"].includes(kind)) return "시간·내용 구조";
+  if (kind === "OffsetUnverified") return "시간 오프셋";
+  if (kind === "GapObserved") return "자막 공백";
+  if (kind === "ProvenanceInvalid") return "근거 확인";
+  return "음성 인식 대체";
 }
 
 function captionVerificationLabel(value: CaptionSummary["provenance"]): string {
@@ -82,8 +92,10 @@ function captionVerificationLabel(value: CaptionSummary["provenance"]): string {
 }
 
 function CaptionDetails({ captions }: { captions: CaptionSummary }) {
-  const source = captions.source === "creator" ? "제작자" : captions.source === "automatic" ? "자동" : "없음";
   const provenance = captions.provenance;
+  const source = provenance?.verificationState === "FAILED"
+    ? "알 수 없음"
+    : captions.source === "creator" ? "제작자" : captions.source === "automatic" ? "자동" : "없음";
   return (
     <div className="caption-details" aria-label="YouTube 자막 근거">
       <div className="caption-detail-row">
@@ -97,12 +109,11 @@ function CaptionDetails({ captions }: { captions: CaptionSummary }) {
         <span>검증: {captionVerificationLabel(provenance)}</span>
       </div>
       <div className="caption-detail-row">
-        <span>실제 영상 대조: HOLD</span>
-        <span>로컬 Whisper 대체: {captions.localWhisperFallback ? `${captions.fallbackIntervals}구간` : "없음"}</span>
+        <span>로컬 음성 인식 대체: {captions.localWhisperFallback ? `${captions.fallbackIntervals}구간` : "없음"}</span>
       </div>
       {captions.diagnostics.length > 0 ? (
         <ul className="caption-diagnostics">
-          {captions.diagnostics.map((diagnostic, index) => <li key={`${diagnostic.kind}-${index}`}>{diagnostic.detail}</li>)}
+          {captions.diagnostics.map((diagnostic, index) => <li key={`${diagnostic.kind}-${index}`}><strong>{captionDiagnosticLabel(diagnostic.kind)}</strong> · {diagnostic.detail}</li>)}
         </ul>
       ) : null}
     </div>
