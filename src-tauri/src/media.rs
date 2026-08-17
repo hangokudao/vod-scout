@@ -1711,14 +1711,25 @@ fn has_gpu_backend_evidence(stdout: &str, stderr: &str) -> bool {
         .split(|character: char| !character.is_ascii_alphanumeric())
         .filter(|token| !token.is_empty())
         .collect::<Vec<_>>();
+    if tokens
+        .iter()
+        .any(|token| matches!(*token, "error" | "errors" | "failed" | "failure"))
+    {
+        return false;
+    }
     let found_positive_device = tokens.windows(4).any(|window| {
         window[0] == "found"
             && window[1].parse::<u32>().is_ok_and(|count| count > 0)
             && window[2] == "cuda"
             && window[3].starts_with("device")
     });
-    let using_cuda_backend = logs.contains("using cuda backend")
-        || logs.contains("cuda backend in use");
+    let using_cuda_backend = tokens.windows(3).any(|window| {
+        window[0] == "using"
+            && window[1].strip_prefix("cuda").is_some_and(|suffix| {
+                suffix.is_empty() || suffix.chars().all(|character| character.is_ascii_digit())
+            })
+            && window[2] == "backend"
+    }) || logs.contains("cuda backend in use");
     found_positive_device && using_cuda_backend
 }
 
@@ -2344,10 +2355,21 @@ fn checkpoint_is_compatible_with_whisper(
     ) {
         return false;
     }
-    // Schema 4 has no G2 settings and resumes compatible completed chunks with
-    // the legacy CPU defaults. Schema 5 is tied to the selected settings.
-    checkpoint.schema_version == 4
-        || checkpoint.whisper_settings == expected_whisper.clone().normalized()
+    // Schema 4 has no G2 settings and can resume only for its explicit legacy
+    // CPU/Balanced/auto-threads configuration. Schema 5 is tied to the
+    // selected settings.
+    if checkpoint.schema_version == 4 {
+        return *expected_whisper == legacy_cpu_whisper_settings();
+    }
+    checkpoint.whisper_settings == expected_whisper.clone().normalized()
+}
+
+fn legacy_cpu_whisper_settings() -> WhisperSettings {
+    WhisperSettings {
+        device_mode: WhisperDeviceMode::Cpu,
+        profile: whisper::WhisperProfile::Balanced,
+        cpu_threads: None,
+    }
 }
 
 fn save_checkpoint(path: &Path, checkpoint: &MediaCheckpoint) -> Result<(), PipelineError> {
@@ -3931,7 +3953,8 @@ mod tests {
         schema4.completed_chunks = 2;
         save_checkpoint(&path, &schema4).unwrap();
 
-        let loaded = load_checkpoint(
+        let legacy_cpu = legacy_cpu_whisper_settings();
+        let loaded = load_checkpoint_with_caption(
             &path,
             "source.mp4",
             AnalysisMode::Full,
@@ -3940,10 +3963,74 @@ mod tests {
             "fp",
             2048,
             &runtime,
+            None,
+            &legacy_cpu,
         )
         .unwrap();
         let loaded = loaded.expect("schema4 legacy CPU checkpoint remains resumable");
         assert_eq!(loaded.completed_chunks, 2);
+
+        let auto = WhisperSettings::default();
+        assert!(load_checkpoint_with_caption(
+            &path,
+            "source.mp4",
+            AnalysisMode::Full,
+            None,
+            None,
+            "fp",
+            2048,
+            &runtime,
+            None,
+            &auto,
+        )
+        .unwrap()
+        .is_none());
+        let gpu = WhisperSettings {
+            device_mode: WhisperDeviceMode::Gpu,
+            ..legacy_cpu.clone()
+        };
+        assert!(load_checkpoint_with_caption(
+            &path,
+            "source.mp4",
+            AnalysisMode::Full,
+            None,
+            None,
+            "fp",
+            2048,
+            &runtime,
+            None,
+            &gpu,
+        )
+        .unwrap()
+        .is_none());
+
+        let mut schema5 = schema4.clone();
+        schema5.schema_version = 5;
+        schema5.whisper_settings = auto.clone();
+        assert!(checkpoint_is_compatible_with_whisper(
+            &schema5,
+            "source.mp4",
+            AnalysisMode::Full,
+            0,
+            None,
+            "fp",
+            2048,
+            &runtime,
+            None,
+            &auto,
+        ));
+        assert!(!checkpoint_is_compatible_with_whisper(
+            &schema5,
+            "source.mp4",
+            AnalysisMode::Full,
+            0,
+            None,
+            "fp",
+            2048,
+            &runtime,
+            None,
+            &gpu,
+        ));
 
         // Fresh rebuild + advanced job units must restart media chunks from 0.
         let mut fresh = MediaCheckpoint::fresh(
@@ -3979,6 +4066,10 @@ mod tests {
             "ggml_cuda_init: found 1 CUDA device(s)",
             "using CUDA backend"
         ));
+        assert!(has_gpu_backend_evidence(
+            "ggml_cuda_init: found 2 CUDA devices",
+            "using CUDA0 backend"
+        ));
         assert!(!has_gpu_backend_evidence(
             "ggml_cuda_init: found 0 CUDA device(s)",
             "using CUDA backend"
@@ -3986,6 +4077,14 @@ mod tests {
         assert!(!has_gpu_backend_evidence(
             "ggml_cuda_init: found 1 CUDA device(s)",
             "CUDA error: initialization failed"
+        ));
+        assert!(!has_gpu_backend_evidence(
+            "ggml_cuda_init: found 1 CUDA devices",
+            "using CUDA0 backend; CUDA error: initialization failed"
+        ));
+        assert!(!has_gpu_backend_evidence(
+            "ggml_cuda_init: found 1 CUDA devices error",
+            "using CUDA0 backend"
         ));
         assert!(!has_gpu_backend_evidence("", "cuBLAS loaded"));
         assert!(!has_gpu_backend_evidence("NVIDIA GeForce present", ""));

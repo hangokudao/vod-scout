@@ -228,32 +228,45 @@ pub struct CaptionSummary {
     pub provenance: Option<CaptionProvenanceSummary>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct JobSnapshot {
     pub schema_version: u8,
     pub id: String,
     pub source_kind: SourceKind,
     pub source_label: String,
+    #[serde(default)]
     pub acquired_media_path: Option<String>,
+    #[serde(default)]
     pub download_percent: Option<u8>,
     pub scenario: Scenario,
+    #[serde(default)]
     pub analysis_mode: AnalysisMode,
+    #[serde(default)]
     pub analysis_start_seconds: Option<u32>,
+    #[serde(default)]
     pub analysis_end_seconds: Option<u32>,
     pub status: JobStatus,
     pub completed_units: u32,
     pub total_units: u32,
+    #[serde(default)]
     pub media_duration_seconds: Option<f64>,
     pub current_stage_label: String,
+    #[serde(default)]
     pub last_heartbeat_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(default)]
     pub error_message: Option<String>,
+    #[serde(default)]
     pub error_detail: Option<String>,
     pub candidates: Vec<Candidate>,
     pub activity: Vec<ActivityEvent>,
+    #[serde(default)]
     pub captions: Option<CaptionSummary>,
+    #[serde(default = "legacy_whisper_settings")]
     pub whisper: WhisperSettings,
+    #[serde(default)]
     pub whisper_runtime: WhisperRuntimeState,
 }
 
@@ -262,145 +275,6 @@ fn legacy_whisper_settings() -> WhisperSettings {
         device_mode: crate::whisper::WhisperDeviceMode::Cpu,
         profile: crate::whisper::WhisperProfile::Balanced,
         cpu_threads: None,
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for JobSnapshot {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct SnapshotFields {
-            schema_version: u8,
-            id: String,
-            source_kind: SourceKind,
-            source_label: String,
-            #[serde(default)]
-            acquired_media_path: Option<String>,
-            #[serde(default)]
-            download_percent: Option<u8>,
-            scenario: Scenario,
-            #[serde(default)]
-            analysis_mode: AnalysisMode,
-            #[serde(default)]
-            analysis_start_seconds: Option<u32>,
-            #[serde(default)]
-            analysis_end_seconds: Option<u32>,
-            status: JobStatus,
-            completed_units: u32,
-            total_units: u32,
-            #[serde(default)]
-            media_duration_seconds: Option<f64>,
-            current_stage_label: String,
-            last_heartbeat_at: Option<DateTime<Utc>>,
-            created_at: DateTime<Utc>,
-            updated_at: DateTime<Utc>,
-            error_message: Option<String>,
-            error_detail: Option<String>,
-            candidates: Vec<Candidate>,
-            activity: Vec<ActivityEvent>,
-            #[serde(default)]
-            captions: Option<CaptionSummary>,
-            #[serde(default = "legacy_whisper_settings")]
-            whisper: WhisperSettings,
-            #[serde(default)]
-            whisper_runtime: WhisperRuntimeState,
-        }
-        let fields = SnapshotFields::deserialize(deserializer)?;
-        Ok(Self {
-            schema_version: fields.schema_version,
-            id: fields.id,
-            source_kind: fields.source_kind,
-            source_label: fields.source_label,
-            acquired_media_path: fields.acquired_media_path,
-            download_percent: fields.download_percent,
-            scenario: fields.scenario,
-            analysis_mode: fields.analysis_mode,
-            analysis_start_seconds: fields.analysis_start_seconds,
-            analysis_end_seconds: fields.analysis_end_seconds,
-            status: fields.status,
-            completed_units: fields.completed_units,
-            total_units: fields.total_units,
-            media_duration_seconds: fields.media_duration_seconds,
-            current_stage_label: fields.current_stage_label,
-            last_heartbeat_at: fields.last_heartbeat_at,
-            created_at: fields.created_at,
-            updated_at: fields.updated_at,
-            error_message: fields.error_message,
-            error_detail: fields.error_detail,
-            candidates: fields.candidates,
-            activity: fields.activity,
-            captions: fields.captions,
-            whisper: fields.whisper,
-            whisper_runtime: fields.whisper_runtime,
-        })
-    }
-}
-
-impl serde::Serialize for JobSnapshot {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        #[derive(Serialize)]
-        #[serde(rename_all = "camelCase")]
-        struct SnapshotFields<'a> {
-            schema_version: u8,
-            id: &'a str,
-            source_kind: SourceKind,
-            source_label: &'a str,
-            acquired_media_path: &'a Option<String>,
-            download_percent: &'a Option<u8>,
-            scenario: Scenario,
-            analysis_mode: AnalysisMode,
-            analysis_start_seconds: &'a Option<u32>,
-            analysis_end_seconds: &'a Option<u32>,
-            status: JobStatus,
-            completed_units: u32,
-            total_units: u32,
-            media_duration_seconds: &'a Option<f64>,
-            current_stage_label: &'a str,
-            last_heartbeat_at: &'a Option<DateTime<Utc>>,
-            created_at: DateTime<Utc>,
-            updated_at: DateTime<Utc>,
-            error_message: &'a Option<String>,
-            error_detail: &'a Option<String>,
-            candidates: &'a Vec<Candidate>,
-            activity: &'a Vec<ActivityEvent>,
-            captions: &'a Option<CaptionSummary>,
-            whisper: &'a WhisperSettings,
-            whisper_runtime: &'a WhisperRuntimeState,
-        }
-        SnapshotFields {
-            schema_version: self.schema_version,
-            id: &self.id,
-            source_kind: self.source_kind,
-            source_label: &self.source_label,
-            acquired_media_path: &self.acquired_media_path,
-            download_percent: &self.download_percent,
-            scenario: self.scenario,
-            analysis_mode: self.analysis_mode,
-            analysis_start_seconds: &self.analysis_start_seconds,
-            analysis_end_seconds: &self.analysis_end_seconds,
-            status: self.status,
-            completed_units: self.completed_units,
-            total_units: self.total_units,
-            media_duration_seconds: &self.media_duration_seconds,
-            current_stage_label: &self.current_stage_label,
-            last_heartbeat_at: &self.last_heartbeat_at,
-            created_at: self.created_at,
-            updated_at: self.updated_at,
-            error_message: &self.error_message,
-            error_detail: &self.error_detail,
-            candidates: &self.candidates,
-            activity: &self.activity,
-            captions: &self.captions,
-            whisper: &self.whisper,
-            whisper_runtime: &self.whisper_runtime,
-        }
-        .serialize(serializer)
     }
 }
 
@@ -553,6 +427,37 @@ mod tests {
             .apply_progress(3, JobStatus::Probing, "미디어 확인".into(), "건너뜀".into())
             .is_err());
         assert_eq!(job.completed_units, 1);
+    }
+
+    #[test]
+    fn job_snapshot_wire_format_and_legacy_defaults_are_preserved() {
+        let encoded = serde_json::to_value(job()).unwrap();
+        assert!(encoded.get("schemaVersion").is_some());
+        assert!(encoded.get("sourceKind").is_some());
+        assert!(encoded.get("schema_version").is_none());
+
+        let mut legacy = encoded;
+        let object = legacy.as_object_mut().unwrap();
+        for field in [
+            "acquiredMediaPath",
+            "downloadPercent",
+            "analysisMode",
+            "analysisStartSeconds",
+            "analysisEndSeconds",
+            "mediaDurationSeconds",
+            "lastHeartbeatAt",
+            "errorMessage",
+            "errorDetail",
+            "captions",
+            "whisper",
+            "whisperRuntime",
+        ] {
+            object.remove(field);
+        }
+        let loaded: JobSnapshot = serde_json::from_value(legacy).unwrap();
+        assert_eq!(loaded.analysis_mode, AnalysisMode::Full);
+        assert_eq!(loaded.whisper, legacy_whisper_settings());
+        assert_eq!(loaded.whisper_runtime, WhisperRuntimeState::default());
     }
 
     #[test]
