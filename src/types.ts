@@ -24,7 +24,7 @@ export type CaptionVerificationState = "UNVERIFIED" | "VERIFIED" | "FAILED";
 
 export interface CaptionProvenanceSummary {
   originalFile: string;
-  language: string;
+  language: string | null;
   trackId: string;
   sha256: string;
   revision: string;

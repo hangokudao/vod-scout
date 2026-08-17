@@ -353,7 +353,7 @@ fn acquire<R: tauri::Runtime>(
                         diagnostics: Vec::new(),
                         provenance: Some(crate::domain::CaptionProvenanceSummary {
                             original_file: provenance.original_file.clone(),
-                            language: provenance.language.clone(),
+                            language: Some(provenance.language.clone()),
                             track_id: provenance.track_id.clone(),
                             sha256: provenance.sha256.clone(),
                             revision: provenance.revision.clone(),
@@ -1598,6 +1598,9 @@ fn caption_download_args(caption_track: Option<&CaptionTrack>) -> Vec<String> {
     let Some(track) = caption_track else {
         return Vec::new();
     };
+    if selected_caption_output_filename(&track.language).is_none() {
+        return Vec::new();
+    }
     let source_flag = match track.source {
         captions::CaptionSource::Creator => "--write-subs",
         captions::CaptionSource::Automatic => "--write-auto-subs",
@@ -1611,8 +1614,12 @@ fn caption_download_args(caption_track: Option<&CaptionTrack>) -> Vec<String> {
     ]
 }
 
+fn selected_caption_output_filename(language: &str) -> Option<String> {
+    captions::is_safe_korean_language_tag(language).then(|| format!("source.{language}.vtt"))
+}
+
 fn find_caption_file(download_dir: &Path, track: &CaptionTrack) -> Option<PathBuf> {
-    let expected_name = format!("source.{}.vtt", track.language);
+    let expected_name = selected_caption_output_filename(&track.language)?;
     let mut candidates = fs::read_dir(download_dir)
         .ok()?
         .filter_map(Result::ok)
@@ -1629,8 +1636,9 @@ fn find_caption_file(download_dir: &Path, track: &CaptionTrack) -> Option<PathBu
 }
 
 fn clear_caption_files(download_dir: &Path, language: &str) {
-    let name = format!("source.{language}.vtt");
-    fs::remove_file(download_dir.join(name)).ok();
+    if let Some(name) = selected_caption_output_filename(language) {
+        fs::remove_file(download_dir.join(name)).ok();
+    }
 }
 
 #[cfg(test)]
@@ -1695,6 +1703,27 @@ mod tests {
             .windows(2)
             .any(|pair| pair[0] == "--sub-langs" && pair[1] == "ko-KR"));
         assert!(caption_download_args(None).is_empty());
+    }
+
+    #[test]
+    fn rejects_unsafe_caption_language_tags_before_building_download_args() {
+        for language in ["ko-../../x", r"ko\..\x", "ko.*"] {
+            let track = CaptionTrack {
+                track_id: language.into(),
+                language: language.into(),
+                source: captions::CaptionSource::Creator,
+                url: None,
+                revision: language.into(),
+            };
+            assert!(caption_download_args(Some(&track)).is_empty(), "{language}");
+            assert!(selected_caption_output_filename(language).is_none());
+        }
+        for language in ["ko", "ko-orig", "ko_KR"] {
+            assert_eq!(
+                selected_caption_output_filename(language),
+                Some(format!("source.{language}.vtt"))
+            );
+        }
     }
 
     #[test]

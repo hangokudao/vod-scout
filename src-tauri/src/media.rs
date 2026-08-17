@@ -410,8 +410,9 @@ fn caption_plan_for_duration(
 
 /// Partition one analyzed chunk into disjoint verified-caption and Whisper ranges.
 /// A caption crossing a chunk boundary belongs to the first analyzed chunk it touches;
-/// its remainder is deliberately Whisper-covered in the next chunk. This also handles
-/// sparse quick-analysis chunks and requested-range boundaries without uncovered spans.
+/// cross-chunk cues are emitted once and their remainder is not Whisper fallback. This
+/// also handles sparse quick-analysis chunks and requested-range boundaries without
+/// uncovered spans.
 fn partition_caption_chunk(
     plan: &CaptionPlan,
     chunks: &[PlannedChunk],
@@ -1092,7 +1093,10 @@ fn run<R: tauri::Runtime>(
         checkpoint.duration_seconds,
     );
     if let Some((provenance, _)) = caption_artifacts.as_ref() {
-        let quality = if caption_plan.full_whisper {
+        let failed_provenance = provenance.verification_state == VerificationState::Failed;
+        let quality = if failed_provenance {
+            "failed"
+        } else if caption_plan.full_whisper {
             "unverified"
         } else if caption_plan.fallback.is_empty() {
             "trusted"
@@ -1108,7 +1112,7 @@ fn run<R: tauri::Runtime>(
         let _ = mutate_job(app, state, |job| {
             job.captions = Some(crate::domain::CaptionSummary {
                 source: Some(provenance.source),
-                language: Some(provenance.language.clone()),
+                language: (!failed_provenance).then(|| provenance.language.clone()),
                 quality: quality.into(),
                 fallback_intervals: caption_plan.fallback.len() as u32,
                 local_whisper_fallback: caption_plan.full_whisper || !caption_plan.fallback.is_empty(),
@@ -1124,7 +1128,7 @@ fn run<R: tauri::Runtime>(
                     .collect(),
                 provenance: Some(crate::domain::CaptionProvenanceSummary {
                     original_file: provenance.original_file.clone(),
-                    language: provenance.language.clone(),
+                    language: (!failed_provenance).then(|| provenance.language.clone()),
                     track_id: provenance.track_id.clone(),
                     sha256: provenance.sha256.clone(),
                     revision: provenance.revision.clone(),

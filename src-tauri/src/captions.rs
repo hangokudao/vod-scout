@@ -6,12 +6,13 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use url::Url;
 
 pub const CAPTION_SCHEMA_VERSION: u8 = 1;
+const MAX_LANGUAGE_TAG_LENGTH: usize = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -174,8 +175,28 @@ fn select_track_group(value: Option<&Value>, source: CaptionSource) -> Option<Ca
 }
 
 fn is_korean_language(language: &str) -> bool {
-    let normalized = language.trim().to_ascii_lowercase().replace('_', "-");
-    normalized == "ko" || normalized.starts_with("ko-")
+    is_safe_korean_language_tag(language)
+}
+
+/// Caption language metadata is untrusted input because it becomes part of a
+/// filename and a child-process argument.
+pub fn is_safe_korean_language_tag(language: &str) -> bool {
+    if language.is_empty()
+        || language.len() > MAX_LANGUAGE_TAG_LENGTH
+        || !language
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+    {
+        return false;
+    }
+    let components = language.split(['-', '_']).collect::<Vec<_>>();
+    components
+        .first()
+        .is_some_and(|component| component.eq_ignore_ascii_case("ko"))
+        && components
+            .iter()
+            .skip(1)
+            .all(|component| !component.is_empty())
 }
 
 fn is_rejected_track(language: &str, formats: &Value) -> bool {
@@ -283,7 +304,6 @@ pub fn validate_intervals(
     verification_state: VerificationState,
 ) -> CaptionValidation {
     let mut diagnostics = Vec::new();
-    let mut previous: Option<(usize, CaptionInterval)> = None;
     for (index, interval) in intervals.iter().enumerate() {
         if !interval.start_seconds.is_finite()
             || !interval.end_seconds.is_finite()
@@ -323,62 +343,108 @@ pub fn validate_intervals(
                 detail: "자막에 깨진 문자가 포함되어 있습니다.".into(),
             });
         }
-        if let Some((_previous_index, previous_interval)) = &previous {
-            if interval.start_seconds > previous_interval.end_seconds {
-                diagnostics.push(CaptionDiagnostic {
-                    kind: CaptionDiagnosticKind::GapObserved,
-                    interval_index: Some(index),
-                    start_seconds: Some(previous_interval.end_seconds),
-                    end_seconds: Some(interval.start_seconds),
-                    detail: format!(
-                        "자막 사이 공백 {}초를 관찰했습니다. 합격 기준은 정하지 않습니다.",
-                        interval.start_seconds - previous_interval.end_seconds
-                    ),
-                });
-            }
-        }
-        previous = Some((index, interval.clone()));
     }
-    for (index, interval) in intervals.iter().enumerate() {
-        for (other_index, other) in intervals.iter().enumerate().skip(index + 1) {
-            if interval.start_seconds < other.end_seconds
-                && other.start_seconds < interval.end_seconds
-            {
-                diagnostics.push(CaptionDiagnostic {
-                    kind: CaptionDiagnosticKind::Overlap,
-                    interval_index: Some(index),
-                    start_seconds: Some(interval.start_seconds),
-                    end_seconds: Some(interval.end_seconds),
-                    detail: format!("구간 {other_index}와 겹칩니다."),
-                });
-                diagnostics.push(CaptionDiagnostic {
-                    kind: CaptionDiagnosticKind::Overlap,
-                    interval_index: Some(other_index),
-                    start_seconds: Some(other.start_seconds),
-                    end_seconds: Some(other.end_seconds),
-                    detail: format!("구간 {index}와 겹칩니다."),
-                });
-            }
-            if interval.start_seconds == other.start_seconds
-                && interval.end_seconds == other.end_seconds
-                && interval.text.trim() == other.text.trim()
-            {
-                diagnostics.push(CaptionDiagnostic {
-                    kind: CaptionDiagnosticKind::Duplicate,
-                    interval_index: Some(index),
-                    start_seconds: Some(interval.start_seconds),
-                    end_seconds: Some(interval.end_seconds),
-                    detail: format!("구간 {other_index}와 같은 시간과 내용의 중복 구간입니다."),
-                });
-                diagnostics.push(CaptionDiagnostic {
-                    kind: CaptionDiagnosticKind::Duplicate,
-                    interval_index: Some(other_index),
-                    start_seconds: Some(other.start_seconds),
-                    end_seconds: Some(other.end_seconds),
-                    detail: format!("구간 {index}와 같은 시간과 내용의 중복 구간입니다."),
-                });
+
+    let mut indexed = intervals.iter().enumerate().collect::<Vec<_>>();
+    indexed.sort_by(|(left_index, left), (right_index, right)| {
+        left.start_seconds
+            .total_cmp(&right.start_seconds)
+            .then_with(|| left.end_seconds.total_cmp(&right.end_seconds))
+            .then_with(|| left_index.cmp(right_index))
+    });
+
+    // For structurally valid intervals sorted by start, an active maximum-end
+    // sweep marks every interval that participates in at least one overlap.
+    // Intervals with non-finite or inverted bounds are already invalid above
+    // and do not need to participate in this sweep.
+    let mut overlap_partner: Vec<Option<usize>> = vec![None; indexed.len()];
+    let mut active_max: Option<(usize, f64)> = None;
+    for (index, interval) in indexed.iter().copied() {
+        if !interval.start_seconds.is_finite()
+            || !interval.end_seconds.is_finite()
+            || interval.start_seconds >= interval.end_seconds
+        {
+            continue;
+        }
+        if let Some((active_index, active_end)) = active_max {
+            if active_end > interval.start_seconds {
+                overlap_partner[index].get_or_insert(active_index);
+                overlap_partner[active_index].get_or_insert(index);
             }
         }
+        if active_max.map_or(true, |(_, active_end)| interval.end_seconds > active_end) {
+            active_max = Some((index, interval.end_seconds));
+        }
+    }
+    for (index, partner) in overlap_partner.into_iter().enumerate() {
+        if let Some(partner) = partner {
+            let interval = &intervals[index];
+            diagnostics.push(CaptionDiagnostic {
+                kind: CaptionDiagnosticKind::Overlap,
+                interval_index: Some(index),
+                start_seconds: Some(interval.start_seconds),
+                end_seconds: Some(interval.end_seconds),
+                detail: format!("구간 {partner}와 겹칩니다."),
+            });
+        }
+    }
+
+    let mut duplicate_first = HashMap::new();
+    let mut duplicate_partner: Vec<Option<usize>> = vec![None; intervals.len()];
+    for (index, interval) in intervals.iter().enumerate() {
+        let key = (
+            interval.start_seconds.to_bits(),
+            interval.end_seconds.to_bits(),
+            interval.text.trim().to_string(),
+        );
+        if let Some(&first_index) = duplicate_first.get(&key) {
+            duplicate_partner[index] = Some(first_index);
+            duplicate_partner[first_index].get_or_insert(index);
+        } else {
+            duplicate_first.insert(key, index);
+        }
+    }
+    for (index, partner) in duplicate_partner.into_iter().enumerate() {
+        if let Some(partner) = partner {
+            let interval = &intervals[index];
+            diagnostics.push(CaptionDiagnostic {
+                kind: CaptionDiagnosticKind::Duplicate,
+                interval_index: Some(index),
+                start_seconds: Some(interval.start_seconds),
+                end_seconds: Some(interval.end_seconds),
+                detail: format!("구간 {partner}와 같은 시간과 내용의 중복 구간입니다."),
+            });
+        }
+    }
+
+    let mut gap_count = 0usize;
+    let mut largest_gap = 0.0f64;
+    let mut previous_end = None;
+    for (_, interval) in indexed.iter().copied().filter(|(_, interval)| {
+        interval.start_seconds.is_finite()
+            && interval.end_seconds.is_finite()
+            && interval.start_seconds < interval.end_seconds
+    }) {
+        if let Some(end) = previous_end {
+            if interval.start_seconds > end {
+                gap_count += 1;
+                largest_gap = largest_gap.max(interval.start_seconds - end);
+            }
+        }
+        previous_end = Some(previous_end.map_or(interval.end_seconds, |end: f64| {
+            end.max(interval.end_seconds)
+        }));
+    }
+    if gap_count > 0 {
+        diagnostics.push(CaptionDiagnostic {
+            kind: CaptionDiagnosticKind::GapObserved,
+            interval_index: None,
+            start_seconds: None,
+            end_seconds: None,
+            detail: format!(
+                "자막 사이 공백 {gap_count}개를 관찰했으며 최대 공백은 {largest_gap}초입니다. 합격 기준은 정하지 않습니다."
+            ),
+        });
     }
     if verification_state == VerificationState::Unverified {
         diagnostics.push(CaptionDiagnostic {
@@ -896,6 +962,51 @@ mod tests {
         assert_eq!(plan.trusted, vec![interval(12.0, 13.0, "trusted")]);
         assert!(plan.fallback.iter().any(|range| range.start_seconds <= 1.0));
         assert!(plan.fallback.iter().any(|range| range.end_seconds >= 11.0));
+    }
+
+    #[test]
+    fn large_caption_input_keeps_diagnostics_bounded_and_partition_indices_correctly() {
+        let mut intervals = vec![
+            interval(0.0, 1.0, "overlap"),
+            interval(0.5, 1.5, "other overlap"),
+            interval(2.0, 3.0, "duplicate"),
+            interval(2.0, 3.0, "duplicate"),
+        ];
+        intervals.extend((0..10_000).map(|index| {
+            let start = 10.0 + index as f64 * 2.0;
+            interval(start, start + 1.0, "trusted")
+        }));
+        let validation = validate_intervals(intervals, 20_010.0, VerificationState::Verified);
+        let overlap_count = validation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.kind == CaptionDiagnosticKind::Overlap)
+            .count();
+        let duplicate_count = validation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.kind == CaptionDiagnosticKind::Duplicate)
+            .count();
+        let gap_count = validation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.kind == CaptionDiagnosticKind::GapObserved)
+            .count();
+        assert_eq!(overlap_count, 4);
+        assert_eq!(duplicate_count, 2);
+        assert_eq!(gap_count, 1);
+        assert!(validation.diagnostics.len() <= 7);
+
+        let plan = plan_fallbacks(&validation, 20_010.0);
+        assert_eq!(plan.trusted.len(), 10_000);
+        assert!(plan
+            .fallback
+            .iter()
+            .any(|range| range.start_seconds <= 0.0 && range.end_seconds >= 1.5));
+        assert!(plan
+            .fallback
+            .iter()
+            .any(|range| range.start_seconds <= 2.0 && range.end_seconds >= 3.0));
     }
 
     #[test]

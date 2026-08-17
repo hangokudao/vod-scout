@@ -195,7 +195,7 @@ pub struct ActivityEvent {
 pub struct CaptionProvenanceSummary {
     pub original_file: String,
     #[serde(default)]
-    pub language: String,
+    pub language: Option<String>,
     pub track_id: String,
     pub sha256: String,
     pub revision: String,
