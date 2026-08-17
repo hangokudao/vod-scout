@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 import type {
   Candidate,
+  CandidateCount,
   CandidateDecision,
   CreateJobInput,
   JobStorageInfo,
@@ -125,6 +126,65 @@ function addMockActivity(kind: string, message: string) {
   });
 }
 
+export type CandidateTranscriptUpdate = Pick<
+  Candidate,
+  "transcriptExcerpt" | "transcriptQualityStatus" | "transcriptQualityReasons" | "qualityStatus" | "qualityWarnings" | "uncertaintyReasons"
+>;
+
+export function syncCandidateDecision(
+  candidates: Candidate[],
+  candidatePool: Candidate[] | undefined,
+  candidateId: string,
+  decision: CandidateDecision
+): boolean {
+  let found = false;
+  for (const candidate of candidates) {
+    if (candidate.id === candidateId) {
+      candidate.decision = decision;
+      found = true;
+    }
+  }
+  for (const candidate of candidatePool ?? []) {
+    if (candidate.id === candidateId) {
+      candidate.decision = decision;
+      found = true;
+    }
+  }
+  return found;
+}
+
+export function selectCandidatesForCount(
+  candidates: Candidate[],
+  candidatePool: Candidate[] | undefined,
+  count: number
+): Candidate[] {
+  const source = candidatePool?.length ? candidatePool : candidates;
+  const decisions = new Map(candidates.map((candidate) => [candidate.id, candidate.decision]));
+  for (const candidate of candidatePool ?? []) {
+    if (!decisions.has(candidate.id)) decisions.set(candidate.id, candidate.decision);
+  }
+  return source.slice(0, count).map((candidate) => ({
+    ...structuredClone(candidate),
+    decision: decisions.get(candidate.id) ?? "PENDING"
+  }));
+}
+
+export function syncCandidateTranscript(
+  candidates: Candidate[],
+  candidatePool: Candidate[] | undefined,
+  candidateId: string,
+  update: CandidateTranscriptUpdate
+): boolean {
+  let found = false;
+  for (const candidate of [...candidates, ...(candidatePool ?? [])]) {
+    if (candidate.id === candidateId) {
+      Object.assign(candidate, update);
+      found = true;
+    }
+  }
+  return found;
+}
+
 export async function bootstrap(): Promise<JobSnapshot | null> {
   if (tauriAvailable) return invoke("bootstrap");
   return mockJob ? structuredClone(mockJob) : null;
@@ -165,6 +225,10 @@ export async function createJob(input: CreateJobInput): Promise<JobSnapshot> {
     errorMessage: null,
     errorDetail: null,
     candidates: [],
+    candidatePool: [],
+    candidateCount: input.candidateCount,
+    candidateRevision: 0,
+    candidateRevisions: [],
     activity: [{ sequence: 1, timestamp: now, kind: "job", message: "새 분석 작업을 만들었습니다." }],
     captions: null,
     whisper: input.whisper,
@@ -267,7 +331,8 @@ export async function startJob(jobId: string): Promise<JobSnapshot> {
     if (next === 12) {
       mockJob.status = "REVIEW_READY";
       mockJob.currentStageLabel = "후보 검토 준비";
-      mockJob.candidates = structuredClone(mockCandidates);
+      mockJob.candidatePool = structuredClone(mockCandidates);
+      mockJob.candidates = mockJob.candidatePool.slice(0, mockJob.candidateCount);
       addMockActivity("complete", "분석을 마쳤습니다. 후보를 검토해 주세요.");
       window.clearInterval(mockTimer!);
       mockTimer = null;
@@ -298,7 +363,7 @@ export async function setCandidateDecision(
   if (!mockJob || mockJob.id !== jobId) throw new Error("현재 작업을 찾을 수 없습니다.");
   const candidate = mockJob.candidates.find((item) => item.id === candidateId);
   if (!candidate) throw new Error("후보를 찾을 수 없습니다.");
-  candidate.decision = decision;
+  syncCandidateDecision(mockJob.candidates, mockJob.candidatePool, candidateId, decision);
   addMockActivity("review", `후보를 ${decision === "ACCEPTED" ? "채택" : decision === "REJECTED" ? "제외" : "보류"} 처리했습니다.`);
   notifyMock();
   return structuredClone(mockJob);
@@ -314,6 +379,16 @@ export async function rerunCandidateTranscription(jobId: string, candidateId: st
   const runs = mockJob.recognitionRuns ?? (mockJob.recognitionRuns = []);
   if (runs.some((run) => run.status === "STARTED")) throw new Error("다른 후보 음성 인식이 실행 중입니다.");
   const revision = Math.max(0, ...runs.filter((run) => run.candidateId === candidateId).map((run) => run.resultRevision)) + 1;
+  if (mockJob.candidates.length > 0) {
+    mockJob.candidateRevisions.push({
+      revision: mockJob.candidateRevision,
+      candidateCount: mockJob.candidateCount,
+      reason: "수동 재음성 인식 전 기존 결과 보존",
+      createdAt: new Date().toISOString(),
+      candidates: structuredClone(mockJob.candidates)
+    });
+    mockJob.candidateRevision += 1;
+  }
   const runId = crypto.randomUUID();
   const startedAt = new Date().toISOString();
   const started: CandidateRecognitionRun = {
@@ -339,8 +414,36 @@ export async function rerunCandidateTranscription(jobId: string, candidateId: st
   started.rawResult = rawResult;
   started.displayResult = rawResult;
   started.backendEvidence = "실제 백엔드=fixture · 내장 G2 Whisper 명령 형태 유지";
-  candidate.transcriptExcerpt = rawResult;
+  syncCandidateTranscript(mockJob.candidates, mockJob.candidatePool, candidateId, {
+    transcriptExcerpt: rawResult,
+    transcriptQualityStatus: "CERTAIN",
+    transcriptQualityReasons: [],
+    qualityStatus: "VALID",
+    qualityWarnings: [],
+    uncertaintyReasons: []
+  });
   addMockActivity("recognition", "선택 후보 음성 인식을 완료했습니다. 기존 후보 판정은 유지했습니다.");
+  notifyMock();
+  return structuredClone(mockJob);
+}
+
+export async function setCandidateCount(jobId: string, candidateCount: CandidateCount): Promise<JobSnapshot> {
+  if (tauriAvailable) return invoke("set_candidate_count", { jobId, candidateCount });
+  if (!mockJob || mockJob.id !== jobId || mockJob.status !== "REVIEW_READY") {
+    throw new Error("검토 준비가 끝난 현재 작업에서만 후보 수를 바꿀 수 있습니다.");
+  }
+  if (mockJob.candidateCount === candidateCount) return structuredClone(mockJob);
+  mockJob.candidateRevisions.push({
+    revision: mockJob.candidateRevision,
+    candidateCount: mockJob.candidateCount,
+    reason: "후보 수 변경 전 기존 결과 보존",
+    createdAt: new Date().toISOString(),
+    candidates: structuredClone(mockJob.candidates)
+  });
+  mockJob.candidateRevision += 1;
+  mockJob.candidateCount = candidateCount;
+  mockJob.candidates = selectCandidatesForCount(mockJob.candidates, mockJob.candidatePool, candidateCount);
+  addMockActivity("candidates", `후보 수를 ${candidateCount}개로 바꿔 새 개정으로 저장했습니다.`);
   notifyMock();
   return structuredClone(mockJob);
 }

@@ -8,8 +8,9 @@ mod storage;
 mod whisper;
 
 use crate::domain::{
-    AnalysisMode, Candidate, CandidateDecision, CandidateRecognitionRun, JobSnapshot, JobStatus,
-    RecognitionRunStatus, Scenario, SourceKind, TranscriptQualityStatus,
+    normalize_candidate_count, AnalysisMode, Candidate, CandidateDecision, CandidateRecognitionRun,
+    CandidateRevision, JobSnapshot, JobStatus, RecognitionRunStatus, Scenario, SourceKind,
+    TranscriptQualityStatus,
 };
 use crate::whisper::WhisperSettings;
 use crate::resource::{ResourceDecision, ResourceSample, ResourceStage, StageResourceMetric};
@@ -65,7 +66,11 @@ struct CreateJobInput {
     analysis_end_seconds: Option<u32>,
     #[serde(default)]
     whisper: WhisperSettings,
+    #[serde(default = "default_candidate_count_input")]
+    candidate_count: u8,
 }
+
+fn default_candidate_count_input() -> u8 { 20 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -327,6 +332,7 @@ fn create_job(
         input.analysis_end_seconds,
     );
     let mut job = job;
+    job.candidate_count = normalize_candidate_count(input.candidate_count);
     job.whisper = input.whisper.normalized();
     state.store.save(&job).map_err(|error| error.to_string())?;
     if let Some(event) = job.activity.last() {
@@ -342,6 +348,85 @@ fn create_job(
     app.emit("job-updated", &job)
         .map_err(|error| error.to_string())?;
     Ok(job)
+}
+
+fn preserve_candidate_revision(job: &mut JobSnapshot, reason: &str) {
+    if job.candidates.is_empty() {
+        return;
+    }
+    job.candidate_revisions.push(CandidateRevision {
+        revision: job.candidate_revision,
+        candidate_count: job.candidate_count,
+        reason: reason.into(),
+        created_at: Utc::now(),
+        candidates: job.candidates.clone(),
+    });
+    job.candidate_revision = job.candidate_revision.saturating_add(1);
+}
+
+fn candidates_for_count(job: &JobSnapshot, count: u8) -> Vec<Candidate> {
+    let mut candidates = if job.candidate_pool.is_empty() {
+        job.candidates.clone()
+    } else {
+        job.candidate_pool.clone()
+    };
+    candidates.sort_by(|left, right| {
+        right.total_score.cmp(&left.total_score)
+            .then_with(|| left.start_seconds.cmp(&right.start_seconds))
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    let mut decisions = job.candidates.iter().map(|candidate| (candidate.id.as_str(), candidate.decision)).collect::<std::collections::HashMap<_, _>>();
+    for candidate in &job.candidate_pool {
+        decisions.entry(candidate.id.as_str()).or_insert(candidate.decision);
+    }
+    candidates.truncate(count as usize);
+    for candidate in &mut candidates {
+        candidate.decision = decisions.get(candidate.id.as_str()).copied().unwrap_or(CandidateDecision::Pending);
+    }
+    candidates
+}
+
+fn sync_candidate_decision(
+    job: &mut JobSnapshot,
+    candidate_id: &str,
+    decision: CandidateDecision,
+) -> Result<(), String> {
+    let candidate = job
+        .candidates
+        .iter_mut()
+        .find(|candidate| candidate.id == candidate_id)
+        .ok_or_else(|| "후보를 찾을 수 없습니다.".to_string())?;
+    candidate.decision = decision;
+    if let Some(pool_candidate) = job.candidate_pool.iter_mut().find(|candidate| candidate.id == candidate_id) {
+        pool_candidate.decision = decision;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn set_candidate_count(
+    app: tauri::AppHandle,
+    state: State<'_, Arc<AppState>>,
+    job_id: String,
+    candidate_count: u8,
+) -> Result<JobSnapshot, String> {
+    if state.running.load(Ordering::SeqCst) {
+        return Err("분석 또는 다시 음성 인식이 실행 중일 때 후보 수를 바꿀 수 없습니다.".into());
+    }
+    let candidate_count = normalize_candidate_count(candidate_count);
+    mutate_job(&app, &state, |job| {
+        if job.id != job_id || job.status != JobStatus::ReviewReady {
+            return Err("검토 준비가 끝난 현재 작업에서만 후보 수를 바꿀 수 있습니다.".into());
+        }
+        if job.candidate_count == candidate_count {
+            return Ok(());
+        }
+        preserve_candidate_revision(job, "후보 수 변경 전 기존 결과 보존");
+        job.candidate_count = candidate_count;
+        job.candidates = candidates_for_count(job, candidate_count);
+        job.push_activity("candidates", &format!("후보 수를 {}개로 바꿔 새 개정으로 저장했습니다.", candidate_count));
+        Ok(())
+    })
 }
 
 async fn run_worker(app: tauri::AppHandle, state: Arc<AppState>, job_id: String) {
@@ -483,7 +568,9 @@ async fn run_worker(app: tauri::AppHandle, state: Arc<AppState>, job_id: String)
                     }
                     WorkerEvent::Candidates { candidates } => {
                         let _ = mutate_job(&app, &state, |job| {
-                            job.candidates = candidates;
+                            job.candidate_pool = candidates;
+                            job.candidates = job.candidate_pool.clone();
+                            job.candidates.truncate(job.candidate_count as usize);
                             job.push_activity(
                                 "candidates",
                                 "후보 구간 3개를 검토 목록에 추가했습니다.",
@@ -689,14 +776,16 @@ async fn rerun_candidate_transcription(
         if job.id != job_id || job.status != JobStatus::ReviewReady {
             return Err("검토 준비가 끝난 현재 작업에서만 다시 음성 인식을 실행할 수 있습니다.".into());
         }
-        let candidate = job.candidates.iter().find(|candidate| candidate.id == candidate_id)
+        let original_result = job.candidates.iter().find(|candidate| candidate.id == candidate_id)
+            .map(|candidate| candidate.transcript_excerpt.clone())
             .ok_or_else(|| "선택한 후보를 찾을 수 없습니다.".to_string())?;
-        let revision = job.recognition_runs.iter().filter(|run| run.candidate_id == candidate.id)
+        preserve_candidate_revision(job, "수동 재음성 인식 전 기존 결과 보존");
+        let revision = job.recognition_runs.iter().filter(|run| run.candidate_id == candidate_id)
             .map(|run| run.result_revision).max().unwrap_or(0).saturating_add(1);
         job.recognition_runs.push(CandidateRecognitionRun {
             id: run_id.clone(), candidate_id: candidate_id.clone(), status: RecognitionRunStatus::Started,
             started_at: Utc::now(), completed_at: None, result_revision: revision,
-            original_result: Some(candidate.transcript_excerpt.clone()), raw_result: None,
+            original_result: Some(original_result), raw_result: None,
             display_result: None, failure_reason: None,
             backend_evidence: "요청됨 · 내장 G2 Whisper 런타임·모델 사용".into(),
         });
@@ -1141,12 +1230,7 @@ fn set_candidate_decision(
         if job.id != job_id || job.status != JobStatus::ReviewReady {
             return Err("검토 준비가 끝난 현재 작업에서만 후보를 판정할 수 있습니다.".into());
         }
-        let candidate = job
-            .candidates
-            .iter_mut()
-            .find(|candidate| candidate.id == candidate_id)
-            .ok_or_else(|| "후보를 찾을 수 없습니다.".to_string())?;
-        candidate.decision = decision;
+        sync_candidate_decision(job, &candidate_id, decision)?;
         let label = match decision {
             CandidateDecision::Pending => "보류",
             CandidateDecision::Accepted => "채택",
@@ -1236,6 +1320,39 @@ mod tests {
         TestAppState { state, _temp: temp }
     }
 
+    fn test_candidate(id: &str, total_score: u8) -> Candidate {
+        Candidate {
+            id: id.into(), start_seconds: total_score as u32, end_seconds: total_score as u32 + 10,
+            title: id.into(), summary: "요약".into(), transcript_excerpt: "기존 결과".into(),
+            audio_score: total_score, dialogue_score: total_score, chat_score: None, total_score,
+            decision: CandidateDecision::Pending, quality_status: "VALID".into(), quality_warnings: Vec::new(), selection_reasons: Vec::new(), uncertainty_reasons: Vec::new(), transcript_quality_status: TranscriptQualityStatus::Certain,
+            transcript_quality_reasons: Vec::new(), context_start_seconds: 0.0, context_end_seconds: 10.0,
+            context_transcript: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn preserves_candidate_decision_when_count_round_trips_through_pool() {
+        let mut job = JobSnapshot::new(
+            "job-candidate-pool".into(), SourceKind::Demo, "fixture".into(), Scenario::Normal,
+            AnalysisMode::Full, None, None,
+        );
+        job.candidate_pool = (0..30).map(|index| test_candidate(&format!("candidate-{index:02}"), 100 - index)).collect();
+        job.candidates = job.candidate_pool[..8].to_vec();
+
+        sync_candidate_decision(&mut job, "candidate-20", CandidateDecision::Accepted)
+            .expect_err("hidden candidates are not directly reviewable");
+        sync_candidate_decision(&mut job, "candidate-03", CandidateDecision::Accepted)
+            .expect("visible candidate decision should update");
+        job.candidates = candidates_for_count(&job, 8);
+        assert_eq!(job.candidates.iter().find(|candidate| candidate.id == "candidate-03").unwrap().decision, CandidateDecision::Accepted);
+
+        job.candidate_count = 30;
+        job.candidates = candidates_for_count(&job, 30);
+        assert_eq!(job.candidates.iter().find(|candidate| candidate.id == "candidate-03").unwrap().decision, CandidateDecision::Accepted);
+        assert_eq!(job.candidates.iter().find(|candidate| candidate.id == "candidate-20").unwrap().decision, CandidateDecision::Pending);
+    }
+
     #[test]
     fn mismatched_cancel_job_id_leaves_cancel_requested_false() {
         let active_id = Uuid::new_v4().to_string();
@@ -1280,7 +1397,7 @@ mod tests {
             id: "candidate-other".into(), start_seconds: 10, end_seconds: 20,
             title: "제목".into(), summary: "요약".into(), transcript_excerpt: "기존 결과".into(),
             audio_score: 80, dialogue_score: 70, chat_score: Some(60), total_score: 75,
-            decision: CandidateDecision::Accepted, transcript_quality_status: TranscriptQualityStatus::Certain,
+            decision: CandidateDecision::Accepted, quality_status: "VALID".into(), quality_warnings: Vec::new(), selection_reasons: Vec::new(), uncertainty_reasons: Vec::new(), transcript_quality_status: TranscriptQualityStatus::Certain,
             transcript_quality_reasons: Vec::new(), context_start_seconds: 0.0, context_end_seconds: 30.0,
             context_transcript: Vec::new(),
         });
@@ -1426,6 +1543,7 @@ pub fn run() {
             prepare_candidate_preview,
             prepare_candidate_context_preview,
             rerun_candidate_transcription,
+            set_candidate_count,
             set_candidate_decision,
             get_runtime_info
         ])

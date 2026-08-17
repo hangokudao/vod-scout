@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App, {
   CANDIDATE_SORTS,
+  CANDIDATE_COUNTS,
   DEFAULT_CONTEXT_PADDING_SECONDS,
   DEFAULT_UI_SETTINGS,
   SETTINGS_STORAGE_KEY,
@@ -89,6 +90,27 @@ describe("sortCandidates", () => {
     for (const item of SAMPLE) {
       expect(sorted.find((entry) => entry.id === item.id)).toEqual(item);
     }
+  });
+});
+
+describe("candidate count contract", () => {
+  it("offers only the persisted 8, 20, and 30 choices", () => {
+    expect(CANDIDATE_COUNTS).toEqual([8, 20, 30]);
+    expect(CANDIDATE_COUNTS).not.toContain(0);
+    expect(CANDIDATE_COUNTS).not.toContain(10);
+  });
+
+  it("keeps quality evidence separate from ranking score", () => {
+    const item = candidate({
+      id: "quality",
+      totalScore: 91,
+      qualityStatus: "WARNING",
+      selectionReasons: ["오디오 반응 91"],
+      uncertaintyReasons: ["앞뒤 문장이 연결되지 않아 맥락 확인이 필요함"]
+    });
+    expect(item.totalScore).toBe(91);
+    expect(item.qualityStatus).toBe("WARNING");
+    expect(item.selectionReasons).not.toEqual(item.uncertaintyReasons);
   });
 });
 

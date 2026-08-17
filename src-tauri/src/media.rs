@@ -552,6 +552,7 @@ struct WindowScore {
     excerpt: String,
     transcript_quality_status: TranscriptQualityStatus,
     transcript_quality_reasons: Vec<String>,
+    quality_warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -606,14 +607,18 @@ pub fn run_media_pipeline<R: tauri::Runtime>(
     let result = run(&app, &state, &job_id);
     match result {
         Ok(candidates) => {
-            let count = candidates.len();
+            let candidate_pool = candidates.clone();
+            let count = candidates.len().min(30);
             let _ = mutate_job(&app, &state, |job| {
                 let source_label = if job.source_kind == SourceKind::Youtube {
                     "YouTube 영상"
                 } else {
                     "로컬 영상"
                 };
-                job.candidates = candidates;
+                job.candidate_pool = candidate_pool;
+                job.candidates = job.candidate_pool.clone();
+                job.candidates.sort_by(|left, right| right.total_score.cmp(&left.total_score).then_with(|| left.start_seconds.cmp(&right.start_seconds)));
+                job.candidates.truncate(job.candidate_count as usize);
                 job.push_activity(
                     "candidates",
                     &format!("후보 구간 {count}개를 검토 목록에 추가했습니다."),
@@ -701,12 +706,9 @@ pub fn run_candidate_recognition<R: tauri::Runtime>(app: tauri::AppHandle<R>, st
             .ok_or_else(|| "음성 인식 실행 기록을 찾을 수 없습니다.".to_string())?;
         match result {
             Ok(output) => {
-                run.complete(Utc::now(), output.raw_result.clone(), output.display_result.clone(), output.backend_evidence)?;
-                if let Some(candidate) = job.candidates.iter_mut().find(|candidate| candidate.id == candidate_id) {
-                    candidate.transcript_excerpt = output.display_result;
-                    candidate.transcript_quality_status = output.quality_status;
-                    candidate.transcript_quality_reasons = output.quality_reasons;
-                }
+                run.complete(Utc::now(), output.raw_result.clone(), output.display_result.clone(), output.backend_evidence.clone())?;
+                apply_candidate_recognition_output(&mut job.candidates, &candidate_id, &output);
+                apply_candidate_recognition_output(&mut job.candidate_pool, &candidate_id, &output);
                 job.current_stage_label = "선택 후보 음성 인식 완료".into();
                 job.push_activity("recognition", "선택 후보 음성 인식을 완료했습니다. 기존 후보 판정은 유지했습니다.");
             }
@@ -793,6 +795,21 @@ struct CandidateRecognitionOutput {
     quality_status: TranscriptQualityStatus,
     quality_reasons: Vec<String>,
     backend_evidence: String,
+}
+
+fn apply_candidate_recognition_output(
+    candidates: &mut [Candidate],
+    candidate_id: &str,
+    output: &CandidateRecognitionOutput,
+) {
+    if let Some(candidate) = candidates.iter_mut().find(|candidate| candidate.id == candidate_id) {
+        candidate.transcript_excerpt = output.display_result.clone();
+        candidate.transcript_quality_status = output.quality_status;
+        candidate.transcript_quality_reasons = output.quality_reasons.clone();
+        candidate.quality_status = if output.quality_reasons.is_empty() { "VALID" } else { "WARNING" }.into();
+        candidate.quality_warnings = output.quality_reasons.clone();
+        candidate.uncertainty_reasons = output.quality_reasons.clone();
+    }
 }
 
 struct CandidateRecognitionFailure {
@@ -2986,11 +3003,13 @@ fn build_candidates(
             .collect::<Vec<_>>();
         let spoken = segments
             .iter()
-            .filter(|segment| segment.end_seconds > start && segment.start_seconds < end)
+            .filter(|segment| segment.end_seconds > start && segment.start_seconds < end && !segment.text.trim().is_empty())
             .collect::<Vec<_>>();
-        // P0: drop windows with neither audio energy samples nor dialogue text.
-        // Chat-motion alone is not enough evidence to rank a candidate.
-        if points.is_empty() && spoken.is_empty() {
+        let has_audio_evidence = points.iter().any(|point| point.rms.is_finite() && point.rms > f64::EPSILON);
+        // P0: drop windows with neither audible energy nor dialogue text.
+        // Chat-motion alone, or zero-valued audio samples, is not enough evidence
+        // to rank a candidate or fill the requested count.
+        if !has_audio_evidence && spoken.is_empty() {
             if end >= range_end - f64::EPSILON {
                 break;
             }
@@ -3014,13 +3033,20 @@ fn build_candidates(
             .iter()
             .filter(|point| point.start_seconds >= start && point.start_seconds < end)
             .collect::<Vec<_>>();
-        let chat_raw = if chat_motion.is_empty() {
+        let chat_baseline = if chat_motion.len() >= 2 {
+            let mut values = chat_motion.iter().map(|point| point.motion).collect::<Vec<_>>();
+            values.sort_by(|left, right| left.total_cmp(right));
+            Some(values[values.len() / 2])
+        } else {
+            None
+        };
+        let chat_raw = if chat_baseline.is_none() {
             None
         } else if chat_points.is_empty() {
             Some(0.0)
         } else {
             Some(
-                chat_points.iter().map(|point| point.motion).sum::<f64>()
+                chat_points.iter().map(|point| (point.motion - chat_baseline.unwrap()).max(0.0)).sum::<f64>()
                     / chat_points.len() as f64,
             )
         };
@@ -3031,6 +3057,10 @@ fn build_candidates(
             }
         }
         let transcript_quality_status = if transcript_quality_reasons.is_empty() { TranscriptQualityStatus::Certain } else { TranscriptQualityStatus::Uncertain };
+        let mut quality_warnings = transcript_quality_reasons.clone();
+        if spoken.windows(2).any(|pair| pair[1].start_seconds - pair[0].end_seconds > 8.0) {
+            quality_warnings.push("앞뒤 문장이 연결되지 않아 맥락 확인이 필요함".into());
+        }
         let excerpt = spoken
             .iter()
             .filter(|segment| segment.quality_status == TranscriptQualityStatus::Certain)
@@ -3046,6 +3076,7 @@ fn build_candidates(
             excerpt,
             transcript_quality_status,
             transcript_quality_reasons,
+            quality_warnings,
         });
         if end >= range_end - f64::EPSILON {
             break;
@@ -3090,16 +3121,17 @@ fn build_candidates(
     for item in scored {
         let overlaps_or_repeats = selected.iter().any(|selected| {
             let overlaps = item.0.start < selected.0.end && selected.0.start < item.0.end;
-            let repeated = item.0.transcript_quality_status == TranscriptQualityStatus::Certain
-                && selected.0.transcript_quality_status == TranscriptQualityStatus::Certain
-                && transcript_similarity(&selected.0.excerpt, &item.0.excerpt) >= 0.75;
-            overlaps || repeated
+            // Identical text at different source times is kept: only the same
+            // time/event overlap is a duplicate candidate.
+            overlaps
         });
         if overlaps_or_repeats {
             continue;
         }
         selected.push(item);
-        if selected.len() == 8 {
+        // Keep the full bounded pool so a later 8/20/30 setting change can
+        // create a revision without inventing filler candidates.
+        if selected.len() == 30 {
             break;
         }
     }
@@ -3128,6 +3160,15 @@ fn build_candidates(
             let end_seconds = window.end.ceil().max(1.0) as u32;
             let (context_start_seconds, context_end_seconds) =
                 context_bounds(start_seconds, end_seconds, duration);
+            let mut selection_reasons = vec![format!("오디오 반응 {audio}")];
+            if dialogue > 0 { selection_reasons.push(format!("말하기 변화 {dialogue}")); }
+            if audio == 0 && dialogue > 0 {
+                selection_reasons.push("오디오가 조용해도 이어지는 말하기 근거 유지".into());
+            } else if audio > 0 && dialogue == 0 {
+                selection_reasons.push("음성 인식 문장 없이 오디오 근거 유지".into());
+            }
+            if let Some(chat) = chat { selection_reasons.push(format!("채팅 영역 움직임 {chat}")); }
+            let quality_status = if window.quality_warnings.is_empty() { "VALID" } else { "WARNING" };
             Candidate {
                 id: stable_candidate_id(start_seconds, end_seconds),
                 start_seconds,
@@ -3135,11 +3176,11 @@ fn build_candidates(
                 title,
                 summary: if uncertain {
                     if let Some(chat) = chat { format!("음성 인식 결과 불확실 · 오디오 반응 {audio} · 발화 밀도 {dialogue} · 채팅 움직임 {chat}") }
-                    else { format!("음성 인식 결과 불확실 · 오디오 반응 {audio} · 발화 밀도 {dialogue} · 채팅 움직임 없음") }
+                    else { format!("음성 인식 결과 불확실 · 오디오 반응 {audio} · 발화 밀도 {dialogue} · 확인 가능한 채팅 영역 움직임 없음") }
                 } else if let Some(chat) = chat {
                     format!("오디오 반응 {audio} · 발화 밀도 {dialogue} · 채팅 움직임 {chat}")
                 } else {
-                    format!("오디오 반응 {audio} · 발화 밀도 {dialogue} · 채팅 움직임 없음")
+                    format!("오디오 반응 {audio} · 발화 밀도 {dialogue} · 확인 가능한 채팅 영역 움직임 없음")
                 },
                 transcript_excerpt: if uncertain {
                     "음성 인식 결과가 불확실해 원문을 표시하지 않습니다.".into()
@@ -3153,6 +3194,10 @@ fn build_candidates(
                 chat_score: chat,
                 total_score: total,
                 decision: CandidateDecision::Pending,
+                quality_status: quality_status.into(),
+                quality_warnings: window.quality_warnings.clone(),
+                selection_reasons,
+                uncertainty_reasons: window.transcript_quality_reasons.clone(),
                 transcript_quality_status: window.transcript_quality_status,
                 transcript_quality_reasons: window.transcript_quality_reasons,
                 context_start_seconds,
@@ -3169,29 +3214,6 @@ fn build_candidates(
 
 fn stable_candidate_id(start_seconds: u32, end_seconds: u32) -> String {
     format!("local-candidate-{start_seconds:06}-{end_seconds:06}")
-}
-
-fn transcript_similarity(left: &str, right: &str) -> f64 {
-    let left = normalize_transcript(left);
-    let right = normalize_transcript(right);
-    if left.is_empty() || right.is_empty() {
-        return 0.0;
-    }
-    if left == right {
-        return 1.0;
-    }
-    let left = left
-        .split_whitespace()
-        .collect::<std::collections::HashSet<_>>();
-    let right = right
-        .split_whitespace()
-        .collect::<std::collections::HashSet<_>>();
-    let union = left.union(&right).count();
-    if union == 0 {
-        0.0
-    } else {
-        left.intersection(&right).count() as f64 / union as f64
-    }
 }
 
 pub(crate) fn context_bounds(
@@ -3316,6 +3338,10 @@ mod tests {
             chat_score: Some(60),
             total_score: 75,
             decision: CandidateDecision::Accepted,
+            quality_status: "VALID".into(),
+            quality_warnings: Vec::new(),
+            selection_reasons: Vec::new(),
+            uncertainty_reasons: Vec::new(),
             transcript_quality_status: TranscriptQualityStatus::Certain,
             transcript_quality_reasons: Vec::new(),
             context_start_seconds: 0.0,
@@ -3333,6 +3359,35 @@ mod tests {
         assert_eq!(job.error_detail.as_deref(), Some(reason.as_str()));
         assert_eq!(job.owned_child_processes, 0);
         assert_eq!(job.candidates[0].decision, CandidateDecision::Accepted);
+    }
+
+    #[test]
+    fn manual_recognition_updates_candidate_pool_quality_metadata() {
+        let candidate = Candidate {
+            id: "candidate-sync".into(), start_seconds: 10, end_seconds: 20,
+            title: "제목".into(), summary: "요약".into(), transcript_excerpt: "기존 결과".into(),
+            audio_score: 80, dialogue_score: 70, chat_score: None, total_score: 75,
+            decision: CandidateDecision::Accepted, quality_status: "VALID".into(), quality_warnings: Vec::new(), selection_reasons: Vec::new(), uncertainty_reasons: Vec::new(), transcript_quality_status: TranscriptQualityStatus::Certain,
+            transcript_quality_reasons: Vec::new(), context_start_seconds: 0.0, context_end_seconds: 30.0, context_transcript: Vec::new(),
+        };
+        let output = CandidateRecognitionOutput {
+            raw_result: "새 음성 인식 결과".into(), display_result: "음성 인식 결과가 불확실해 원문을 표시하지 않습니다.".into(),
+            quality_status: TranscriptQualityStatus::Uncertain, quality_reasons: vec!["짧은 문장이 비정상적으로 반복됨".into()], backend_evidence: "fixture".into(),
+        };
+        let mut candidates = vec![candidate.clone()];
+        let mut candidate_pool = vec![candidate];
+        apply_candidate_recognition_output(&mut candidates, "candidate-sync", &output);
+        apply_candidate_recognition_output(&mut candidate_pool, "candidate-sync", &output);
+
+        for list in [&candidates, &candidate_pool] {
+            let updated = &list[0];
+            assert_eq!(updated.decision, CandidateDecision::Accepted);
+            assert_eq!(updated.transcript_excerpt, output.display_result);
+            assert_eq!(updated.transcript_quality_status, TranscriptQualityStatus::Uncertain);
+            assert_eq!(updated.quality_status, "WARNING");
+            assert_eq!(updated.quality_warnings, output.quality_reasons);
+            assert_eq!(updated.uncertainty_reasons, output.quality_reasons);
+        }
     }
 
     #[test]
@@ -3363,6 +3418,10 @@ mod tests {
             chat_score: Some(60),
             total_score: 75,
             decision: CandidateDecision::Accepted,
+            quality_status: "VALID".into(),
+            quality_warnings: Vec::new(),
+            selection_reasons: Vec::new(),
+            uncertainty_reasons: Vec::new(),
             transcript_quality_status: TranscriptQualityStatus::Certain,
             transcript_quality_reasons: Vec::new(),
             context_start_seconds: 0.0,
@@ -3894,6 +3953,7 @@ mod tests {
         assert!(!candidates.is_empty());
         assert_eq!(candidates[0].chat_score, None);
         assert!(candidates[0].total_score > 0);
+        assert!(candidates[0].summary.contains("확인 가능한 채팅 영역 움직임 없음"));
     }
 
     #[test]
@@ -4074,6 +4134,35 @@ mod tests {
         assert!(candidates
             .iter()
             .all(|candidate| candidate.total_score > 0));
+    }
+
+    #[test]
+    fn excludes_chat_only_and_all_evidence_free_windows() {
+        let motion = (1..20)
+            .map(|index| ChatMotionPoint { start_seconds: index as f64 * CHAT_SAMPLE_SECONDS, motion: 0.9 })
+            .collect::<Vec<_>>();
+        let silent_energy = (0..120)
+            .map(|second| EnergyPoint { start_seconds: second as f64, rms: 0.0 })
+            .collect::<Vec<_>>();
+
+        assert!(build_candidates(120.0, 0.0, 120.0, &[], &silent_energy, &motion).is_empty());
+        assert!(build_candidates(120.0, 0.0, 120.0, &[], &[], &[]).is_empty());
+    }
+
+    #[test]
+    fn keeps_audio_only_and_speaking_only_windows_with_reasons() {
+        let audio_only = build_candidates(60.0, 0.0, 60.0, &[], &(0..60).map(|second| EnergyPoint { start_seconds: second as f64, rms: 0.5 }).collect::<Vec<_>>(), &[]);
+        assert!(!audio_only.is_empty());
+        assert!(audio_only.iter().all(|candidate| candidate.chat_score.is_none()));
+        assert!(audio_only.iter().any(|candidate| candidate.selection_reasons.iter().any(|reason| reason.contains("오디오 근거 유지"))));
+
+        let speaking_only = build_candidates(
+            60.0, 0.0, 60.0,
+            &[TranscriptSegment { start_seconds: 10.0, end_seconds: 14.0, text: "조용하지만 이어지는 말하기 근거".into(), quality_status: TranscriptQualityStatus::Certain, quality_reasons: Vec::new() }],
+            &(0..60).map(|second| EnergyPoint { start_seconds: second as f64, rms: 0.0 }).collect::<Vec<_>>(), &[],
+        );
+        assert!(!speaking_only.is_empty());
+        assert!(speaking_only.iter().any(|candidate| candidate.selection_reasons.iter().any(|reason| reason.contains("말하기 근거 유지"))));
     }
 
     #[test]
