@@ -56,6 +56,7 @@ import {
 import type {
   Candidate,
   CandidateDecision,
+  CaptionSummary,
   ContextLine,
   AnalysisMode,
   JobSnapshot,
@@ -66,6 +67,14 @@ import type {
   SourceKind,
   StoredJobInfo
 } from "./types";
+
+function captionSummaryLabel(captions: CaptionSummary | null | undefined): string | null {
+  if (!captions) return null;
+  const source = captions.source === "creator" ? "제작자 한국어 자막" : captions.source === "automatic" ? "한국어 자동 자막" : "자막 없음";
+  if (captions.fallbackIntervals > 0) return `${source} · Whisper 대체 ${captions.fallbackIntervals}구간`;
+  const quality = captions.quality === "trusted" ? "검증된 구간" : captions.quality === "mixed" ? "일부 구간 대체" : "검증 전";
+  return `${source} · ${quality}`;
+}
 import {
   ACTIVE_STATUSES,
   estimateJobTiming,
@@ -1000,6 +1009,7 @@ function App() {
                 </div>
                 <h1>{job.status === "REVIEW_READY" ? "편집 후보를 검토하세요" : job.currentStageLabel}</h1>
                 <p>{job.status === "REVIEW_READY" ? `후보 ${job.candidates.length}개 중 ${reviewedCount}개를 판정했습니다.` : `${job.completedUnits} / ${job.totalUnits} 체크포인트 완료${job.mediaDurationSeconds ? ` · 원본 ${formatTime(Math.round(job.mediaDurationSeconds))}` : ""}${active && timing ? ` · 경과 ${formatDuration(timing.elapsedSeconds)}${timing.remainingSeconds === null ? " · 남은 시간 계산 중" : ` · 약 ${formatDuration(timing.remainingSeconds)} 남음`}` : ""}`}</p>
+                {job.sourceKind === "youtube" && captionSummaryLabel(job.captions) ? <small className="caption-summary">{captionSummaryLabel(job.captions)}</small> : null}
               </div>
               <div className="job-actions">
                 {storageBytes !== null ? <span className="storage-label"><HardDrive size={14} /> {formatBytes(storageBytes)}</span> : null}

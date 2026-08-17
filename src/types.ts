@@ -19,6 +19,23 @@ export type JobStatus =
   | "REVIEW_READY";
 
 export type CandidateDecision = "PENDING" | "ACCEPTED" | "REJECTED";
+export type CaptionSource = "creator" | "automatic";
+export type CaptionVerificationState = "UNVERIFIED" | "VERIFIED" | "FAILED";
+
+export interface CaptionProvenanceSummary {
+  originalFile: string;
+  trackId: string;
+  sha256: string;
+  revision: string;
+  verificationState: CaptionVerificationState;
+}
+
+export interface CaptionSummary {
+  source: CaptionSource | null;
+  quality: string;
+  fallbackIntervals: number;
+  provenance: CaptionProvenanceSummary | null;
+}
 
 /** 후보 앞뒤 맥락을 이루는 음성 인식 문장 한 줄. 타임코드는 원본 기준이다. */
 export interface ContextLine {
@@ -78,6 +95,7 @@ export interface JobSnapshot {
   errorDetail: string | null;
   candidates: Candidate[];
   activity: ActivityEvent[];
+  captions: CaptionSummary | null;
 }
 
 export interface RuntimeInfo {

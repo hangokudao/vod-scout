@@ -1,4 +1,5 @@
 use super::{mutate_job, AppState};
+use crate::captions::{self, CaptionInterval, CaptionPlan, CaptionProvenance, VerificationState};
 use crate::domain::{
     AnalysisMode, Candidate, CandidateDecision, ContextTranscriptEntry, JobStatus, SourceKind,
 };
@@ -232,6 +233,14 @@ struct MediaCheckpoint {
     /// FFmpeg/Whisper/model (and other runtime) SHA-256 map from the integrity manifest.
     #[serde(default)]
     runtime_sha256: HashMap<String, String>,
+    #[serde(default)]
+    caption_source_url: String,
+    #[serde(default)]
+    caption_sha256: String,
+    #[serde(default)]
+    caption_revision: String,
+    #[serde(default)]
+    caption_schema_version: u8,
     /// Missing fields deserialize empty and fail compatibility (must not invent defaults).
     #[serde(default)]
     language: String,
@@ -270,6 +279,10 @@ impl MediaCheckpoint {
             input_fingerprint,
             input_bytes,
             runtime_sha256,
+            caption_source_url: String::new(),
+            caption_sha256: String::new(),
+            caption_revision: String::new(),
+            caption_schema_version: 0,
             language: TRANSCRIPTION_LANGUAGE.into(),
             ranker_version: RANKER_VERSION.into(),
             planned_chunks,
@@ -359,6 +372,62 @@ fn is_in_completed_chunks(seconds: f64, chunks: &[PlannedChunk]) -> bool {
         seconds >= chunk.offset_seconds
             && seconds < chunk.offset_seconds + chunk.length_seconds + 0.001
     })
+}
+
+fn apply_caption_identity(checkpoint: &mut MediaCheckpoint, provenance: &CaptionProvenance) {
+    checkpoint.caption_source_url = provenance.source_url.clone();
+    checkpoint.caption_sha256 = provenance.sha256.clone();
+    checkpoint.caption_revision = provenance.revision.clone();
+    checkpoint.caption_schema_version = provenance.schema_version;
+}
+
+fn caption_plan_for_duration(
+    artifacts: Option<&(CaptionProvenance, Vec<u8>)>,
+    duration_seconds: f64,
+) -> CaptionPlan {
+    let Some((provenance, bytes)) = artifacts else {
+        return captions::plan_fallbacks(
+            &captions::validate_intervals(Vec::new(), duration_seconds, VerificationState::Failed),
+            duration_seconds,
+        );
+    };
+    let intervals = captions::parse_caption_text(&String::from_utf8_lossy(bytes));
+    let validation = captions::validate_intervals(
+        intervals,
+        duration_seconds,
+        provenance.verification_state,
+    );
+    captions::plan_fallbacks(&validation, duration_seconds)
+}
+
+fn fallback_intervals_in_chunk(
+    plan: &CaptionPlan,
+    start_seconds: f64,
+    end_seconds: f64,
+) -> Vec<(f64, f64)> {
+    if plan.full_whisper {
+        return vec![(start_seconds, end_seconds)];
+    }
+    plan.fallback
+        .iter()
+        .filter_map(|interval| {
+            let start = interval.start_seconds.max(start_seconds);
+            let end = interval.end_seconds.min(end_seconds);
+            (start < end).then_some((start, end))
+        })
+        .collect()
+}
+
+fn caption_intervals_in_chunk(
+    plan: &CaptionPlan,
+    start_seconds: f64,
+    end_seconds: f64,
+) -> Vec<CaptionInterval> {
+    plan.trusted
+        .iter()
+        .filter(|interval| interval.end_seconds > start_seconds && interval.start_seconds < end_seconds)
+        .cloned()
+        .collect()
 }
 
 /// How media checkpoint progress was reconciled with the job snapshot's units.
@@ -802,7 +871,9 @@ fn run<R: tauri::Runtime>(
     let runtime_sha256 = runtime_hashes().map_err(PipelineError::Message)?;
 
     let checkpoint_path = job_dir.join("media-checkpoint.json");
-    let mut checkpoint = load_checkpoint(
+    let caption_artifacts = captions::read_provenance(&job_dir).ok().flatten();
+    let caption_provenance = caption_artifacts.as_ref().map(|(provenance, _)| provenance);
+    let mut checkpoint = load_checkpoint_with_caption(
         &checkpoint_path,
         &source_path,
         analysis_mode,
@@ -811,6 +882,7 @@ fn run<R: tauri::Runtime>(
         &input_fingerprint,
         input_bytes,
         &runtime_sha256,
+        caption_provenance,
     )?;
     // load_checkpoint returns None for missing, corrupt, or incompatible (schema/fingerprint/tools/ranker).
     // In those cases we rebuild a fresh media checkpoint and must recompute intermediates only.
@@ -869,6 +941,9 @@ fn run<R: tauri::Runtime>(
             input_bytes,
             runtime_sha256.clone(),
         ));
+        if let (Some(checkpoint), Some(provenance)) = (checkpoint.as_mut(), caption_provenance) {
+            apply_caption_identity(checkpoint, provenance);
+        }
     }
     let mut checkpoint = checkpoint.expect("checkpoint initialized");
     let chunk_count = checkpoint.planned_chunks.len().max(1) as u32;
@@ -947,6 +1022,34 @@ fn run<R: tauri::Runtime>(
     }
     save_checkpoint(&checkpoint_path, &checkpoint)?;
     write_pipeline_provenance(&job_dir, &source, &checkpoint)?;
+    let caption_plan = caption_plan_for_duration(
+        caption_artifacts.as_ref(),
+        checkpoint.duration_seconds,
+    );
+    if let Some((provenance, _)) = caption_artifacts.as_ref() {
+        let quality = if caption_plan.full_whisper {
+            "unverified"
+        } else if caption_plan.fallback.is_empty() {
+            "trusted"
+        } else {
+            "mixed"
+        };
+        let _ = mutate_job(app, state, |job| {
+            job.captions = Some(crate::domain::CaptionSummary {
+                source: Some(provenance.source),
+                quality: quality.into(),
+                fallback_intervals: caption_plan.fallback.len() as u32,
+                provenance: Some(crate::domain::CaptionProvenanceSummary {
+                    original_file: provenance.original_file.clone(),
+                    track_id: provenance.track_id.clone(),
+                    sha256: provenance.sha256.clone(),
+                    revision: provenance.revision.clone(),
+                    verification_state: provenance.verification_state,
+                }),
+            });
+            Ok(())
+        });
+    }
 
     for chunk_index in checkpoint.completed_chunks..chunk_count {
         check_cancel(state)?;
@@ -954,10 +1057,7 @@ fn run<R: tauri::Runtime>(
         let offset = planned.offset_seconds;
         let length = planned.length_seconds.max(0.1);
         let wav = job_dir.join("active-chunk.wav");
-        let output_prefix = job_dir.join("active-transcript");
-        let srt = output_prefix.with_extension("srt");
         fs::remove_file(&wav).ok();
-        fs::remove_file(&srt).ok();
 
         run_command(
             &state.cancel_requested,
@@ -989,38 +1089,98 @@ fn run<R: tauri::Runtime>(
             &log_dir.join(format!("ffmpeg-{chunk_index:04}.stderr.log")),
         )?;
 
-        let mut energy = analyze_wav(&wav, offset)?;
+        let energy = analyze_wav(&wav, offset)?;
+        let fallback_ranges = fallback_intervals_in_chunk(&caption_plan, offset, offset + length);
+        let trusted_segments = caption_intervals_in_chunk(&caption_plan, offset, offset + length)
+            .into_iter()
+            .map(|interval| TranscriptSegment {
+                start_seconds: interval.start_seconds,
+                end_seconds: interval.end_seconds,
+                text: interval.text,
+            })
+            .collect::<Vec<_>>();
         let threads = thread::available_parallelism()
             .map(|count| count.get().saturating_sub(1).clamp(1, 8))
             .unwrap_or(4);
-        run_command(
-            &state.cancel_requested,
-            &tools.whisper,
-            tools.whisper_dir.as_path(),
-            [
-                "-m".into(),
-                tools.model.as_os_str().into(),
-                "-f".into(),
-                wav.as_os_str().into(),
-                "-l".into(),
-                "ko".into(),
-                "-nth".into(),
-                "0.72".into(),
-                "-nf".into(),
-                "-sns".into(),
-                "-sow".into(),
-                "-osrt".into(),
-                "-of".into(),
-                output_prefix.as_os_str().into(),
-                "-np".into(),
-                "-t".into(),
-                threads.to_string().into(),
-            ],
-            &log_dir.join(format!("whisper-{chunk_index:04}.stdout.log")),
-            &log_dir.join(format!("whisper-{chunk_index:04}.stderr.log")),
-        )?;
-
-        let mut segments = sanitize_transcript_segments(parse_srt(&srt, offset)?);
+        let mut segments = trusted_segments;
+        for (fallback_index, (fallback_start, fallback_end)) in fallback_ranges.iter().enumerate() {
+            check_cancel(state)?;
+            let fallback_length = (fallback_end - fallback_start).max(0.1);
+            let uses_full_chunk = (*fallback_start - offset).abs() < 0.001
+                && (*fallback_end - (offset + length)).abs() < 0.001;
+            let whisper_wav = if uses_full_chunk {
+                wav.clone()
+            } else {
+                let path = job_dir.join(format!("active-fallback-{chunk_index:04}-{fallback_index:02}.wav"));
+                fs::remove_file(&path).ok();
+                run_command(
+                    &state.cancel_requested,
+                    &tools.ffmpeg,
+                    tools.ffmpeg_dir.as_path(),
+                    [
+                        "-hide_banner".into(),
+                        "-loglevel".into(),
+                        "error".into(),
+                        "-y".into(),
+                        "-ss".into(),
+                        format!("{fallback_start:.3}").into(),
+                        "-t".into(),
+                        format!("{fallback_length:.3}").into(),
+                        "-protocol_whitelist".into(),
+                        "file,crypto,data".into(),
+                        "-i".into(),
+                        source.as_os_str().into(),
+                        "-vn".into(),
+                        "-ac".into(),
+                        "1".into(),
+                        "-ar".into(),
+                        "16000".into(),
+                        "-c:a".into(),
+                        "pcm_s16le".into(),
+                        path.as_os_str().into(),
+                    ],
+                    &log_dir.join(format!("ffmpeg-fallback-{chunk_index:04}-{fallback_index:02}.stdout.log")),
+                    &log_dir.join(format!("ffmpeg-fallback-{chunk_index:04}-{fallback_index:02}.stderr.log")),
+                )?;
+                path
+            };
+            let whisper_prefix = job_dir.join(format!("active-transcript-{chunk_index:04}-{fallback_index:02}"));
+            let whisper_srt = whisper_prefix.with_extension("srt");
+            fs::remove_file(&whisper_srt).ok();
+            run_command(
+                &state.cancel_requested,
+                &tools.whisper,
+                tools.whisper_dir.as_path(),
+                [
+                    "-m".into(),
+                    tools.model.as_os_str().into(),
+                    "-f".into(),
+                    whisper_wav.as_os_str().into(),
+                    "-l".into(),
+                    "ko".into(),
+                    "-nth".into(),
+                    "0.72".into(),
+                    "-nf".into(),
+                    "-sns".into(),
+                    "-sow".into(),
+                    "-osrt".into(),
+                    "-of".into(),
+                    whisper_prefix.as_os_str().into(),
+                    "-np".into(),
+                    "-t".into(),
+                    threads.to_string().into(),
+                ],
+                &log_dir.join(format!("whisper-{chunk_index:04}-{fallback_index:02}.stdout.log")),
+                &log_dir.join(format!("whisper-{chunk_index:04}-{fallback_index:02}.stderr.log")),
+            )?;
+            let mut fallback_segments = parse_srt(&whisper_srt, *fallback_start)?;
+            segments.append(&mut fallback_segments);
+            if !uses_full_chunk {
+                fs::remove_file(&whisper_wav).ok();
+            }
+            fs::remove_file(&whisper_srt).ok();
+        }
+        let mut segments = sanitize_transcript_segments(segments);
         checkpoint.segments.append(&mut segments);
         checkpoint.energy.append(&mut energy);
         checkpoint.completed_chunks = chunk_index + 1;
@@ -1458,6 +1618,30 @@ fn load_checkpoint(
     expected_input_bytes: u64,
     expected_runtime: &HashMap<String, String>,
 ) -> Result<Option<MediaCheckpoint>, PipelineError> {
+    load_checkpoint_with_caption(
+        path,
+        source_path,
+        analysis_mode,
+        requested_start,
+        requested_end,
+        expected_fingerprint,
+        expected_input_bytes,
+        expected_runtime,
+        None,
+    )
+}
+
+fn load_checkpoint_with_caption(
+    path: &Path,
+    source_path: &str,
+    analysis_mode: AnalysisMode,
+    requested_start: Option<u32>,
+    requested_end: Option<u32>,
+    expected_fingerprint: &str,
+    expected_input_bytes: u64,
+    expected_runtime: &HashMap<String, String>,
+    expected_caption: Option<&CaptionProvenance>,
+) -> Result<Option<MediaCheckpoint>, PipelineError> {
     let requested_start = requested_start.unwrap_or(0);
     let previous = previous_generation_path(path);
     // Live first, then .prev. Corrupt/unreadable live falls through; valid-but-incompatible
@@ -1476,7 +1660,7 @@ fn load_checkpoint(
             Ok(value) => value,
             Err(_) => continue,
         };
-        if checkpoint_is_compatible(
+        if checkpoint_is_compatible_with_caption(
             &checkpoint,
             source_path,
             analysis_mode,
@@ -1485,6 +1669,7 @@ fn load_checkpoint(
             expected_fingerprint,
             expected_input_bytes,
             expected_runtime,
+            expected_caption,
         ) {
             return Ok(Some(checkpoint));
         }
@@ -1505,7 +1690,48 @@ fn checkpoint_is_compatible(
     expected_input_bytes: u64,
     expected_runtime: &HashMap<String, String>,
 ) -> bool {
+    checkpoint_is_compatible_with_caption(
+        checkpoint,
+        source_path,
+        analysis_mode,
+        requested_start,
+        requested_end,
+        expected_fingerprint,
+        expected_input_bytes,
+        expected_runtime,
+        None,
+    )
+}
+
+fn checkpoint_is_compatible_with_caption(
+    checkpoint: &MediaCheckpoint,
+    source_path: &str,
+    analysis_mode: AnalysisMode,
+    requested_start: u32,
+    requested_end: Option<u32>,
+    expected_fingerprint: &str,
+    expected_input_bytes: u64,
+    expected_runtime: &HashMap<String, String>,
+    expected_caption: Option<&CaptionProvenance>,
+) -> bool {
     if checkpoint.schema_version != MEDIA_CHECKPOINT_SCHEMA {
+        return false;
+    }
+    let caption_matches = match expected_caption {
+        Some(expected) => {
+            checkpoint.caption_source_url == expected.source_url
+                && checkpoint.caption_sha256 == expected.sha256
+                && checkpoint.caption_revision == expected.revision
+                && checkpoint.caption_schema_version == expected.schema_version
+        }
+        None => {
+            checkpoint.caption_source_url.is_empty()
+                && checkpoint.caption_sha256.is_empty()
+                && checkpoint.caption_revision.is_empty()
+                && checkpoint.caption_schema_version == 0
+        }
+    };
+    if !caption_matches {
         return false;
     }
     if checkpoint.source_path != source_path

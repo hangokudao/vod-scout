@@ -1,4 +1,5 @@
 use super::{media, mutate_job, AppState};
+use crate::captions::{self, CaptionTrack, VerificationState};
 use crate::domain::JobStatus;
 use crate::integrity::{
     aggregate_required_bytes_by_volume, format_bytes_for_message, free_disk_space_bytes,
@@ -230,6 +231,8 @@ fn acquire<R: tauri::Runtime>(
     let checkpoint_path = job_dir.join("acquisition.json");
 
     let checkpoint = load_checkpoint(&checkpoint_path, &source_url)?;
+    let mut caption_track = None;
+    let mut caption_path = None;
     let (media_path, title) = if let Some(checkpoint) = checkpoint {
         (PathBuf::from(checkpoint.media_path), checkpoint.title)
     } else if let Some(path) = find_downloaded_media(&download_dir)? {
@@ -265,6 +268,7 @@ fn acquire<R: tauri::Runtime>(
             &log_dir,
             &state.cancel_requested,
         )?;
+        caption_track = format_plan.caption_track.clone();
 
         let outcome = run_yt_dlp(
             app,
@@ -274,7 +278,9 @@ fn acquire<R: tauri::Runtime>(
             &download_dir,
             &log_dir,
             &format_plan.format_selector,
+            format_plan.caption_track.as_ref(),
         )?;
+        caption_path = outcome.caption_path.clone();
         let path = outcome
             .media_path
             .filter(|path| path.is_file())
@@ -296,8 +302,53 @@ fn acquire<R: tauri::Runtime>(
         (path, outcome.title)
     };
 
+    if caption_track.is_none() {
+        if let Some((provenance, _)) = captions::read_provenance(&job_dir)
+            .map_err(AcquisitionError::Message)?
+        {
+            caption_track = Some(CaptionTrack {
+                track_id: provenance.track_id,
+                language: provenance.language,
+                source: provenance.source,
+                url: None,
+                revision: provenance.revision,
+            });
+            caption_path = Some(job_dir.join(provenance.original_file));
+        }
+    }
+
     if state.cancel_requested.load(Ordering::SeqCst) {
         return Err(AcquisitionError::Cancelled);
+    }
+    if let (Some(track), Some(path)) = (caption_track.as_ref(), caption_path.as_ref()) {
+        if path.is_file() {
+            let bytes = fs::read(path)?;
+            let provenance = captions::persist_provenance(
+                &job_dir,
+                &source_url,
+                track,
+                &bytes,
+                VerificationState::Unverified,
+                Vec::new(),
+            )
+            .map_err(AcquisitionError::Message)?;
+            mutate_job(app, state, |job| {
+                job.captions = Some(crate::domain::CaptionSummary {
+                    source: Some(provenance.source),
+                    quality: "unverified".into(),
+                    fallback_intervals: 0,
+                    provenance: Some(crate::domain::CaptionProvenanceSummary {
+                        original_file: provenance.original_file.clone(),
+                        track_id: provenance.track_id.clone(),
+                        sha256: provenance.sha256.clone(),
+                        revision: provenance.revision.clone(),
+                        verification_state: provenance.verification_state,
+                    }),
+                });
+                Ok(())
+            })
+            .map_err(AcquisitionError::Message)?;
+        }
     }
     let label = title
         .as_deref()
@@ -323,6 +374,7 @@ fn acquire<R: tauri::Runtime>(
 struct DownloadOutcome {
     media_path: Option<PathBuf>,
     title: Option<String>,
+    caption_path: Option<PathBuf>,
 }
 
 fn overflow_plan_error() -> String {
@@ -386,6 +438,7 @@ pub(crate) struct SelectedFormatPlan {
     pub format_ids: Vec<String>,
     pub stream_sizes: Vec<u64>,
     pub duration_seconds: f64,
+    pub caption_track: Option<CaptionTrack>,
 }
 
 /// Checked sum of selected stream sizes (each must be > 0).
@@ -610,6 +663,7 @@ pub(crate) fn selected_format_plan_from_info(info: &Value) -> Result<SelectedFor
         format_ids,
         stream_sizes,
         duration_seconds,
+        caption_track: captions::select_track(info),
     })
 }
 
@@ -1151,6 +1205,7 @@ fn run_yt_dlp<R: tauri::Runtime>(
     download_dir: &Path,
     log_dir: &Path,
     format_selector: &str,
+    caption_track: Option<&CaptionTrack>,
 ) -> Result<DownloadOutcome, AcquisitionError> {
     // Fail closed if selector was not pre-validated (should already be pinned from probe).
     for id in format_selector.split('+') {
@@ -1187,6 +1242,12 @@ fn run_yt_dlp<R: tauri::Runtime>(
             "--windows-filenames",
             "--output",
             "source.%(ext)s",
+            "--write-subs",
+            "--write-auto-subs",
+            "--sub-langs",
+            "ko",
+            "--sub-format",
+            "vtt",
         ])
         .arg("--paths")
         .arg(format!("home:{}", download_dir.display()))
@@ -1290,7 +1351,12 @@ fn run_yt_dlp<R: tauri::Runtime>(
             &stderr_tail.into_iter().collect::<Vec<_>>().join("\n"),
         )));
     }
-    Ok(DownloadOutcome { media_path, title })
+    let caption_path = caption_track.and_then(|_| find_caption_file(download_dir));
+    Ok(DownloadOutcome {
+        media_path,
+        title,
+        caption_path,
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1510,6 +1576,26 @@ fn find_downloaded_media(download_dir: &Path) -> Result<Option<PathBuf>, Acquisi
     Ok(candidates.into_iter().next())
 }
 
+fn find_caption_file(download_dir: &Path) -> Option<PathBuf> {
+    let mut candidates = fs::read_dir(download_dir)
+        .ok()?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.is_file()
+                && path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().to_ascii_lowercase().contains(".ko"))
+                    .unwrap_or(false)
+                && path
+                    .extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("vtt"))
+        })
+        .collect::<Vec<_>>();
+    candidates.sort();
+    candidates.into_iter().next()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1637,6 +1723,7 @@ mod tests {
             format_ids: vec!["298".into(), "251".into()],
             stream_sizes: vec![10, 20],
             duration_seconds: 30.0,
+            caption_track: None,
         };
         let log = build_minimal_metadata_log(
             Some(&plan),

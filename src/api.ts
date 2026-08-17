@@ -161,7 +161,8 @@ export async function createJob(input: CreateJobInput): Promise<JobSnapshot> {
     errorMessage: null,
     errorDetail: null,
     candidates: [],
-    activity: [{ sequence: 1, timestamp: now, kind: "job", message: "새 분석 작업을 만들었습니다." }]
+    activity: [{ sequence: 1, timestamp: now, kind: "job", message: "새 분석 작업을 만들었습니다." }],
+    captions: null
   };
   notifyMock();
   return structuredClone(mockJob);
