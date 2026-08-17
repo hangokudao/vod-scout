@@ -116,6 +116,51 @@ function whisperRuntimeLabel(status: JobSnapshot["whisperRuntime"]["status"] | u
   }
 }
 
+function resourceStageLabel(stage: string): string {
+  switch (stage) {
+    case "ffmpegAudio": return "FFmpeg 오디오";
+    case "whisper": return "Whisper 음성 인식";
+    case "chatDecode": return "채팅 영역 디코딩";
+    case "preview": return "후보 미리보기";
+    case "uiResponsiveness": return "UI 반응성";
+    default: return stage;
+  }
+}
+
+export function resourceMetricValue(value: number | null | undefined, suffix = "") {
+  return value == null ? "측정 불가" : `${value}${suffix}`;
+}
+
+function ResourcePanel({ job }: { job: JobSnapshot }) {
+  const metrics = job.resourceMetrics ?? [];
+  return (
+    <article className="resource-board" aria-label="단계별 자원 상태">
+      <div className="panel-heading"><span><Gauge size={17} /> 단계별 자원 상태</span><span className="safe-label">현재 자식 {job.ownedChildProcesses ?? 0}개 · CPU·메모리 미측정은 HOLD</span></div>
+      <p className="resource-policy-note">
+        경고는 작업을 계속하고, 강제 중단은 현재 작업만 실패 처리합니다. 측정하지 않은 기준은 PASS로 표시하지 않습니다.
+      </p>
+      <div className="resource-metrics">
+        {metrics.map((metric, index) => (
+          <div className="resource-metric" key={`${metric.stage}-${index}`}>
+            <strong>{resourceStageLabel(metric.stage)}</strong>
+            <span>경과 {resourceMetricValue(metric.elapsedMs, "ms")}</span>
+            <span>CPU {resourceMetricValue(metric.cpuPercent, "%")}</span>
+            <span>메모리 {resourceMetricValue(metric.memoryBytes, "B")}</span>
+            <span>디스크 {resourceMetricValue(metric.diskBytes, "B")}</span>
+            <span>임시 {resourceMetricValue(metric.tempBytes, "B")}</span>
+            <span>피크 자식 {resourceMetricValue(metric.ownedChildProcesses, "개")}</span>
+            {metric.policyStatus === "UNCONFIGURED" ? <em className="resource-unconfigured">기준 미설정 · HOLD</em> : null}
+            {metric.policyStatus === "WARNING" ? <em className="resource-warning">경고 · {metric.policyReason}</em> : null}
+            {metric.policyStatus === "HARD_LIMIT" ? <em className="resource-hard-limit">강제 중단 · {metric.policyReason}</em> : null}
+            {metric.unavailableReasons.length > 0 ? <small>{metric.unavailableReasons.join(" · ")}</small> : null}
+          </div>
+        ))}
+      </div>
+      {job.resourceFailure ? <p className="resource-hard-limit" role="alert">{resourceStageLabel(job.resourceFailure.stage)}에서 강제 중단: {job.resourceFailure.reason} · 마지막 완료 {job.resourceFailure.lastCompletedUnits}단위 보존</p> : null}
+    </article>
+  );
+}
+
 function captionVerificationLabel(value: CaptionSummary["provenance"]): string {
   if (!value) return "확인 정보 없음";
   return value.verificationState === "VERIFIED" ? "검증됨" : value.verificationState === "FAILED" ? "검증 실패" : "검증 전";
@@ -1393,6 +1438,8 @@ function App() {
                     <span><TerminalSquare size={14} /> {job.scenario}</span>
                   </div>
                 </article>
+
+                <ResourcePanel job={job} />
 
                 <article className="signal-preview">
                   <div className="panel-heading"><span><Activity size={17} /> Signal Rail 준비 상태</span><span>{audioSignalsReady ? (chatSignalsReady ? "3 / 3" : "2 / 3") : "0 / 3"}</span></div>

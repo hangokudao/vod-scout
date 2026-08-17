@@ -3,6 +3,7 @@ mod captions;
 mod domain;
 mod integrity;
 mod media;
+mod resource;
 mod storage;
 mod whisper;
 
@@ -11,6 +12,7 @@ use crate::domain::{
     RecognitionRunStatus, Scenario, SourceKind, TranscriptQualityStatus,
 };
 use crate::whisper::WhisperSettings;
+use crate::resource::{ResourceDecision, ResourceSample, ResourceStage, StageResourceMetric};
 use crate::storage::JobStore;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -32,6 +34,7 @@ struct AppState {
     running: AtomicBool,
     cancel_requested: AtomicBool,
     manual_running: AtomicBool,
+    heavy_tool_gate: std::sync::Mutex<()>,
 }
 
 impl AppState {
@@ -43,6 +46,7 @@ impl AppState {
             running: AtomicBool::new(false),
             cancel_requested: AtomicBool::new(false),
             manual_running: AtomicBool::new(false),
+            heavy_tool_gate: std::sync::Mutex::new(()),
         })
     }
 }
@@ -391,6 +395,11 @@ async fn run_worker(app: tauri::AppHandle, state: Arc<AppState>, job_id: String)
         }
     };
 
+    let _ = mutate_job(&app, &state, |job| {
+        job.owned_child_processes = 1;
+        Ok(())
+    });
+
     let mut last_heartbeat = Instant::now();
     let mut completed = false;
     let mut terminal_state_written = false;
@@ -583,6 +592,10 @@ async fn run_worker(app: tauri::AppHandle, state: Arc<AppState>, job_id: String)
     }
 
     state.cancel_requested.store(false, Ordering::SeqCst);
+    let _ = mutate_job(&app, &state, |job| {
+        job.owned_child_processes = 0;
+        Ok(())
+    });
     state.running.store(false, Ordering::SeqCst);
 }
 
@@ -702,6 +715,79 @@ async fn rerun_candidate_transcription(
     let state_arc = Arc::clone(state.inner());
     tauri::async_runtime::spawn_blocking(move || media::run_candidate_recognition(app, state_arc, job_id, candidate_id, run_id));
     Ok(started)
+}
+
+pub(crate) fn record_stage_metric<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    state: &AppState,
+    stage: ResourceStage,
+    started: Instant,
+    sample: ResourceSample,
+) -> Result<(), String> {
+    let elapsed_ms = Some(started.elapsed().as_millis() as u64);
+    let (decision, metric) = {
+        let guard = state
+            .job
+            .lock()
+            .map_err(|_| "작업 상태 잠금이 손상됐습니다.".to_string())?;
+        let job = guard
+            .as_ref()
+            .ok_or_else(|| "현재 작업이 없습니다.".to_string())?;
+        let decision = job.resource_policy.evaluate(&sample);
+        let disk_bytes = state.store.job_size_bytes(&job.id).ok();
+        let mut unavailable_reasons = Vec::new();
+        if sample.memory_bytes.is_none() { unavailable_reasons.push("memoryBytes: OS별 프로세스 메모리 측정을 사용할 수 없습니다.".into()); }
+        if sample.temp_bytes.is_none() { unavailable_reasons.push("tempBytes: 임시 파일 표본을 이 단계에서 수집하지 않았습니다.".into()); }
+        if disk_bytes.is_none() { unavailable_reasons.push("diskBytes: 작업 폴더 크기를 확인할 수 없습니다.".into()); }
+        if sample.external_tool_count.is_none() { unavailable_reasons.push("ownedChildProcesses: 외부 도구 프로세스 수를 이 단계에서 관찰하지 않았습니다.".into()); }
+        unavailable_reasons.push("cpuPercent: CPU 사용량 측정을 사용할 수 없습니다.".into());
+        let policy_status = if job.resource_policy.is_configured() {
+            decision.status()
+        } else {
+            crate::resource::ResourcePolicyStatus::Unconfigured
+        };
+        let metric = StageResourceMetric {
+            stage,
+            elapsed_ms,
+            cpu_percent: None,
+            memory_bytes: sample.memory_bytes,
+            disk_bytes,
+            temp_bytes: sample.temp_bytes,
+            owned_child_processes: sample.external_tool_count,
+            unavailable_reasons,
+            policy_status,
+            policy_reason: decision.reason().map(str::to_string),
+        };
+        (decision, metric)
+    };
+    mutate_job(app, state, |job| {
+        if let Some(existing) = job.resource_metrics.iter_mut().find(|item| item.stage == stage) {
+            let elapsed_ms = accumulate_elapsed_ms(existing.elapsed_ms, metric.elapsed_ms);
+            *existing = metric.clone();
+            existing.elapsed_ms = elapsed_ms;
+        } else {
+            job.resource_metrics.push(metric.clone());
+        }
+        if let Some(reason) = decision.reason() {
+            job.push_activity(
+                if matches!(decision, ResourceDecision::Warning(_)) { "resource-warning" } else { "resource-limit" },
+                reason,
+            );
+        }
+        Ok(())
+    })?;
+    if let ResourceDecision::HardLimit(reason) = decision {
+        return Err(format!("자원 제한 초과: {reason}"));
+    }
+    Ok(())
+}
+
+fn accumulate_elapsed_ms(previous: Option<u64>, current: Option<u64>) -> Option<u64> {
+    match (previous, current) {
+        (Some(previous), Some(current)) => Some(previous.saturating_add(current)),
+        (None, current) => current,
+        (previous, None) => previous,
+    }
 }
 
 /// Validate `job_id` against the active job, then set `cancel_requested`.
@@ -1012,13 +1098,14 @@ fn format_timecode(seconds: u32) -> String {
 
 #[tauri::command]
 async fn prepare_candidate_preview(
+    app: tauri::AppHandle,
     state: State<'_, Arc<AppState>>,
     job_id: String,
     candidate_id: String,
 ) -> Result<media::PreviewMedia, String> {
     let state = Arc::clone(state.inner());
     tauri::async_runtime::spawn_blocking(move || {
-        media::prepare_candidate_preview(&state, &job_id, &candidate_id)
+        media::prepare_candidate_preview(&app, &state, &job_id, &candidate_id)
     })
     .await
     .map_err(|error| format!("미리보기 작업이 중단됐습니다: {error}"))?
@@ -1026,13 +1113,14 @@ async fn prepare_candidate_preview(
 
 #[tauri::command]
 async fn prepare_candidate_context_preview(
+    app: tauri::AppHandle,
     state: State<'_, Arc<AppState>>,
     job_id: String,
     candidate_id: String,
 ) -> Result<media::PreviewMedia, String> {
     let state = Arc::clone(state.inner());
     tauri::async_runtime::spawn_blocking(move || {
-        media::prepare_candidate_context_preview(&state, &job_id, &candidate_id)
+        media::prepare_candidate_context_preview(&app, &state, &job_id, &candidate_id)
     })
     .await
     .map_err(|error| format!("맥락 미리보기 작업이 중단됐습니다: {error}"))?
@@ -1104,6 +1192,13 @@ mod tests {
         assert!(safe.contains("불확실"));
         assert_eq!(safe_candidate_derived_text("오디오 근거 구간"), "오디오 근거 구간");
         assert!(safe_candidate_derived_text("깨진 � 제목").contains("불확실"));
+    }
+
+    #[test]
+    fn first_stage_elapsed_is_preserved_and_later_measurements_saturate() {
+        assert_eq!(accumulate_elapsed_ms(None, Some(17)), Some(17));
+        assert_eq!(accumulate_elapsed_ms(Some(17), Some(23)), Some(40));
+        assert_eq!(accumulate_elapsed_ms(Some(u64::MAX - 1), Some(23)), Some(u64::MAX));
     }
 
     /// Holds AppState and its temp data dir. Field order matters: Rust drops

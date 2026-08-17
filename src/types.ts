@@ -121,6 +121,37 @@ export interface ActivityEvent {
   message: string;
 }
 
+export type ResourceStage = "ffmpegAudio" | "whisper" | "chatDecode" | "preview" | "uiResponsiveness";
+export type ResourcePolicyStatus = "UNCONFIGURED" | "OK" | "WARNING" | "HARD_LIMIT";
+
+export interface StageResourceMetric {
+  stage: ResourceStage;
+  elapsedMs: number | null;
+  cpuPercent: number | null;
+  memoryBytes: number | null;
+  diskBytes: number | null;
+  tempBytes: number | null;
+  ownedChildProcesses: number | null;
+  unavailableReasons: string[];
+  policyStatus: ResourcePolicyStatus;
+  policyReason: string | null;
+}
+
+export interface ResourcePolicy {
+  warningMemoryBytes: number | null;
+  hardMemoryBytes: number | null;
+  warningTempBytes: number | null;
+  hardTempBytes: number | null;
+  warningExternalToolCount: number | null;
+  hardExternalToolCount: number | null;
+}
+
+export interface ResourceLimitFailure {
+  stage: ResourceStage;
+  reason: string;
+  lastCompletedUnits: number;
+}
+
 export interface JobSnapshot {
   schemaVersion: number;
   id: string;
@@ -148,6 +179,10 @@ export interface JobSnapshot {
   whisper: WhisperSettings;
   whisperRuntime: WhisperRuntimeState;
   recognitionRuns?: CandidateRecognitionRun[];
+  resourcePolicy: ResourcePolicy;
+  resourceMetrics: StageResourceMetric[];
+  resourceFailure: ResourceLimitFailure | null;
+  ownedChildProcesses: number;
 }
 
 export interface RuntimeInfo {

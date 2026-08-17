@@ -124,3 +124,34 @@ worktree `codex/v050-transcript-quality`는 이미 존재하며 커밋되지 않
 3. 그 뒤에만 `codex/v050-transcript-quality`의 음성 인식 품질 안전장치 재사용을 별도로 검토하며, 그 전에는 편집하거나 통합하지 않는다.
 
 원본 작업 폴더, 기존 설치 폴더, 기존 작업 데이터와 개인 파일은 수정하거나 삭제하지 않는다. 공개 문서에는 비밀값·개인 영상·개인 절대 경로를 넣지 않는다.
+
+# G4 자원 제한 구현 인계
+
+## 현재 완료 상태
+
+- G4 구현은 현재 worktree의 `codex/v050-g4-resource-limits` 브랜치에만 반영했다.
+- 작업 데이터 스키마 5와 v0.4 체크포인트를 깨지 않도록 자원 정책·단계별 자원 기록·자원 제한 실패 기록을 선택 필드로 추가했다.
+- FFmpeg 오디오, Whisper, 채팅 영역 디코딩, 후보 미리보기, UI 반응성 단계를 구분해 표시한다. 실제로 수집할 수 없는 CPU·메모리·임시 파일 값은 `null`과 `unavailableReasons`로 표시하며, 기본 경고·강제 중단 기준은 미설정 `HOLD`다.
+- 분석·수동 후보 음성 인식·미리보기는 하나의 heavy-tool gate를 공유한다. 작업 종료·취소·실패 뒤 `ownedChildProcesses: 0`을 저장하고, 주입된 하드 제한은 현재 작업만 `FAILED`로 끝내며 마지막 완료 단위와 정확한 이유를 보존한다. 낮은 설정 자동 재시작은 없다.
+
+## G4 자동 검증
+
+- `cmd.exe /c npm.cmd test`: **PASS, 42 passed**
+- `cmd.exe /c npm.cmd run build`: **PASS**
+- `cargo.exe test --manifest-path src-tauri/Cargo.toml`: **PASS, 104 passed, 1 ignored**
+- `cargo.exe test --manifest-path src-tauri/fixture-worker/Cargo.toml`: **PASS, 5 passed**
+- `node --test scripts/archive-safety.test.mjs scripts/prepare-media-tools.test.mjs`: **PASS, 8 passed**
+- `git diff --check`: **PASS**
+- Rust 집중 테스트: 자원 정책 경고·강제 중단 판정, 미측정값 직렬화, 기존 스냅샷 기본값 복원을 확인했다.
+- UI 집중 테스트: 미측정값을 0과 구분하는 `측정 불가` 표시를 확인했다.
+
+## 실제 측정 HOLD
+
+- 실제 기준 영상에서 단계별 CPU·메모리·임시 파일 피크와 UI 반응성 수치를 수집하지 않았다. 따라서 수치 기준의 PASS나 성능 개선 주장을 하지 않는다.
+- 실제 Windows 화면·실제 미디어에서 취소·자식 프로세스 0개와 하드 제한 종료를 실행하지 않았다.
+- Oracle 없음. push·merge·PR·Release·deploy는 수행하지 않았다.
+
+## 다음 정확한 작업
+
+1. 승인된 기준 영상과 Windows 실행 환경에서 G4 실제 자원 측정을 수행한다.
+2. 측정값이 확보된 뒤에만 경고·강제 중단 수치를 별도로 고정한다.
