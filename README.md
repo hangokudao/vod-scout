@@ -106,6 +106,7 @@ cargo test --manifest-path src-tauri/fixture-worker/Cargo.toml
 - [v0.4.0 릴리스 기록](docs/V0.4.0-RELEASE.md)
 - [v0.4.0 앱 내 업데이트 안내](docs/V0.4.0-UPDATER-NOTES.md)
 - [v0.5.0 품질·작업 대기열 개선 계획](docs/V0.5.0-PLAN.md)
+- [v0.5.0 릴리스 작업 정본](docs/V0.5.0-RELEASE.md)
 - [VOD 편집점 자동 탐색 연구·구현 가이드](docs/HIGHLIGHT-DETECTION-RESEARCH.md)
 - [오픈소스 라이선스 결정 기록](docs/LICENSE-DECISION.md)
 - [제품·개발 계획](docs/PLAN.md)
