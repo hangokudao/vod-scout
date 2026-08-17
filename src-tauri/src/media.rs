@@ -400,34 +400,61 @@ fn caption_plan_for_duration(
     captions::plan_fallbacks(&validation, duration_seconds)
 }
 
-fn fallback_intervals_in_chunk(
+/// Partition one analyzed chunk into disjoint verified-caption and Whisper ranges.
+/// A caption crossing a chunk boundary belongs to the first analyzed chunk it touches;
+/// its remainder is deliberately Whisper-covered in the next chunk. This also handles
+/// sparse quick-analysis chunks and requested-range boundaries without uncovered spans.
+fn partition_caption_chunk(
     plan: &CaptionPlan,
-    start_seconds: f64,
-    end_seconds: f64,
-) -> Vec<(f64, f64)> {
+    chunks: &[PlannedChunk],
+    chunk_index: usize,
+) -> (Vec<CaptionInterval>, Vec<(f64, f64)>) {
+    let chunk = &chunks[chunk_index];
+    let start_seconds = chunk.offset_seconds;
+    let end_seconds = chunk.offset_seconds + chunk.length_seconds;
     if plan.full_whisper {
-        return vec![(start_seconds, end_seconds)];
+        return (Vec::new(), vec![(start_seconds, end_seconds)]);
     }
-    plan.fallback
+
+    let mut trusted = plan
+        .trusted
         .iter()
         .filter_map(|interval| {
+            let owner = chunks.iter().position(|candidate| {
+                interval.end_seconds > candidate.offset_seconds
+                    && interval.start_seconds
+                        < candidate.offset_seconds + candidate.length_seconds
+            });
+            if owner != Some(chunk_index) {
+                return None;
+            }
             let start = interval.start_seconds.max(start_seconds);
             let end = interval.end_seconds.min(end_seconds);
-            (start < end).then_some((start, end))
+            (start < end).then(|| CaptionInterval {
+                start_seconds: start,
+                end_seconds: end,
+                text: interval.text.clone(),
+            })
         })
-        .collect()
-}
+        .collect::<Vec<_>>();
+    trusted.sort_by(|left, right| {
+        left.start_seconds
+            .total_cmp(&right.start_seconds)
+            .then_with(|| left.end_seconds.total_cmp(&right.end_seconds))
+    });
 
-fn caption_intervals_in_chunk(
-    plan: &CaptionPlan,
-    start_seconds: f64,
-    end_seconds: f64,
-) -> Vec<CaptionInterval> {
-    plan.trusted
-        .iter()
-        .filter(|interval| interval.end_seconds > start_seconds && interval.start_seconds < end_seconds)
-        .cloned()
-        .collect()
+    let mut fallback = Vec::new();
+    let mut cursor = start_seconds;
+    for interval in &trusted {
+        if interval.start_seconds > cursor {
+            fallback.push((cursor, interval.start_seconds.min(end_seconds)));
+        }
+        cursor = cursor.max(interval.end_seconds);
+    }
+    if cursor < end_seconds {
+        fallback.push((cursor, end_seconds));
+    }
+    (trusted, fallback)
 }
 
 /// How media checkpoint progress was reconciled with the job snapshot's units.
@@ -818,7 +845,15 @@ fn run<R: tauri::Runtime>(
     state: &Arc<AppState>,
     job_id: &str,
 ) -> Result<Vec<Candidate>, PipelineError> {
-    let (source_path, completed_units, analysis_mode, requested_start, requested_end) = {
+    let (
+        source_path,
+        completed_units,
+        analysis_mode,
+        requested_start,
+        requested_end,
+        source_kind,
+        source_url,
+    ) = {
         let guard = state
             .job
             .lock()
@@ -839,6 +874,8 @@ fn run<R: tauri::Runtime>(
             job.analysis_mode,
             job.analysis_start_seconds,
             job.analysis_end_seconds,
+            job.source_kind,
+            job.source_label.clone(),
         )
     };
 
@@ -871,7 +908,22 @@ fn run<R: tauri::Runtime>(
     let runtime_sha256 = runtime_hashes().map_err(PipelineError::Message)?;
 
     let checkpoint_path = job_dir.join("media-checkpoint.json");
-    let caption_artifacts = captions::read_provenance(&job_dir).ok().flatten();
+    let mut caption_artifacts = captions::read_provenance_with_diagnostics(&job_dir)
+        .map_err(PipelineError::Message)?;
+    if source_kind == SourceKind::Youtube {
+        if let Some((provenance, _)) = caption_artifacts.as_mut() {
+            if provenance.source_url != source_url {
+                provenance.verification_state = VerificationState::Failed;
+                provenance.diagnostics.push(captions::CaptionDiagnostic {
+                    kind: captions::CaptionDiagnosticKind::ProvenanceInvalid,
+                    interval_index: None,
+                    start_seconds: None,
+                    end_seconds: None,
+                    detail: "자막 provenance가 현재 YouTube 영상과 일치하지 않습니다.".into(),
+                });
+            }
+        }
+    }
     let caption_provenance = caption_artifacts.as_ref().map(|(provenance, _)| provenance);
     let mut checkpoint = load_checkpoint_with_caption(
         &checkpoint_path,
@@ -1034,18 +1086,56 @@ fn run<R: tauri::Runtime>(
         } else {
             "mixed"
         };
+        let mut caption_diagnostics = provenance.diagnostics.clone();
+        for diagnostic in &caption_plan.diagnostics {
+            if !caption_diagnostics.contains(diagnostic) {
+                caption_diagnostics.push(diagnostic.clone());
+            }
+        }
         let _ = mutate_job(app, state, |job| {
             job.captions = Some(crate::domain::CaptionSummary {
                 source: Some(provenance.source),
+                language: Some(provenance.language.clone()),
                 quality: quality.into(),
                 fallback_intervals: caption_plan.fallback.len() as u32,
+                local_whisper_fallback: caption_plan.full_whisper || !caption_plan.fallback.is_empty(),
+                diagnostics: caption_diagnostics
+                    .iter()
+                    .map(|diagnostic| crate::domain::CaptionDiagnosticSummary {
+                        kind: format!("{:?}", diagnostic.kind),
+                        interval_index: diagnostic.interval_index,
+                        start_seconds: diagnostic.start_seconds,
+                        end_seconds: diagnostic.end_seconds,
+                        detail: diagnostic.detail.clone(),
+                    })
+                    .collect(),
                 provenance: Some(crate::domain::CaptionProvenanceSummary {
                     original_file: provenance.original_file.clone(),
+                    language: provenance.language.clone(),
                     track_id: provenance.track_id.clone(),
                     sha256: provenance.sha256.clone(),
                     revision: provenance.revision.clone(),
                     verification_state: provenance.verification_state,
                 }),
+            });
+            Ok(())
+        });
+    } else if source_kind == SourceKind::Youtube {
+        let _ = mutate_job(app, state, |job| {
+            job.captions = Some(crate::domain::CaptionSummary {
+                source: None,
+                language: Some(TRANSCRIPTION_LANGUAGE.into()),
+                quality: "unavailable".into(),
+                fallback_intervals: 1,
+                local_whisper_fallback: true,
+                diagnostics: vec![crate::domain::CaptionDiagnosticSummary {
+                    kind: "CaptionUnavailable".into(),
+                    interval_index: None,
+                    start_seconds: None,
+                    end_seconds: None,
+                    detail: "한국어 자막을 사용할 수 없어 로컬 Whisper로 전체 구간을 확인합니다.".into(),
+                }],
+                provenance: None,
             });
             Ok(())
         });
@@ -1090,8 +1180,9 @@ fn run<R: tauri::Runtime>(
         )?;
 
         let energy = analyze_wav(&wav, offset)?;
-        let fallback_ranges = fallback_intervals_in_chunk(&caption_plan, offset, offset + length);
-        let trusted_segments = caption_intervals_in_chunk(&caption_plan, offset, offset + length)
+        let (trusted_intervals, fallback_ranges) =
+            partition_caption_chunk(&caption_plan, &checkpoint.planned_chunks, chunk_index as usize);
+        let trusted_segments = trusted_intervals
             .into_iter()
             .map(|interval| TranscriptSegment {
                 start_seconds: interval.start_seconds,
@@ -1180,14 +1271,19 @@ fn run<R: tauri::Runtime>(
             }
             fs::remove_file(&whisper_srt).ok();
         }
+        segments.sort_by(|left, right| {
+            left.start_seconds
+                .total_cmp(&right.start_seconds)
+                .then_with(|| left.end_seconds.total_cmp(&right.end_seconds))
+        });
         let mut segments = sanitize_transcript_segments(segments);
         checkpoint.segments.append(&mut segments);
+        checkpoint.segments = sanitize_transcript_segments(std::mem::take(&mut checkpoint.segments));
         checkpoint.energy.append(&mut energy);
         checkpoint.completed_chunks = chunk_index + 1;
         save_checkpoint(&checkpoint_path, &checkpoint)?;
         write_transcript(&job_dir.join("transcript.json"), &checkpoint.segments)?;
         fs::remove_file(&wav).ok();
-        fs::remove_file(&srt).ok();
 
         progress(
             app,
@@ -1842,11 +1938,28 @@ fn is_transcript_hallucination(value: &str) -> bool {
 
 fn sanitize_transcript_segments(segments: Vec<TranscriptSegment>) -> Vec<TranscriptSegment> {
     let mut kept: Vec<TranscriptSegment> = Vec::new();
-    for segment in segments {
+    for mut segment in segments {
         if is_transcript_hallucination(&segment.text) {
             continue;
         }
+        if !segment.start_seconds.is_finite()
+            || !segment.end_seconds.is_finite()
+            || segment.start_seconds >= segment.end_seconds
+        {
+            continue;
+        }
         let normalized = normalize_transcript(&segment.text);
+        if let Some(previous) = kept.last() {
+            if segment.start_seconds < previous.end_seconds {
+                if normalize_transcript(&previous.text) == normalized {
+                    continue;
+                }
+                segment.start_seconds = previous.end_seconds;
+                if segment.start_seconds >= segment.end_seconds {
+                    continue;
+                }
+            }
+        }
         let repeated_nearby = kept.iter().rev().take(6).any(|previous| {
             segment.start_seconds - previous.end_seconds < 120.0
                 && normalize_transcript(&previous.text) == normalized
@@ -2305,6 +2418,59 @@ mod tests {
     #[test]
     fn parses_srt_timestamp() {
         assert_eq!(parse_srt_time("01:02:03,500"), Some(3723.5));
+    }
+
+    #[test]
+    fn caption_partition_owns_cross_chunk_interval_once_and_covers_each_boundary() {
+        let validation = captions::validate_intervals(
+            vec![CaptionInterval {
+                start_seconds: 9.0,
+                end_seconds: 11.0,
+                text: "crosses".into(),
+            }],
+            20.0,
+            VerificationState::Verified,
+        );
+        let plan = captions::plan_fallbacks(&validation, 20.0);
+        let chunks = vec![
+            PlannedChunk {
+                offset_seconds: 0.0,
+                length_seconds: 10.0,
+            },
+            PlannedChunk {
+                offset_seconds: 10.0,
+                length_seconds: 10.0,
+            },
+        ];
+        let (first_trusted, first_fallback) = partition_caption_chunk(&plan, &chunks, 0);
+        let (second_trusted, second_fallback) = partition_caption_chunk(&plan, &chunks, 1);
+        assert_eq!(first_trusted.len(), 1);
+        assert_eq!(first_trusted[0].start_seconds, 9.0);
+        assert_eq!(first_trusted[0].end_seconds, 10.0);
+        assert!(second_trusted.is_empty());
+        assert!(first_fallback.iter().any(|range| *range == (0.0, 9.0)));
+        assert!(second_fallback.iter().any(|range| *range == (10.0, 20.0)));
+    }
+
+    #[test]
+    fn caption_partition_uses_full_whisper_for_requested_range_and_invalid_caption() {
+        let validation = captions::validate_intervals(
+            vec![CaptionInterval {
+                start_seconds: 14.0,
+                end_seconds: 12.0,
+                text: "invalid".into(),
+            }],
+            20.0,
+            VerificationState::Verified,
+        );
+        let plan = captions::plan_fallbacks(&validation, 20.0);
+        let chunks = vec![PlannedChunk {
+            offset_seconds: 10.0,
+            length_seconds: 5.0,
+        }];
+        let (trusted, fallback) = partition_caption_chunk(&plan, &chunks, 0);
+        assert!(trusted.is_empty());
+        assert_eq!(fallback, vec![(10.0, 15.0)]);
     }
 
     fn long_running_command() -> (PathBuf, Vec<std::ffi::OsString>) {

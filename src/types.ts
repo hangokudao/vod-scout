@@ -24,16 +24,28 @@ export type CaptionVerificationState = "UNVERIFIED" | "VERIFIED" | "FAILED";
 
 export interface CaptionProvenanceSummary {
   originalFile: string;
+  language: string;
   trackId: string;
   sha256: string;
   revision: string;
   verificationState: CaptionVerificationState;
 }
 
+export interface CaptionDiagnosticSummary {
+  kind: string;
+  intervalIndex: number | null;
+  startSeconds: number | null;
+  endSeconds: number | null;
+  detail: string;
+}
+
 export interface CaptionSummary {
   source: CaptionSource | null;
+  language: string | null;
   quality: string;
   fallbackIntervals: number;
+  localWhisperFallback: boolean;
+  diagnostics: CaptionDiagnosticSummary[];
   provenance: CaptionProvenanceSummary | null;
 }
 

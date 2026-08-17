@@ -1000,6 +1000,27 @@ kbd {
   letter-spacing: 0.06em;
 }
 
+.caption-details {
+  display: grid;
+  gap: 5px;
+  max-width: 960px;
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.caption-detail-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.caption-diagnostics {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--amber-text);
+}
+
 .error-panel {
   display: grid;
   grid-template-columns: 42px 1fr;

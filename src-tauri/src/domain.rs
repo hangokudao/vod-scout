@@ -194,6 +194,8 @@ pub struct ActivityEvent {
 #[serde(rename_all = "camelCase")]
 pub struct CaptionProvenanceSummary {
     pub original_file: String,
+    #[serde(default)]
+    pub language: String,
     pub track_id: String,
     pub sha256: String,
     pub revision: String,
@@ -202,10 +204,26 @@ pub struct CaptionProvenanceSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CaptionDiagnosticSummary {
+    pub kind: String,
+    pub interval_index: Option<usize>,
+    pub start_seconds: Option<f64>,
+    pub end_seconds: Option<f64>,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CaptionSummary {
     pub source: Option<CaptionSource>,
+    #[serde(default)]
+    pub language: Option<String>,
     pub quality: String,
     pub fallback_intervals: u32,
+    #[serde(default)]
+    pub local_whisper_fallback: bool,
+    #[serde(default)]
+    pub diagnostics: Vec<CaptionDiagnosticSummary>,
     pub provenance: Option<CaptionProvenanceSummary>,
 }
 

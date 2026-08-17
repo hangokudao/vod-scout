@@ -75,6 +75,39 @@ function captionSummaryLabel(captions: CaptionSummary | null | undefined): strin
   const quality = captions.quality === "trusted" ? "검증된 구간" : captions.quality === "mixed" ? "일부 구간 대체" : "검증 전";
   return `${source} · ${quality}`;
 }
+
+function captionVerificationLabel(value: CaptionSummary["provenance"]): string {
+  if (!value) return "확인 정보 없음";
+  return value.verificationState === "VERIFIED" ? "검증됨" : value.verificationState === "FAILED" ? "검증 실패" : "검증 전";
+}
+
+function CaptionDetails({ captions }: { captions: CaptionSummary }) {
+  const source = captions.source === "creator" ? "제작자" : captions.source === "automatic" ? "자동" : "없음";
+  const provenance = captions.provenance;
+  return (
+    <div className="caption-details" aria-label="YouTube 자막 근거">
+      <div className="caption-detail-row">
+        <span>자막 출처: {source}</span>
+        <span>언어: {captions.language ?? provenance?.language ?? "알 수 없음"}</span>
+        <span>트랙: {provenance?.trackId || "알 수 없음"}</span>
+      </div>
+      <div className="caption-detail-row">
+        <span>원본 파일: {provenance?.originalFile || "없음"}</span>
+        <span>SHA-256: {provenance?.sha256 || "없음"}</span>
+        <span>검증: {captionVerificationLabel(provenance)}</span>
+      </div>
+      <div className="caption-detail-row">
+        <span>실제 영상 대조: HOLD</span>
+        <span>로컬 Whisper 대체: {captions.localWhisperFallback ? `${captions.fallbackIntervals}구간` : "없음"}</span>
+      </div>
+      {captions.diagnostics.length > 0 ? (
+        <ul className="caption-diagnostics">
+          {captions.diagnostics.map((diagnostic, index) => <li key={`${diagnostic.kind}-${index}`}>{diagnostic.detail}</li>)}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
 import {
   ACTIVE_STATUSES,
   estimateJobTiming,
@@ -1010,6 +1043,7 @@ function App() {
                 <h1>{job.status === "REVIEW_READY" ? "편집 후보를 검토하세요" : job.currentStageLabel}</h1>
                 <p>{job.status === "REVIEW_READY" ? `후보 ${job.candidates.length}개 중 ${reviewedCount}개를 판정했습니다.` : `${job.completedUnits} / ${job.totalUnits} 체크포인트 완료${job.mediaDurationSeconds ? ` · 원본 ${formatTime(Math.round(job.mediaDurationSeconds))}` : ""}${active && timing ? ` · 경과 ${formatDuration(timing.elapsedSeconds)}${timing.remainingSeconds === null ? " · 남은 시간 계산 중" : ` · 약 ${formatDuration(timing.remainingSeconds)} 남음`}` : ""}`}</p>
                 {job.sourceKind === "youtube" && captionSummaryLabel(job.captions) ? <small className="caption-summary">{captionSummaryLabel(job.captions)}</small> : null}
+                {job.sourceKind === "youtube" && job.captions ? <CaptionDetails captions={job.captions} /> : null}
               </div>
               <div className="job-actions">
                 {storageBytes !== null ? <span className="storage-label"><HardDrive size={14} /> {formatBytes(storageBytes)}</span> : null}

@@ -233,6 +233,7 @@ fn acquire<R: tauri::Runtime>(
     let checkpoint = load_checkpoint(&checkpoint_path, &source_url)?;
     let mut caption_track = None;
     let mut caption_path = None;
+    let mut caption_provenance_reused = false;
     let (media_path, title) = if let Some(checkpoint) = checkpoint {
         (PathBuf::from(checkpoint.media_path), checkpoint.title)
     } else if let Some(path) = find_downloaded_media(&download_dir)? {
@@ -303,9 +304,7 @@ fn acquire<R: tauri::Runtime>(
     };
 
     if caption_track.is_none() {
-        if let Some((provenance, _)) = captions::read_provenance(&job_dir)
-            .map_err(AcquisitionError::Message)?
-        {
+        if let Some((provenance, _)) = captions::read_provenance(&job_dir).ok().flatten() {
             caption_track = Some(CaptionTrack {
                 track_id: provenance.track_id,
                 language: provenance.language,
@@ -314,40 +313,47 @@ fn acquire<R: tauri::Runtime>(
                 revision: provenance.revision,
             });
             caption_path = Some(job_dir.join(provenance.original_file));
+            caption_provenance_reused = true;
         }
     }
 
     if state.cancel_requested.load(Ordering::SeqCst) {
         return Err(AcquisitionError::Cancelled);
     }
-    if let (Some(track), Some(path)) = (caption_track.as_ref(), caption_path.as_ref()) {
-        if path.is_file() {
-            let bytes = fs::read(path)?;
-            let provenance = captions::persist_provenance(
-                &job_dir,
-                &source_url,
-                track,
-                &bytes,
-                VerificationState::Unverified,
-                Vec::new(),
-            )
-            .map_err(AcquisitionError::Message)?;
-            mutate_job(app, state, |job| {
-                job.captions = Some(crate::domain::CaptionSummary {
-                    source: Some(provenance.source),
-                    quality: "unverified".into(),
-                    fallback_intervals: 0,
-                    provenance: Some(crate::domain::CaptionProvenanceSummary {
-                        original_file: provenance.original_file.clone(),
-                        track_id: provenance.track_id.clone(),
-                        sha256: provenance.sha256.clone(),
-                        revision: provenance.revision.clone(),
-                        verification_state: provenance.verification_state,
-                    }),
-                });
-                Ok(())
-            })
-            .map_err(AcquisitionError::Message)?;
+    if !caption_provenance_reused {
+        if let (Some(track), Some(path)) = (caption_track.as_ref(), caption_path.as_ref()) {
+            if path.is_file() {
+                let bytes = fs::read(path)?;
+                let provenance = captions::persist_provenance(
+                    &job_dir,
+                    &source_url,
+                    track,
+                    &bytes,
+                    VerificationState::Unverified,
+                    Vec::new(),
+                )
+                .map_err(AcquisitionError::Message)?;
+                mutate_job(app, state, |job| {
+                    job.captions = Some(crate::domain::CaptionSummary {
+                        source: Some(provenance.source),
+                        language: Some(provenance.language.clone()),
+                        quality: "unverified".into(),
+                        fallback_intervals: 0,
+                        local_whisper_fallback: true,
+                        diagnostics: Vec::new(),
+                        provenance: Some(crate::domain::CaptionProvenanceSummary {
+                            original_file: provenance.original_file.clone(),
+                            language: provenance.language.clone(),
+                            track_id: provenance.track_id.clone(),
+                            sha256: provenance.sha256.clone(),
+                            revision: provenance.revision.clone(),
+                            verification_state: provenance.verification_state,
+                        }),
+                    });
+                    Ok(())
+                })
+                .map_err(AcquisitionError::Message)?;
+            }
         }
     }
     let label = title
@@ -1211,6 +1217,9 @@ fn run_yt_dlp<R: tauri::Runtime>(
     for id in format_selector.split('+') {
         validate_format_id(id).map_err(AcquisitionError::Message)?;
     }
+    if let Some(track) = caption_track {
+        clear_caption_files(download_dir, &track.language);
+    }
     let mut command = Command::new(&tools.yt_dlp);
     command
         .args([
@@ -1242,13 +1251,8 @@ fn run_yt_dlp<R: tauri::Runtime>(
             "--windows-filenames",
             "--output",
             "source.%(ext)s",
-            "--write-subs",
-            "--write-auto-subs",
-            "--sub-langs",
-            "ko",
-            "--sub-format",
-            "vtt",
         ])
+        .args(caption_download_args(caption_track))
         .arg("--paths")
         .arg(format!("home:{}", download_dir.display()))
         .arg("--paths")
@@ -1351,7 +1355,7 @@ fn run_yt_dlp<R: tauri::Runtime>(
             &stderr_tail.into_iter().collect::<Vec<_>>().join("\n"),
         )));
     }
-    let caption_path = caption_track.and_then(|_| find_caption_file(download_dir));
+    let caption_path = caption_track.and_then(|track| find_caption_file(download_dir, track));
     Ok(DownloadOutcome {
         media_path,
         title,
@@ -1576,24 +1580,53 @@ fn find_downloaded_media(download_dir: &Path) -> Result<Option<PathBuf>, Acquisi
     Ok(candidates.into_iter().next())
 }
 
-fn find_caption_file(download_dir: &Path) -> Option<PathBuf> {
+fn caption_download_args(caption_track: Option<&CaptionTrack>) -> Vec<String> {
+    let Some(track) = caption_track else {
+        return Vec::new();
+    };
+    let source_flag = match track.source {
+        captions::CaptionSource::Creator => "--write-subs",
+        captions::CaptionSource::Automatic => "--write-auto-subs",
+    };
+    vec![
+        source_flag.into(),
+        "--sub-langs".into(),
+        track.language.clone(),
+        "--sub-format".into(),
+        "vtt".into(),
+    ]
+}
+
+fn find_caption_file(download_dir: &Path, track: &CaptionTrack) -> Option<PathBuf> {
+    let mut expected_names = vec![format!("source.{}.vtt", track.language)];
+    if track.source == captions::CaptionSource::Automatic {
+        expected_names.push(format!("source.{}.auto.vtt", track.language));
+    }
     let mut candidates = fs::read_dir(download_dir)
         .ok()?
         .filter_map(Result::ok)
         .map(|entry| entry.path())
         .filter(|path| {
             path.is_file()
-                && path
-                    .file_name()
-                    .map(|name| name.to_string_lossy().to_ascii_lowercase().contains(".ko"))
-                    .unwrap_or(false)
-                && path
-                    .extension()
-                    .is_some_and(|extension| extension.eq_ignore_ascii_case("vtt"))
+                && path.file_name().is_some_and(|name| {
+                    expected_names.iter().any(|expected| {
+                        name.to_string_lossy().eq_ignore_ascii_case(expected)
+                    })
+                })
         })
         .collect::<Vec<_>>();
     candidates.sort();
     candidates.into_iter().next()
+}
+
+fn clear_caption_files(download_dir: &Path, language: &str) {
+    let names = [
+        format!("source.{language}.vtt"),
+        format!("source.{language}.auto.vtt"),
+    ];
+    for name in names {
+        fs::remove_file(download_dir.join(name)).ok();
+    }
 }
 
 #[cfg(test)]
@@ -1627,6 +1660,63 @@ mod tests {
             Some(("395".into(), 43))
         );
         assert_eq!(parse_progress("[download] 42%"), None);
+    }
+
+    #[test]
+    fn downloads_only_the_selected_caption_source_and_language() {
+        let creator = CaptionTrack {
+            track_id: "ko".into(),
+            language: "ko".into(),
+            source: captions::CaptionSource::Creator,
+            url: Some("creator".into()),
+            revision: "ko".into(),
+        };
+        let creator_args = caption_download_args(Some(&creator));
+        assert!(creator_args.contains(&"--write-subs".into()));
+        assert!(!creator_args.contains(&"--write-auto-subs".into()));
+        assert!(creator_args
+            .windows(2)
+            .any(|pair| pair[0] == "--sub-langs" && pair[1] == "ko"));
+
+        let automatic = CaptionTrack {
+            source: captions::CaptionSource::Automatic,
+            language: "ko-KR".into(),
+            ..creator
+        };
+        let automatic_args = caption_download_args(Some(&automatic));
+        assert!(automatic_args.contains(&"--write-auto-subs".into()));
+        assert!(!automatic_args.contains(&"--write-subs".into()));
+        assert!(automatic_args
+            .windows(2)
+            .any(|pair| pair[0] == "--sub-langs" && pair[1] == "ko-KR"));
+        assert!(caption_download_args(None).is_empty());
+    }
+
+    #[test]
+    fn caption_file_lookup_excludes_other_source_and_language() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(temp.path().join("source.ko.vtt"), b"creator").unwrap();
+        fs::write(temp.path().join("source.ko.auto.vtt"), b"automatic").unwrap();
+        fs::write(temp.path().join("source.en.vtt"), b"english").unwrap();
+        let creator = CaptionTrack {
+            track_id: "ko".into(),
+            language: "ko".into(),
+            source: captions::CaptionSource::Creator,
+            url: None,
+            revision: "ko".into(),
+        };
+        assert_eq!(
+            fs::read_to_string(find_caption_file(temp.path(), &creator).unwrap()).unwrap(),
+            "creator"
+        );
+        let automatic = CaptionTrack {
+            source: captions::CaptionSource::Automatic,
+            ..creator
+        };
+        assert_eq!(
+            fs::read_to_string(find_caption_file(temp.path(), &automatic).unwrap()).unwrap(),
+            "automatic"
+        );
     }
 
     #[test]
