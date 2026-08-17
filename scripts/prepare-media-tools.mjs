@@ -14,9 +14,9 @@ const cacheRoot = join(tmpdir(), "vod-scout-media-tools-v2");
 
 const artifacts = {
   ffmpeg: {
-    url: "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-01-13-21/ffmpeg-n8.1.2-34-g9b6c8969e0-win64-lgpl-shared-8.1.zip",
-    sha256: "3bba81dcfd017a6ea1627905549769913948831ef10f3e7df7541f736067bff8",
-    archive: "ffmpeg-n8.1.2-34-g9b6c8969e0-win64-lgpl-shared-8.1.zip"
+    url: "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-17-13-05/ffmpeg-n8.1.2-44-g7c533d0f86-win64-lgpl-shared-8.1.zip",
+    sha256: "681b9ca6d8f9be1e01d8873ad16f8a632f8a22b9653f1044837de6d5979b0fd6",
+    archive: "ffmpeg-n8.1.2-44-g7c533d0f86-win64-lgpl-shared-8.1.zip"
   },
   whisper: {
     url: "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.1/whisper-bin-x64.zip",

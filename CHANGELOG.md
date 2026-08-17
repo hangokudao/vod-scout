@@ -4,7 +4,7 @@
 
 ## 0.5.0 local candidate - 2026-08-18
 
-상태: **G1~G7 구현·자동 검증 PASS · 실제 입력/장치/UI/자원·장시간/패키지 HOLD**
+상태: **G1~G7 구현·자동 검증 PASS · G8 NSIS/PE/hash/격리 앱 실행 PASS · 실제 입력/장치/UI/자원·장시간·서명/공개 패키지 HOLD**
 
 ### Added
 
@@ -21,6 +21,7 @@
 
 - 후보 pool과 화면 목록의 동기화가 후보 수 변경·정렬·수동 재음성 인식 뒤에도 기존 판정을 잃지 않도록 했다.
 - 대기열 저장 실패·복구·실행권·실패 작업의 다음 작업 진행·실행 중 삭제 순서를 닫아 두었다.
+- 404가 된 FFmpeg autobuild 핀을 공식 `autobuild-2026-08-17-13-05` 자산 URL·archive·SHA-256으로 교정했다.
 
 ### Security
 
@@ -30,7 +31,7 @@
 ### Known issues
 
 - 실제 YouTube/reference-video, GPU, Windows UI, resource/long-run, parallel measurement는 실행하지 않아 `HOLD`다.
-- `npm run tauri:build`는 고정 FFmpeg URL HTTP 404로 NSIS 전에 중단됐다. installer/PE hash/`.sig`/공개 v0.5.0 자산은 검증되지 않았다.
+- 로컬 NSIS installer와 핵심 EXE의 크기·SHA-256·PE 버전, fresh 격리 데이터 경로 앱 실행은 `PASS`다. updater 개인키 부재로 `.sig`와 공개 v0.5.0 자산은 `HOLD`다.
 - 자동 검증: npm 49, Rust 126 passed·1 ignored, fixture 6, security 6, archive/media-tool 11 passed. `npm audit`의 개발 의존성 high 1건은 제품 경로 취약점으로 단정하지 않는다.
 
 ## 0.4.0 - 2026-08-08

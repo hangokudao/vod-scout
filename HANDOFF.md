@@ -1,12 +1,12 @@
 # VOD Scout 인계서
 
-현재 게이트: **v0.5.0 로컬 후보 · G1~G7 구현/자동 검증 PASS · G8 소스 통합 PASS · 실제 입력/장치/UI/패키지 HOLD**
+현재 게이트: **v0.5.0 로컬 후보 · G1~G7 구현/자동 검증 PASS · G8 NSIS/PE/hash/격리 앱 실행 PASS · 서명/공개 Release HOLD**
 
 ## 현재 정본
 
 | 항목 | 값 |
 |---|---|
-| 기준 커밋 | `b60d1c6` (G7 제한 병렬 게이트 통합) |
+| 기준 커밋 | `9c97600` (G8 패키징 correction 기준) |
 | 작업 브랜치 | `codex/v050-g8-integration-package` |
 | 공개 정본 | v0.4.0 다운로드와 Release 링크는 README에 유지 |
 | 로컬 후보 버전 | `0.5.0` (`package.json`, `package-lock.json`, Cargo manifest/lock, `tauri.conf.json`, release notes) |
@@ -35,11 +35,12 @@
 
 ## 패키지·진입점 결과
 
-- `npm run tauri:build`를 Windows PowerShell에서 시도했다. `prepare-sidecar`는 성공했지만 `prepare-media-tools`의 고정 FFmpeg URL이 HTTP 404를 반환해 NSIS 단계 전에 중단됐다.
-- 따라서 로컬 NSIS EXE/installer, PE ProductVersion/FileVersion, 크기·SHA-256, `.sig`는 생성·검증되지 않았다. 서명 키 부재로 `.sig`만 중단된 경우가 아니며 signed/public package PASS로 기록하지 않는다.
-- 기존 설치 앱이나 사용자 데이터는 설치·제거·실행하지 않았다. 실제 앱 headless 생존·정상 종료도 패키지 부재로 HOLD다.
-- 패키지 차단 원인: `https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-01-13-21/ffmpeg-n8.1.2-34-g9b6c8969e0-win64-lgpl-shared-8.1.zip` → HTTP 404.
-- `node scripts/generate-release-assets.mjs`도 NSIS bundle 부재(`src-tauri/target/release/bundle/nsis`)로 fail-closed했다. 생성된 release 자산은 없다.
+- `npm run tauri:build`를 Windows PowerShell에서 재실행했다. 새 FFmpeg 자산 다운로드·SHA-256·media-tools 준비와 release/NSIS 생성은 성공했고, updater 개인키 부재로 서명 단계에서 종료했다.
+- `vod-scout.exe`: 16,270,848 bytes, SHA-256 `d29cbf3f2d55e993ef896ecddcc202b6586e0a335f8cc6692fc51dcca1ac2d2f`, PE ProductVersion/FileVersion `0.5.0`.
+- `VOD Scout_0.5.0_x64-setup.exe`: 337,435,060 bytes, SHA-256 `2e8cddd19cb756951b58b8937c3171e4a9029cd7de78136bdcd04d745971d0f8`, PE ProductVersion/FileVersion `0.5.0`.
+- fresh `VOD_SCOUT_E2E_DATA_DIR`에서 빌드 앱이 8초 생존 후 종료됐고 `instance.lock`·`queue.json`만 생성됐다. 기존 설치 앱·사용자 데이터는 건드리지 않았다.
+- 고정 FFmpeg asset: `https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-17-13-05/ffmpeg-n8.1.2-44-g7c533d0f86-win64-lgpl-shared-8.1.zip`, archive size 70,837,934 bytes, SHA-256 `681b9ca6d8f9be1e01d8873ad16f8a632f8a22b9653f1044837de6d5979b0fd6`.
+- `.sig`와 공개 Release 자산은 개인키 부재로 생성·검증하지 않았으며 `HOLD`다.
 
 ## 문서 상태와 남은 HOLD
 
@@ -48,7 +49,7 @@
 - 실제 GPU 백엔드 시험, GPU→CPU 대체 장치 로그, Windows 사용자 화면 흐름은 실행하지 않았다.
 - 1~8시간 resource/long-run 및 기존 v0.4.0과의 동일 입력 비교는 실행하지 않았다.
 - G7 병렬 옵션은 사용할 수 없다.
-- NSIS installer, PE version/hash, updater `.sig`, 공개 v0.5.0 URL/Release는 HOLD다. README에는 공개 v0.4.0 링크만 남긴다.
+- updater `.sig`, 공개 v0.5.0 URL/Release는 HOLD다. README에는 공개 v0.4.0 링크만 남긴다.
 
 ## 롤백
 
@@ -56,7 +57,5 @@
 
 ## 다음 정확한 작업
 
-1. 승인된 Windows 패키징 환경에서 고정 FFmpeg 자산 URL/해시를 정본과 함께 확인하고 `npm run tauri:build`를 재시도한다.
-2. NSIS installer가 실제 생성된 경우에만 파일명·크기·SHA-256·PE ProductVersion/FileVersion을 기록하고, 서명 키가 없으면 `.sig` 게이트만 정확히 HOLD로 남긴다.
-3. 새 설치를 기존 설치와 분리한 fresh data dir에서만 headless 생존·정상 종료를 확인한다.
-4. 실제 기준 영상·GPU·Windows UI·resource/long-run·parallel 측정이 끝날 때까지 v0.5.0 공개 링크·Release를 만들지 않는다.
+1. updater 서명 개인키가 승인된 환경에 있을 때만 `.sig` 생성과 release 자산 검증을 진행한다.
+2. 실제 기준 영상·GPU·Windows UI·resource/long-run·parallel 측정이 끝날 때까지 v0.5.0 공개 링크·Release를 만들지 않는다.
