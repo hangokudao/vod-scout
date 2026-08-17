@@ -375,12 +375,32 @@ fn candidates_for_count(job: &JobSnapshot, count: u8) -> Vec<Candidate> {
             .then_with(|| left.start_seconds.cmp(&right.start_seconds))
             .then_with(|| left.id.cmp(&right.id))
     });
-    let decisions = job.candidates.iter().map(|candidate| (candidate.id.as_str(), candidate.decision)).collect::<std::collections::HashMap<_, _>>();
+    let mut decisions = job.candidates.iter().map(|candidate| (candidate.id.as_str(), candidate.decision)).collect::<std::collections::HashMap<_, _>>();
+    for candidate in &job.candidate_pool {
+        decisions.entry(candidate.id.as_str()).or_insert(candidate.decision);
+    }
     candidates.truncate(count as usize);
     for candidate in &mut candidates {
         candidate.decision = decisions.get(candidate.id.as_str()).copied().unwrap_or(CandidateDecision::Pending);
     }
     candidates
+}
+
+fn sync_candidate_decision(
+    job: &mut JobSnapshot,
+    candidate_id: &str,
+    decision: CandidateDecision,
+) -> Result<(), String> {
+    let candidate = job
+        .candidates
+        .iter_mut()
+        .find(|candidate| candidate.id == candidate_id)
+        .ok_or_else(|| "후보를 찾을 수 없습니다.".to_string())?;
+    candidate.decision = decision;
+    if let Some(pool_candidate) = job.candidate_pool.iter_mut().find(|candidate| candidate.id == candidate_id) {
+        pool_candidate.decision = decision;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1210,12 +1230,7 @@ fn set_candidate_decision(
         if job.id != job_id || job.status != JobStatus::ReviewReady {
             return Err("검토 준비가 끝난 현재 작업에서만 후보를 판정할 수 있습니다.".into());
         }
-        let candidate = job
-            .candidates
-            .iter_mut()
-            .find(|candidate| candidate.id == candidate_id)
-            .ok_or_else(|| "후보를 찾을 수 없습니다.".to_string())?;
-        candidate.decision = decision;
+        sync_candidate_decision(job, &candidate_id, decision)?;
         let label = match decision {
             CandidateDecision::Pending => "보류",
             CandidateDecision::Accepted => "채택",
@@ -1303,6 +1318,39 @@ mod tests {
         *state.job.lock().expect("job lock") = Some(job);
         state.running.store(true, Ordering::SeqCst);
         TestAppState { state, _temp: temp }
+    }
+
+    fn test_candidate(id: &str, total_score: u8) -> Candidate {
+        Candidate {
+            id: id.into(), start_seconds: total_score as u32, end_seconds: total_score as u32 + 10,
+            title: id.into(), summary: "요약".into(), transcript_excerpt: "기존 결과".into(),
+            audio_score: total_score, dialogue_score: total_score, chat_score: None, total_score,
+            decision: CandidateDecision::Pending, quality_status: "VALID".into(), quality_warnings: Vec::new(), selection_reasons: Vec::new(), uncertainty_reasons: Vec::new(), transcript_quality_status: TranscriptQualityStatus::Certain,
+            transcript_quality_reasons: Vec::new(), context_start_seconds: 0.0, context_end_seconds: 10.0,
+            context_transcript: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn preserves_candidate_decision_when_count_round_trips_through_pool() {
+        let mut job = JobSnapshot::new(
+            "job-candidate-pool".into(), SourceKind::Demo, "fixture".into(), Scenario::Normal,
+            AnalysisMode::Full, None, None,
+        );
+        job.candidate_pool = (0..30).map(|index| test_candidate(&format!("candidate-{index:02}"), 100 - index)).collect();
+        job.candidates = job.candidate_pool[..8].to_vec();
+
+        sync_candidate_decision(&mut job, "candidate-20", CandidateDecision::Accepted)
+            .expect_err("hidden candidates are not directly reviewable");
+        sync_candidate_decision(&mut job, "candidate-03", CandidateDecision::Accepted)
+            .expect("visible candidate decision should update");
+        job.candidates = candidates_for_count(&job, 8);
+        assert_eq!(job.candidates.iter().find(|candidate| candidate.id == "candidate-03").unwrap().decision, CandidateDecision::Accepted);
+
+        job.candidate_count = 30;
+        job.candidates = candidates_for_count(&job, 30);
+        assert_eq!(job.candidates.iter().find(|candidate| candidate.id == "candidate-03").unwrap().decision, CandidateDecision::Accepted);
+        assert_eq!(job.candidates.iter().find(|candidate| candidate.id == "candidate-20").unwrap().decision, CandidateDecision::Pending);
     }
 
     #[test]
