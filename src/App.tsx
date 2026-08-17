@@ -102,6 +102,17 @@ function captionDiagnosticLabel(kind: string): string {
   return "음성 인식 대체";
 }
 
+function whisperRuntimeLabel(status: JobSnapshot["whisperRuntime"]["status"] | undefined): string {
+  switch (status) {
+    case "testing": return "시험 중";
+    case "gpu": return "GPU 사용";
+    case "cpu": return "CPU 사용";
+    case "cpuFallback": return "CPU 대체 처리";
+    case "failed": return "실패";
+    default: return "확인 전";
+  }
+}
+
 function captionVerificationLabel(value: CaptionSummary["provenance"]): string {
   if (!value) return "확인 정보 없음";
   return value.verificationState === "VERIFIED" ? "검증됨" : value.verificationState === "FAILED" ? "검증 실패" : "검증 전";
@@ -1114,7 +1125,7 @@ function App() {
                 <p>{job.status === "REVIEW_READY" ? `후보 ${job.candidates.length}개 중 ${reviewedCount}개를 판정했습니다.` : `${job.completedUnits} / ${job.totalUnits} 체크포인트 완료${job.mediaDurationSeconds ? ` · 원본 ${formatTime(Math.round(job.mediaDurationSeconds))}` : ""}${active && timing ? ` · 경과 ${formatDuration(timing.elapsedSeconds)}${timing.remainingSeconds === null ? " · 남은 시간 계산 중" : ` · 약 ${formatDuration(timing.remainingSeconds)} 남음`}` : ""}`}</p>
                 {job.sourceKind === "youtube" && captionSummaryLabel(job.captions) ? <small className="caption-summary">{captionSummaryLabel(job.captions)}</small> : null}
                 {job.sourceKind === "youtube" && job.captions ? <CaptionDetails captions={job.captions} /> : null}
-                <small className="whisper-status">음성 인식: {WHISPER_DEVICES.find((item) => item.value === (job.whisper?.deviceMode ?? "auto"))?.label} · {WHISPER_PROFILES.find((item) => item.value === (job.whisper?.profile ?? "balanced"))?.label} · CPU {job.whisper?.cpuThreads == null ? "자동" : `${job.whisper.cpuThreads}개 스레드`}</small>
+                <small className="whisper-status">음성 인식: {WHISPER_DEVICES.find((item) => item.value === (job.whisper?.deviceMode ?? "auto"))?.label} · {WHISPER_PROFILES.find((item) => item.value === (job.whisper?.profile ?? "balanced"))?.label} · CPU {job.whisper?.cpuThreads == null ? "자동" : `${job.whisper.cpuThreads}개 스레드`} · 실제 {whisperRuntimeLabel(job.whisperRuntime?.status)}{job.whisperRuntime?.unitIndex == null ? "" : ` · 단위 ${job.whisperRuntime.unitIndex + 1}`}{job.whisperRuntime?.effectiveCpuThreads == null ? "" : ` · ${job.whisperRuntime.effectiveCpuThreads}개 스레드 적용`}{job.whisperRuntime?.gpuFailureReason ? ` · ${job.whisperRuntime.gpuFailureReason}` : ""}</small>
               </div>
               <div className="job-actions">
                 {storageBytes !== null ? <span className="storage-label"><HardDrive size={14} /> {formatBytes(storageBytes)}</span> : null}

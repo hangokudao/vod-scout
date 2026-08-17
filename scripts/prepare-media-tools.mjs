@@ -10,7 +10,7 @@ import { validateArchiveEntries } from "./archive-safety.mjs";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const resourceRoot = join(projectRoot, "src-tauri", "resources", "media-tools");
-const cacheRoot = join(tmpdir(), "vod-scout-media-tools-v1");
+const cacheRoot = join(tmpdir(), "vod-scout-media-tools-v2");
 
 const artifacts = {
   ffmpeg: {
@@ -26,8 +26,7 @@ const artifacts = {
   whisperGpu: {
     url: "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.1/whisper-cublas-11.8.0-bin-x64.zip",
     sha256: "aecdce0e4d4bb758a7c72a31f3f9f19a7b6d861405fd2da743cd86398633c963",
-    archive: "whisper-cublas-11.8.0-bin-x64-v1.9.1.zip",
-    prepare: false
+    archive: "whisper-cublas-11.8.0-bin-x64-v1.9.1.zip"
   },
   model: {
     url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin?download=true",
@@ -127,7 +126,7 @@ async function extractZip(archive, destination) {
   }
 }
 
-const runtimeDirectories = ["ffmpeg", "whisper", "models", "yt-dlp", "deno"];
+const runtimeDirectories = ["ffmpeg", "whisper", "whisper-gpu", "models", "yt-dlp", "deno"];
 
 async function collectRuntimeFiles() {
   const files = [];
@@ -151,6 +150,7 @@ async function ready() {
       join(resourceRoot, "ffmpeg", "ffmpeg.exe"),
       join(resourceRoot, "ffmpeg", "ffprobe.exe"),
       join(resourceRoot, "whisper", "whisper-cli.exe"),
+      join(resourceRoot, "whisper-gpu", "whisper-cli.exe"),
       join(resourceRoot, "models", "ggml-base.bin"),
       join(resourceRoot, "yt-dlp", "yt-dlp.exe"),
       join(resourceRoot, "deno", "deno.exe"),
@@ -164,12 +164,11 @@ async function ready() {
     const manifestFiles = Object.keys(manifest.runtimeHashes ?? {}).sort();
     const runtimeHashesMatch = JSON.stringify(runtimeFiles) === JSON.stringify(manifestFiles)
       && (await Promise.all(runtimeFiles.map(async (relative) => manifest.runtimeHashes[relative] === await sha256(join(resourceRoot, relative))))).every(Boolean);
-    return manifest.schemaVersion === 5
+    return manifest.schemaVersion === 6
       && manifest.artifacts.ffmpeg.sha256 === artifacts.ffmpeg.sha256
       && manifest.artifacts.whisper.sha256 === artifacts.whisper.sha256
       && manifest.artifacts.whisperGpu.url === artifacts.whisperGpu.url
       && manifest.artifacts.whisperGpu.sha256 === artifacts.whisperGpu.sha256
-      && manifest.artifacts.whisperGpu.prepare === false
       && manifest.artifacts.model.sha256 === artifacts.model.sha256
       && manifest.artifacts.whisperLicense.sha256 === artifacts.whisperLicense.sha256
       && manifest.artifacts.modelLicense.sha256 === artifacts.modelLicense.sha256
@@ -190,9 +189,10 @@ if (await ready()) {
 }
 
 await mkdir(cacheRoot, { recursive: true });
-const [ffmpegArchive, whisperArchive, modelFile, whisperLicense, modelLicense, ytDlpExe, denoArchive, ytDlpLicense, denoLicense] = await Promise.all([
+const [ffmpegArchive, whisperArchive, whisperGpuArchive, modelFile, whisperLicense, modelLicense, ytDlpExe, denoArchive, ytDlpLicense, denoLicense] = await Promise.all([
   download(artifacts.ffmpeg),
   download(artifacts.whisper),
+  download(artifacts.whisperGpu),
   download(artifacts.model),
   download(artifacts.whisperLicense),
   download(artifacts.modelLicense),
@@ -205,23 +205,27 @@ const [ffmpegArchive, whisperArchive, modelFile, whisperLicense, modelLicense, y
 const staging = join(cacheRoot, "staging");
 const ffmpegExtracted = join(staging, "ffmpeg");
 const whisperExtracted = join(staging, "whisper");
+const whisperGpuExtracted = join(staging, "whisper-gpu");
 const denoExtracted = join(staging, "deno");
 await extractZip(ffmpegArchive, ffmpegExtracted);
 await extractZip(whisperArchive, whisperExtracted);
+await extractZip(whisperGpuArchive, whisperGpuExtracted);
 await extractZip(denoArchive, denoExtracted);
 
 const ffmpegExe = await findFile(ffmpegExtracted, "ffmpeg.exe");
 const ffprobeExe = await findFile(ffmpegExtracted, "ffprobe.exe");
 const ffmpegLicense = await findFile(ffmpegExtracted, "LICENSE.txt");
 const whisperExe = await findFile(whisperExtracted, "whisper-cli.exe");
+const whisperGpuExe = await findFile(whisperGpuExtracted, "whisper-cli.exe");
 const denoExe = await findFile(denoExtracted, "deno.exe");
-if (!ffmpegExe || !ffprobeExe || !ffmpegLicense || !whisperExe || !denoExe) {
+if (!ffmpegExe || !ffprobeExe || !ffmpegLicense || !whisperExe || !whisperGpuExe || !denoExe) {
   throw new Error("압축 파일에서 필요한 실행 파일을 찾지 못했습니다.");
 }
 
 await rm(resourceRoot, { recursive: true, force: true });
 await mkdir(join(resourceRoot, "ffmpeg"), { recursive: true });
 await mkdir(join(resourceRoot, "whisper"), { recursive: true });
+await mkdir(join(resourceRoot, "whisper-gpu"), { recursive: true });
 await mkdir(join(resourceRoot, "models"), { recursive: true });
 await mkdir(join(resourceRoot, "yt-dlp"), { recursive: true });
 await mkdir(join(resourceRoot, "deno"), { recursive: true });
@@ -231,6 +235,11 @@ await cp(dirname(ffmpegExe), join(resourceRoot, "ffmpeg"), { recursive: true });
 for (const entry of await readdir(dirname(whisperExe), { withFileTypes: true })) {
   if (entry.isFile() && (entry.name.toLowerCase().endsWith(".dll") || entry.name === "whisper-cli.exe")) {
     await copyFile(join(dirname(whisperExe), entry.name), join(resourceRoot, "whisper", entry.name));
+  }
+}
+for (const entry of await readdir(dirname(whisperGpuExe), { withFileTypes: true })) {
+  if (entry.isFile() && (entry.name.toLowerCase().endsWith(".dll") || entry.name === "whisper-cli.exe")) {
+    await copyFile(join(dirname(whisperGpuExe), entry.name), join(resourceRoot, "whisper-gpu", entry.name));
   }
 }
 await copyFile(modelFile, join(resourceRoot, "models", "ggml-base.bin"));
@@ -248,7 +257,7 @@ const runtimeHashes = Object.fromEntries(await Promise.all(
 ));
 
 await writeFile(join(resourceRoot, "manifest.json"), JSON.stringify({
-  schemaVersion: 5,
+  schemaVersion: 6,
   preparedAt: new Date().toISOString(),
   artifacts,
   runtimeHashes

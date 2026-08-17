@@ -18,7 +18,7 @@ struct IntegrityManifest {
 fn embedded_manifest() -> Result<IntegrityManifest, String> {
     let manifest: IntegrityManifest = serde_json::from_str(EMBEDDED_MANIFEST)
         .map_err(|error| format!("내장 도구 무결성 정보가 올바르지 않습니다: {error}"))?;
-    if manifest.schema_version != 5 {
+    if manifest.schema_version != 6 {
         return Err("내장 도구 무결성 정보 버전이 올바르지 않습니다.".into());
     }
     Ok(manifest)
@@ -44,7 +44,7 @@ fn sha256_file(path: &Path) -> Result<String, String> {
 
 fn runtime_relative_paths(root: &Path) -> Result<HashSet<String>, String> {
     let mut result = HashSet::new();
-    let mut pending = ["ffmpeg", "whisper", "models", "yt-dlp", "deno"]
+    let mut pending = ["ffmpeg", "whisper", "whisper-gpu", "models", "yt-dlp", "deno"]
         .into_iter()
         .map(|directory| root.join(directory))
         .collect::<Vec<_>>();
@@ -306,6 +306,9 @@ mod tests {
     #[test]
     fn rejects_a_modified_runtime_file() {
         let directory = tempdir().unwrap();
+        for relative in ["ffmpeg", "whisper", "whisper-gpu", "models", "yt-dlp", "deno"] {
+            fs::create_dir_all(directory.path().join(relative)).unwrap();
+        }
         for relative in embedded_manifest().unwrap().runtime_hashes.keys() {
             let path = directory.path().join(relative);
             fs::create_dir_all(path.parent().unwrap()).unwrap();

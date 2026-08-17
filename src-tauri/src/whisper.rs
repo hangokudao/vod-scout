@@ -48,6 +48,43 @@ pub struct WhisperSettings {
     pub cpu_threads: Option<u16>,
 }
 
+/// Runtime state shown to the user and persisted with the job snapshot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum WhisperRuntimeStatus {
+    #[default]
+    Untested,
+    Testing,
+    Gpu,
+    Cpu,
+    CpuFallback,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WhisperRuntimeState {
+    #[serde(default)]
+    pub status: WhisperRuntimeStatus,
+    #[serde(default)]
+    pub unit_index: Option<u32>,
+    #[serde(default)]
+    pub effective_cpu_threads: Option<u16>,
+    #[serde(default)]
+    pub gpu_failure_reason: Option<String>,
+}
+
+impl Default for WhisperRuntimeState {
+    fn default() -> Self {
+        Self {
+            status: WhisperRuntimeStatus::Untested,
+            unit_index: None,
+            effective_cpu_threads: None,
+            gpu_failure_reason: None,
+        }
+    }
+}
+
 impl Default for WhisperSettings {
     fn default() -> Self {
         Self {
@@ -70,9 +107,14 @@ pub fn normalize_cpu_threads(value: Option<u16>) -> Option<u16> {
 }
 
 pub fn effective_cpu_threads(settings: &WhisperSettings, available: usize) -> usize {
+    let available_bound = available.max(MIN_CPU_THREADS as usize).min(MAX_CPU_THREADS as usize);
     settings
         .cpu_threads
-        .map(|threads| normalize_cpu_threads(Some(threads)).unwrap_or(MIN_CPU_THREADS) as usize)
+        .map(|threads| {
+            normalize_cpu_threads(Some(threads))
+                .unwrap_or(MIN_CPU_THREADS)
+                .min(available_bound as u16) as usize
+        })
         .unwrap_or_else(|| available.saturating_sub(1).clamp(1, MAX_CPU_THREADS as usize))
 }
 
@@ -174,6 +216,26 @@ mod tests {
         assert_eq!(normalize_cpu_threads(Some(99)), Some(32));
         assert_eq!(normalize_cpu_threads(None), None);
         assert_eq!(effective_cpu_threads(&WhisperSettings::default(), 128), 32);
+        assert_eq!(
+            effective_cpu_threads(
+                &WhisperSettings {
+                    cpu_threads: Some(32),
+                    ..Default::default()
+                },
+                4
+            ),
+            4
+        );
+        assert_eq!(
+            effective_cpu_threads(
+                &WhisperSettings {
+                    cpu_threads: Some(0),
+                    ..Default::default()
+                },
+                0
+            ),
+            1
+        );
     }
 
     #[test]
@@ -194,5 +256,26 @@ mod tests {
         unit.cpu_fallback.status = WhisperAttemptStatus::Failed;
         assert!(!should_try_cpu(&unit));
         assert!(!should_try_gpu(&settings, &unit));
+    }
+
+    #[test]
+    fn whisper_attempt_state_machine_allows_one_gpu_then_one_cpu_fallback() {
+        let auto = WhisperSettings::default();
+        let cpu = WhisperSettings {
+            device_mode: WhisperDeviceMode::Cpu,
+            ..auto.clone()
+        };
+        let mut unit = WhisperUnitState::legacy_cpu(3, 0);
+        assert!(should_try_gpu(&auto, &unit));
+        assert!(should_try_cpu(&unit));
+
+        unit.gpu.status = WhisperAttemptStatus::Failed;
+        assert!(!should_try_gpu(&auto, &unit));
+        assert!(should_try_cpu(&unit));
+
+        unit.cpu_fallback.status = WhisperAttemptStatus::Failed;
+        assert!(!should_try_cpu(&unit));
+        assert!(!should_try_gpu(&auto, &unit));
+        assert!(!should_try_gpu(&cpu, &WhisperUnitState::legacy_cpu(3, 1)));
     }
 }

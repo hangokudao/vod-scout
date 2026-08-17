@@ -30,6 +30,15 @@ export interface WhisperSettings {
   cpuThreads: number | null;
 }
 
+export type WhisperRuntimeStatus = "untested" | "testing" | "gpu" | "cpu" | "cpuFallback" | "failed";
+
+export interface WhisperRuntimeState {
+  status: WhisperRuntimeStatus;
+  unitIndex: number | null;
+  effectiveCpuThreads: number | null;
+  gpuFailureReason: string | null;
+}
+
 export interface CaptionProvenanceSummary {
   originalFile: string;
   language: string | null;
@@ -117,6 +126,7 @@ export interface JobSnapshot {
   activity: ActivityEvent[];
   captions: CaptionSummary | null;
   whisper: WhisperSettings;
+  whisperRuntime: WhisperRuntimeState;
 }
 
 export interface RuntimeInfo {

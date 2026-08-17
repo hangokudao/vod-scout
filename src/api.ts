@@ -163,7 +163,13 @@ export async function createJob(input: CreateJobInput): Promise<JobSnapshot> {
     candidates: [],
     activity: [{ sequence: 1, timestamp: now, kind: "job", message: "새 분석 작업을 만들었습니다." }],
     captions: null,
-    whisper: input.whisper
+    whisper: input.whisper,
+    whisperRuntime: {
+      status: "untested",
+      unitIndex: null,
+      effectiveCpuThreads: null,
+      gpuFailureReason: null
+    }
   };
   notifyMock();
   return structuredClone(mockJob);
