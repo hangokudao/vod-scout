@@ -1977,6 +1977,15 @@ kbd {
   }
 }
 
+.quality-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 10px 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -7,7 +7,8 @@ mod storage;
 mod whisper;
 
 use crate::domain::{
-    AnalysisMode, Candidate, CandidateDecision, JobSnapshot, JobStatus, Scenario, SourceKind,
+    AnalysisMode, Candidate, CandidateDecision, CandidateRecognitionRun, JobSnapshot, JobStatus,
+    RecognitionRunStatus, Scenario, SourceKind, TranscriptQualityStatus,
 };
 use crate::whisper::WhisperSettings;
 use crate::storage::JobStore;
@@ -30,6 +31,7 @@ struct AppState {
     job: Mutex<Option<JobSnapshot>>,
     running: AtomicBool,
     cancel_requested: AtomicBool,
+    manual_running: AtomicBool,
 }
 
 impl AppState {
@@ -40,6 +42,7 @@ impl AppState {
             job: Mutex::new(None),
             running: AtomicBool::new(false),
             cancel_requested: AtomicBool::new(false),
+            manual_running: AtomicBool::new(false),
         })
     }
 }
@@ -623,6 +626,50 @@ async fn start_job(
     Ok(snapshot)
 }
 
+#[tauri::command]
+async fn rerun_candidate_transcription(
+    app: tauri::AppHandle,
+    state: State<'_, Arc<AppState>>,
+    job_id: String,
+    candidate_id: String,
+) -> Result<JobSnapshot, String> {
+    if state.running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+        return Err("분석 또는 다른 음성 인식이 실행 중입니다.".into());
+    }
+    state.cancel_requested.store(false, Ordering::SeqCst);
+    state.manual_running.store(true, Ordering::SeqCst);
+    let run_id = Uuid::new_v4().to_string();
+    let started = mutate_job(&app, &state, |job| {
+        if job.id != job_id || job.status != JobStatus::ReviewReady {
+            return Err("검토 준비가 끝난 현재 작업에서만 다시 음성 인식을 실행할 수 있습니다.".into());
+        }
+        let candidate = job.candidates.iter().find(|candidate| candidate.id == candidate_id)
+            .ok_or_else(|| "선택한 후보를 찾을 수 없습니다.".to_string())?;
+        let revision = job.recognition_runs.iter().filter(|run| run.candidate_id == candidate.id)
+            .map(|run| run.result_revision).max().unwrap_or(0).saturating_add(1);
+        job.recognition_runs.push(CandidateRecognitionRun {
+            id: run_id.clone(), candidate_id: candidate_id.clone(), status: RecognitionRunStatus::Started,
+            started_at: Utc::now(), completed_at: None, result_revision: revision, raw_result: None,
+            display_result: None, failure_reason: None,
+            backend_evidence: "요청됨 · 내장 G2 Whisper 런타임·모델 사용".into(),
+        });
+        job.current_stage_label = "선택 후보 음성 인식 중".into();
+        job.push_activity("recognition", "선택한 후보의 음성을 다시 인식하기 시작했습니다.");
+        Ok(())
+    });
+    let started = match started {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            state.manual_running.store(false, Ordering::SeqCst);
+            state.running.store(false, Ordering::SeqCst);
+            return Err(error);
+        }
+    };
+    let state_arc = Arc::clone(state.inner());
+    tauri::async_runtime::spawn_blocking(move || media::run_candidate_recognition(app, state_arc, job_id, candidate_id, run_id));
+    Ok(started)
+}
+
 /// Validate `job_id` against the active job, then set `cancel_requested`.
 /// Mismatched IDs must not arm the global cancel flag. The check+set stays
 /// under the job lock and never touches disk, so tool loops can stop before
@@ -653,6 +700,16 @@ fn cancel_job(
     job_id: String,
 ) -> Result<JobSnapshot, String> {
     arm_cancel_signal(&state, &job_id)?;
+    if state.manual_running.load(Ordering::SeqCst) {
+        return mutate_job(&app, &state, |job| {
+            if job.id != job_id || job.status != JobStatus::ReviewReady {
+                return Err("현재 선택 후보 음성 인식 상태가 아닙니다.".into());
+            }
+            job.current_stage_label = "선택 후보 음성 인식 취소 중".into();
+            job.push_activity("cancel", "선택 후보 음성 인식 취소를 요청했습니다.");
+            Ok(())
+        });
+    }
     let snapshot = mutate_job(&app, &state, |job| {
         if job.id != job_id {
             return Err("현재 작업과 요청한 작업이 다릅니다.".into());
@@ -738,6 +795,12 @@ fn csv_field(value: &str) -> String {
     format!("\"{}\"", safe.replace('"', "\"\""))
 }
 
+fn safe_candidate_text(value: &str, status: TranscriptQualityStatus) -> String {
+    if status == TranscriptQualityStatus::Uncertain || value.contains('\u{fffd}') {
+        "음성 인식 결과가 불확실해 원문을 표시하지 않습니다.".into()
+    } else { value.into() }
+}
+
 #[tauri::command]
 fn export_candidates_csv(
     app: tauri::AppHandle,
@@ -775,8 +838,8 @@ fn export_candidates_csv(
                     .map(|score| score.to_string())
                     .unwrap_or_default(),
                 candidate.decision,
-                csv_field(&candidate.title),
-                csv_field(&candidate.transcript_excerpt),
+                csv_field(&safe_candidate_text(&candidate.title, candidate.transcript_quality_status)),
+                csv_field(&safe_candidate_text(&candidate.transcript_excerpt, candidate.transcript_quality_status)),
             ));
         }
         rows
@@ -941,6 +1004,9 @@ fn set_candidate_decision(
     candidate_id: String,
     decision: CandidateDecision,
 ) -> Result<JobSnapshot, String> {
+    if state.manual_running.load(Ordering::SeqCst) {
+        return Err("선택 후보 음성 인식이 끝난 뒤 후보를 판정할 수 있습니다.".into());
+    }
     mutate_job(&app, &state, |job| {
         if job.id != job_id || job.status != JobStatus::ReviewReady {
             return Err("검토 준비가 끝난 현재 작업에서만 후보를 판정할 수 있습니다.".into());
@@ -985,6 +1051,15 @@ mod tests {
         }
         assert_eq!(csv_field("normal"), "\"normal\"");
         assert!(!csv_field("a\0b").contains('\0'));
+    }
+
+    #[test]
+    fn csv_hides_uncertain_transcript_text_and_replacement_characters() {
+        let safe = safe_candidate_text("깨진 � 원문", TranscriptQualityStatus::Certain);
+        assert!(!safe.contains('�'));
+        assert!(safe.contains("불확실"));
+        let safe = safe_candidate_text("오디오 근거 구간", TranscriptQualityStatus::Uncertain);
+        assert!(safe.contains("불확실"));
     }
 
     /// Holds AppState and its temp data dir. Field order matters: Rust drops
@@ -1170,6 +1245,7 @@ pub fn run() {
             export_candidates_csv,
             prepare_candidate_preview,
             prepare_candidate_context_preview,
+            rerun_candidate_transcription,
             set_candidate_decision,
             get_runtime_info
         ])

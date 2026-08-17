@@ -9,6 +9,7 @@ import type {
   JobSnapshot,
   JobStatus,
   PreviewMedia,
+  CandidateRecognitionRun,
   RuntimeInfo,
   StoredJobInfo
 } from "./types";
@@ -31,6 +32,8 @@ const mockCandidates: Candidate[] = [
     chatScore: 95,
     totalScore: 91,
     decision: "PENDING",
+    transcriptQualityStatus: "CERTAIN",
+    transcriptQualityReasons: [],
     contextStartSeconds: 730,
     contextEndSeconds: 828,
     contextTranscript: [
@@ -278,6 +281,46 @@ export async function setCandidateDecision(
   return structuredClone(mockJob);
 }
 
+export async function rerunCandidateTranscription(jobId: string, candidateId: string): Promise<JobSnapshot> {
+  if (tauriAvailable) return invoke("rerun_candidate_transcription", { jobId, candidateId });
+  if (!mockJob || mockJob.id !== jobId || mockJob.status !== "REVIEW_READY") {
+    throw new Error("검토 준비가 끝난 현재 작업에서만 다시 음성 인식을 실행할 수 있습니다.");
+  }
+  const candidate = mockJob.candidates.find((item) => item.id === candidateId);
+  if (!candidate) throw new Error("선택한 후보를 찾을 수 없습니다.");
+  const runs = mockJob.recognitionRuns ?? (mockJob.recognitionRuns = []);
+  if (runs.some((run) => run.status === "STARTED")) throw new Error("다른 후보 음성 인식이 실행 중입니다.");
+  const revision = Math.max(0, ...runs.filter((run) => run.candidateId === candidateId).map((run) => run.resultRevision)) + 1;
+  const runId = crypto.randomUUID();
+  const startedAt = new Date().toISOString();
+  const started: CandidateRecognitionRun = {
+    id: runId,
+    candidateId,
+    status: "STARTED",
+    startedAt,
+    completedAt: null,
+    resultRevision: revision,
+    rawResult: null,
+    displayResult: null,
+    failureReason: null,
+    backendEvidence: "요청됨 · 내장 G2 Whisper 런타임·모델 사용"
+  };
+  runs.push(started);
+  addMockActivity("recognition", "선택한 후보의 음성을 다시 인식하기 시작했습니다.");
+  notifyMock();
+  const rawResult = candidate.transcriptExcerpt;
+  const completedAt = new Date().toISOString();
+  started.status = "COMPLETED";
+  started.completedAt = completedAt;
+  started.rawResult = rawResult;
+  started.displayResult = rawResult;
+  started.backendEvidence = "실제 백엔드=fixture · 내장 G2 Whisper 명령 형태 유지";
+  candidate.transcriptExcerpt = rawResult;
+  addMockActivity("recognition", "선택 후보 음성 인식을 완료했습니다. 기존 후보 판정은 유지했습니다.");
+  notifyMock();
+  return structuredClone(mockJob);
+}
+
 export async function subscribeToJob(callback: (job: JobSnapshot) => void): Promise<() => void> {
   if (tauriAvailable) {
     return listen<JobSnapshot>("job-updated", (event) => callback(event.payload));
@@ -335,6 +378,10 @@ export function previewMediaUrl(path: string): string {
 
 function mockCsv(): string {
   if (!mockJob) return "";
+  const safeTranscript = (value: string, status?: string) =>
+    status === "UNCERTAIN" || value.includes("\uFFFD")
+      ? "음성 인식 결과가 불확실해 원문을 표시하지 않습니다."
+      : value;
   const escape = (value: string) => {
     const cleaned = value.replaceAll("\0", "");
     const safe = /^[\s]*[=+\-@]/.test(cleaned) ? `'${cleaned}` : cleaned;
@@ -351,8 +398,8 @@ function mockCsv(): string {
       candidate.dialogueScore,
       candidate.chatScore ?? "",
       candidate.decision,
-      escape(candidate.title),
-      escape(candidate.transcriptExcerpt)
+      escape(safeTranscript(candidate.title, candidate.transcriptQualityStatus)),
+      escape(safeTranscript(candidate.transcriptExcerpt, candidate.transcriptQualityStatus))
     ].join(","));
   });
   return rows.join("\r\n");

@@ -9,6 +9,7 @@ import App, {
   resolveCandidateContext,
   resolveTheme,
   resolveUpdateStatus,
+  safeTranscriptText,
   selectionStorageKey,
   sortCandidates,
   writeUiSettings,
@@ -110,6 +111,43 @@ describe("selection stays with the candidate id across a reorder", () => {
   it("scopes the stored selection key to a job", () => {
     expect(selectionStorageKey("job-1")).toBe("vod-scout.selected-candidate.job-1");
     expect(selectionStorageKey("job-2")).not.toBe(selectionStorageKey("job-1"));
+  });
+});
+
+describe("transcript quality display", () => {
+  it("masks replacement characters and uncertain source text", () => {
+    expect(safeTranscriptText("깨진 � 문장")).toContain("불확실");
+    expect(safeTranscriptText("원문", "UNCERTAIN")).toContain("불확실");
+    expect(safeTranscriptText("정상 문장", "CERTAIN")).toBe("정상 문장");
+  });
+
+  it("keeps audio evidence visible while masking uncertain candidate text", () => {
+    const uncertain = candidate({
+      id: "uncertain",
+      title: "음성 인식 결과 불확실 · 오디오 근거 구간",
+      summary: "음성 인식 결과 불확실 · 오디오 반응 91 · 발화 밀도 64",
+      transcriptExcerpt: "음성 인식 결과가 불확실해 원문을 표시하지 않습니다.",
+      transcriptQualityStatus: "UNCERTAIN"
+    });
+    expect(safeTranscriptText(uncertain.title)).toContain("오디오 근거 구간");
+    expect(safeTranscriptText(uncertain.summary)).toContain("오디오 반응 91");
+    expect(safeTranscriptText(uncertain.transcriptExcerpt)).toContain("불확실");
+  });
+
+  it("masks only context lines that contain unsafe text", () => {
+    const context = resolveCandidateContext({
+      ...candidate({ id: "context" }),
+      contextTranscript: [
+        { startSeconds: 8, endSeconds: 10, text: "안전한 앞 맥락" },
+        { startSeconds: 22, endSeconds: 24, text: "깨진 � 원문" },
+        { startSeconds: 35, endSeconds: 37, text: "안전한 뒤 맥락" }
+      ]
+    }, 60);
+    expect(context.lines.map((line) => line.text)).toEqual([
+      "안전한 앞 맥락",
+      "음성 인식 결과가 불확실해 원문을 표시하지 않습니다.",
+      "안전한 뒤 맥락"
+    ]);
   });
 });
 

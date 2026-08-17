@@ -2,6 +2,7 @@ use super::{mutate_job, AppState};
 use crate::captions::{self, CaptionInterval, CaptionPlan, CaptionProvenance, VerificationState};
 use crate::domain::{
     AnalysisMode, Candidate, CandidateDecision, ContextTranscriptEntry, JobStatus, SourceKind,
+    TranscriptQualityStatus,
 };
 use crate::integrity::{
     format_bytes_for_message, free_disk_space_bytes, runtime_hashes, source_fingerprint,
@@ -197,6 +198,10 @@ struct TranscriptSegment {
     start_seconds: f64,
     end_seconds: f64,
     text: String,
+    #[serde(default)]
+    quality_status: TranscriptQualityStatus,
+    #[serde(default)]
+    quality_reasons: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -543,6 +548,8 @@ struct WindowScore {
     dialogue_raw: f64,
     chat_raw: Option<f64>,
     excerpt: String,
+    transcript_quality_status: TranscriptQualityStatus,
+    transcript_quality_reasons: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -660,6 +667,104 @@ pub fn run_media_pipeline<R: tauri::Runtime>(
     }
     state.cancel_requested.store(false, Ordering::SeqCst);
     state.running.store(false, Ordering::SeqCst);
+}
+
+pub fn run_candidate_recognition<R: tauri::Runtime>(app: tauri::AppHandle<R>, state: Arc<AppState>, job_id: String, candidate_id: String, run_id: String) {
+    let result = recognize_candidate(&state, &job_id, &candidate_id, &run_id);
+    let _ = mutate_job(&app, &state, |job| {
+        let run = job.recognition_runs.iter_mut().find(|run| run.id == run_id)
+            .ok_or_else(|| "음성 인식 실행 기록을 찾을 수 없습니다.".to_string())?;
+        match result {
+            Ok(output) => {
+                run.complete(Utc::now(), output.raw_result.clone(), output.display_result.clone(), output.backend_evidence)?;
+                if let Some(candidate) = job.candidates.iter_mut().find(|candidate| candidate.id == candidate_id) {
+                    candidate.transcript_excerpt = output.display_result;
+                    candidate.transcript_quality_status = output.quality_status;
+                    candidate.transcript_quality_reasons = output.quality_reasons;
+                }
+                job.current_stage_label = "선택 후보 음성 인식 완료".into();
+                job.push_activity("recognition", "선택 후보 음성 인식을 완료했습니다. 기존 후보 판정은 유지했습니다.");
+            }
+            Err(error) => {
+                run.fail(Utc::now(), error.clone(), "내장 G2 Whisper 런타임 실행 실패".into())?;
+                job.current_stage_label = "선택 후보 음성 인식 실패".into();
+                job.push_activity("recognition-error", &format!("선택 후보 음성 인식에 실패했습니다: {error}"));
+            }
+        }
+        Ok(())
+    });
+    state.cancel_requested.store(false, Ordering::SeqCst);
+    state.manual_running.store(false, Ordering::SeqCst);
+    state.running.store(false, Ordering::SeqCst);
+}
+
+struct CandidateRecognitionOutput {
+    raw_result: String,
+    display_result: String,
+    quality_status: TranscriptQualityStatus,
+    quality_reasons: Vec<String>,
+    backend_evidence: String,
+}
+
+fn recognize_candidate(state: &Arc<AppState>, job_id: &str, candidate_id: &str, run_id: &str) -> Result<CandidateRecognitionOutput, String> {
+    let (source_path, candidate, settings) = {
+        let guard = state.job.lock().map_err(|_| "작업 상태 잠금이 손상됐습니다.".to_string())?;
+        let job = guard.as_ref().ok_or_else(|| "현재 작업이 없습니다.".to_string())?;
+        if job.id != job_id || job.status != JobStatus::ReviewReady {
+            return Err("검토 준비가 끝난 현재 작업에서만 다시 음성 인식을 실행할 수 있습니다.".into());
+        }
+        let candidate = job.candidates.iter().find(|candidate| candidate.id == candidate_id).cloned()
+            .ok_or_else(|| "선택한 후보를 찾을 수 없습니다.".to_string())?;
+        let source_path = job.acquired_media_path.clone().unwrap_or_else(|| job.source_label.clone());
+        (source_path, candidate, job.whisper.clone())
+    };
+    check_cancel(state).map_err(|_| "사용자가 음성 인식을 취소했습니다.".to_string())?;
+    let source = PathBuf::from(source_path);
+    if !source.is_file() { return Err("후보의 원본 영상 파일을 찾을 수 없습니다.".into()); }
+    let tools = locate_tools(&state.resource_dir).map_err(pipeline_error_message)?;
+    let run_dir = state.store.job_dir(job_id).join("recognition-runs").join(run_id);
+    fs::create_dir_all(&run_dir).map_err(|error| error.to_string())?;
+    let wav = run_dir.join("candidate.wav");
+    let prefix = run_dir.join("transcript");
+    let log_prefix = run_dir.join("whisper");
+    run_command(&state.cancel_requested, &tools.ffmpeg, &tools.ffmpeg_dir, [
+        "-hide_banner".into(), "-loglevel".into(), "error".into(), "-y".into(),
+        "-ss".into(), candidate.start_seconds.to_string().into(),
+        "-t".into(), candidate.end_seconds.saturating_sub(candidate.start_seconds).max(1).to_string().into(),
+        "-protocol_whitelist".into(), "file,crypto,data".into(), "-i".into(), source.as_os_str().into(),
+        "-vn".into(), "-ac".into(), "1".into(), "-ar".into(), "16000".into(), "-c:a".into(), "pcm_s16le".into(), wav.as_os_str().into(),
+    ], &log_prefix.with_extension("ffmpeg.stdout.log"), &log_prefix.with_extension("ffmpeg.stderr.log"))
+        .map_err(pipeline_error_message)?;
+    let threads = whisper::effective_cpu_threads(&settings, thread::available_parallelism().map(|count| count.get()).unwrap_or(4));
+    let mut evidence = format!("요청 장치={:?}; 프로필={:?}; CPU 스레드={threads}; 모델={MODEL_NAME}", settings.device_mode, settings.profile);
+    let mut segments = None;
+    if !matches!(settings.device_mode, WhisperDeviceMode::Cpu) {
+        if let Some(gpu) = tools.whisper_gpu.as_ref() {
+            let gpu_prefix = run_dir.join("gpu-probe");
+            let gpu_probe = run_gpu_probe(&state.cancel_requested, &tools.ffmpeg, &tools.ffmpeg_dir, gpu, &tools.whisper_gpu_dir, &tools.model, &wav, &run_dir.join("gpu-probe.wav"), &gpu_prefix, threads, &settings, &run_dir.join("gpu-probe.stdout.log"), &run_dir.join("gpu-probe.stderr.log"));
+            match gpu_probe.and_then(|_| run_whisper_attempt(&state.cancel_requested, gpu, &tools.whisper_gpu_dir, &tools.model, &wav, &prefix, candidate.start_seconds as f64, threads, &settings, true, &run_dir.join("gpu.stdout.log"), &run_dir.join("gpu.stderr.log"))) {
+                Ok(value) => { evidence.push_str("; 실제 백엔드=whisper.cpp-gpu; GPU 시험·결과 확인"); segments = Some(value); }
+                Err(error) => evidence.push_str(&format!("; GPU 실패 후 CPU 대체={}", sanitize_gpu_failure_reason(&format!("{error:?}")))),
+            }
+        } else { evidence.push_str("; GPU 런타임 없음·CPU 대체"); }
+    }
+    if segments.is_none() {
+        let value = run_whisper_attempt(&state.cancel_requested, &tools.whisper, &tools.whisper_dir, &tools.model, &wav, &prefix, candidate.start_seconds as f64, threads, &settings, false, &run_dir.join("cpu.stdout.log"), &run_dir.join("cpu.stderr.log"))
+            .map_err(pipeline_error_message)?;
+        evidence.push_str("; 실제 백엔드=whisper.cpp-cpu");
+        segments = Some(value);
+    }
+    let segments = sanitize_transcript_segments(segments.unwrap_or_default());
+    let raw_result = segments.iter().map(|segment| segment.text.as_str()).collect::<Vec<_>>().join(" ");
+    if raw_result.is_empty() { return Err("Whisper 음성 인식 결과가 비어 있습니다.".into()); }
+    let quality_reasons = segments.iter().flat_map(|segment| segment.quality_reasons.iter().cloned()).fold(Vec::new(), |mut reasons, reason| { if !reasons.contains(&reason) { reasons.push(reason); } reasons });
+    let quality_status = if quality_reasons.is_empty() { TranscriptQualityStatus::Certain } else { TranscriptQualityStatus::Uncertain };
+    let display_result = if quality_status == TranscriptQualityStatus::Uncertain || raw_result.contains('\u{fffd}') { UNCERTAIN_TRANSCRIPT_PLACEHOLDER.into() } else { raw_result.clone() };
+    Ok(CandidateRecognitionOutput { raw_result, display_result, quality_status, quality_reasons, backend_evidence: evidence })
+}
+
+fn pipeline_error_message(error: PipelineError) -> String {
+    match error { PipelineError::Cancelled => "사용자가 음성 인식을 취소했습니다.".into(), PipelineError::Message(message) => message }
 }
 
 pub(crate) fn preview_cache_key(
@@ -1229,6 +1334,8 @@ fn run<R: tauri::Runtime>(
                 start_seconds: interval.start_seconds,
                 end_seconds: interval.end_seconds,
                 text: interval.text,
+                quality_status: TranscriptQualityStatus::Certain,
+                quality_reasons: Vec::new(),
             })
             .collect::<Vec<_>>();
         let threads = whisper::effective_cpu_threads(
@@ -2423,11 +2530,17 @@ fn normalize_transcript(value: &str) -> String {
         .join(" ")
 }
 
-fn is_transcript_hallucination(value: &str) -> bool {
+fn transcript_quality_reasons(value: &str) -> Vec<String> {
     let normalized = normalize_transcript(value);
-    if normalized.chars().count() < 2 {
-        return true;
-    }
+    let words = normalized.split_whitespace().collect::<Vec<_>>();
+    let mut reasons = Vec::new();
+    if value.contains('\u{fffd}') { reasons.push("U+FFFD 깨진 문자가 포함됨".into()); }
+    let repeated_short_word = words.len() >= 3 && words.iter().all(|word| *word == words[0]) && words[0].chars().count() <= 6;
+    let repeated_short_sentence = words.len() >= 4 && words.len() % 2 == 0 && words[..words.len() / 2] == words[words.len() / 2..] && words[..words.len() / 2].len() <= 4;
+    let compact = normalized.chars().filter(|character| !character.is_whitespace()).collect::<Vec<_>>();
+    let repeated_short_syllable = compact.len() >= 3 && compact.iter().all(|character| *character == compact[0]);
+    if repeated_short_syllable || repeated_short_word { reasons.push("짧은 단어 또는 음절이 비정상적으로 반복됨".into()); }
+    if repeated_short_sentence { reasons.push("짧은 문장이 비정상적으로 반복됨".into()); }
     let lower = value.to_lowercase();
     if [
         "[music]",
@@ -2437,9 +2550,8 @@ fn is_transcript_hallucination(value: &str) -> bool {
         "시청해 주셔서 감사합니다",
     ]
     .iter()
-    .any(|marker| lower.contains(marker))
-    {
-        return true;
+    .any(|marker| lower.contains(marker)) {
+        reasons.push("음악 또는 자막 안내 문구로 의심됨".into());
     }
 
     let hangul = normalized
@@ -2451,58 +2563,34 @@ fn is_transcript_hallucination(value: &str) -> bool {
         .filter(|character| character.is_ascii_alphabetic())
         .count();
     if hangul == 0 && ascii_letters >= 8 {
-        return true;
+        reasons.push("한국어 음성 인식 문장으로 보기 어려운 결과".into());
     }
 
     let words = normalized.split_whitespace().collect::<Vec<_>>();
-    if words.len() >= 6 {
-        let unique = words
-            .iter()
-            .copied()
-            .collect::<std::collections::HashSet<_>>();
-        if unique.len() * 10 < words.len() * 5 {
-            return true;
-        }
-        if words.len() >= 8 && words[..4] == words[4..8] {
-            return true;
-        }
+    if words.len() >= 6 && words[..3] == words[3..6] {
+        reasons.push("Whisper 출력에서 반복 문구가 감지됨".into());
     }
-    false
+    reasons
 }
 
 fn sanitize_transcript_segments(segments: Vec<TranscriptSegment>) -> Vec<TranscriptSegment> {
-    let mut kept: Vec<TranscriptSegment> = Vec::new();
-    for mut segment in segments {
-        if is_transcript_hallucination(&segment.text) {
-            continue;
-        }
-        if !segment.start_seconds.is_finite()
-            || !segment.end_seconds.is_finite()
-            || segment.start_seconds >= segment.end_seconds
-        {
-            continue;
-        }
-        let normalized = normalize_transcript(&segment.text);
-        if let Some(previous) = kept.last() {
-            if segment.start_seconds < previous.end_seconds {
-                if normalize_transcript(&previous.text) == normalized {
-                    continue;
-                }
-                segment.start_seconds = previous.end_seconds;
-                if segment.start_seconds >= segment.end_seconds {
-                    continue;
-                }
-            }
-        }
-        let repeated_nearby = kept.iter().rev().take(6).any(|previous| {
-            segment.start_seconds - previous.end_seconds < 120.0
-                && normalize_transcript(&previous.text) == normalized
-        });
-        if !repeated_nearby {
-            kept.push(segment);
-        }
+    let mut annotated = segments.into_iter().filter(|segment| segment.start_seconds.is_finite() && segment.end_seconds.is_finite() && segment.start_seconds < segment.end_seconds).map(|mut segment| {
+        segment.quality_reasons = transcript_quality_reasons(&segment.text);
+        segment.quality_status = if segment.quality_reasons.is_empty() { TranscriptQualityStatus::Certain } else { TranscriptQualityStatus::Uncertain };
+        segment
+    }).collect::<Vec<_>>();
+    for index in 0..annotated.len() {
+        let normalized = normalize_transcript(&annotated[index].text);
+        if normalized.is_empty() || normalized.chars().count() > 12 { continue; }
+        let repeated_index = (0..index).rev().find(|previous| annotated[index].start_seconds - annotated[*previous].end_seconds < 120.0 && normalize_transcript(&annotated[*previous].text) == normalized);
+        let Some(previous) = repeated_index else { continue };
+        let reason = "짧은 단어 또는 음절이 비정상적으로 반복됨".to_string();
+        if !annotated[index].quality_reasons.contains(&reason) { annotated[index].quality_reasons.push(reason.clone()); }
+        if !annotated[previous].quality_reasons.contains(&reason) { annotated[previous].quality_reasons.push(reason); }
+        annotated[index].quality_status = TranscriptQualityStatus::Uncertain;
+        annotated[previous].quality_status = TranscriptQualityStatus::Uncertain;
     }
-    kept
+    annotated
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2649,6 +2737,8 @@ fn parse_srt(path: &Path, offset: f64) -> Result<Vec<TranscriptSegment>, Pipelin
                 start_seconds: offset + start,
                 end_seconds: offset + end,
                 text: body,
+                quality_status: TranscriptQualityStatus::Certain,
+                quality_reasons: Vec::new(),
             });
         }
     }
@@ -2687,6 +2777,8 @@ fn build_candidates(
     energy: &[EnergyPoint],
     chat_motion: &[ChatMotionPoint],
 ) -> Vec<Candidate> {
+    let segments = sanitize_transcript_segments(segments.to_vec());
+    let segments = segments.as_slice();
     let range_start = range_start_seconds.clamp(0.0, duration.max(0.0));
     let range_end = range_end_seconds
         .max(range_start)
@@ -2751,8 +2843,16 @@ fn build_candidates(
                     / chat_points.len() as f64,
             )
         };
+        let mut transcript_quality_reasons = Vec::new();
+        for segment in &spoken {
+            for reason in &segment.quality_reasons {
+                if !transcript_quality_reasons.contains(reason) { transcript_quality_reasons.push(reason.clone()); }
+            }
+        }
+        let transcript_quality_status = if transcript_quality_reasons.is_empty() { TranscriptQualityStatus::Certain } else { TranscriptQualityStatus::Uncertain };
         let excerpt = spoken
             .iter()
+            .filter(|segment| segment.quality_status == TranscriptQualityStatus::Certain)
             .map(|segment| segment.text.as_str())
             .collect::<Vec<_>>()
             .join(" ");
@@ -2763,6 +2863,8 @@ fn build_candidates(
             dialogue_raw,
             chat_raw,
             excerpt,
+            transcript_quality_status,
+            transcript_quality_reasons,
         });
         if end >= range_end - f64::EPSILON {
             break;
@@ -2807,7 +2909,10 @@ fn build_candidates(
     for item in scored {
         let overlaps_or_repeats = selected.iter().any(|selected| {
             let overlaps = item.0.start < selected.0.end && selected.0.start < item.0.end;
-            overlaps || transcript_similarity(&selected.0.excerpt, &item.0.excerpt) >= 0.75
+            let repeated = item.0.transcript_quality_status == TranscriptQualityStatus::Certain
+                && selected.0.transcript_quality_status == TranscriptQualityStatus::Certain
+                && transcript_similarity(&selected.0.excerpt, &item.0.excerpt) >= 0.75;
+            overlaps || repeated
         });
         if overlaps_or_repeats {
             continue;
@@ -2829,7 +2934,11 @@ fn build_candidates(
         .into_iter()
         .map(|(window, audio, dialogue, chat, total)| {
             let excerpt = truncate_chars(window.excerpt.trim(), 140);
-            let title = if excerpt.is_empty() {
+            let uncertain = window.transcript_quality_status == TranscriptQualityStatus::Uncertain;
+            let title = if uncertain {
+                if excerpt.is_empty() { "음성 인식 결과 불확실 · 오디오 근거 구간".into() }
+                else { format!("{} · 음성 인식 결과 불확실", truncate_chars(&excerpt, 20)) }
+            } else if excerpt.is_empty() {
                 "오디오 반응이 컸던 구간".into()
             } else {
                 truncate_chars(&excerpt, 28)
@@ -2843,12 +2952,17 @@ fn build_candidates(
                 start_seconds,
                 end_seconds,
                 title,
-                summary: if let Some(chat) = chat {
+                summary: if uncertain {
+                    if let Some(chat) = chat { format!("음성 인식 결과 불확실 · 오디오 반응 {audio} · 발화 밀도 {dialogue} · 채팅 움직임 {chat}") }
+                    else { format!("음성 인식 결과 불확실 · 오디오 반응 {audio} · 발화 밀도 {dialogue} · 채팅 움직임 없음") }
+                } else if let Some(chat) = chat {
                     format!("오디오 반응 {audio} · 발화 밀도 {dialogue} · 채팅 움직임 {chat}")
                 } else {
                     format!("오디오 반응 {audio} · 발화 밀도 {dialogue} · 채팅 움직임 없음")
                 },
-                transcript_excerpt: if excerpt.is_empty() {
+                transcript_excerpt: if uncertain {
+                    "음성 인식 결과가 불확실해 원문을 표시하지 않습니다.".into()
+                } else if excerpt.is_empty() {
                     "이 구간에서 인식된 발화가 없습니다.".into()
                 } else {
                     excerpt
@@ -2858,6 +2972,8 @@ fn build_candidates(
                 chat_score: chat,
                 total_score: total,
                 decision: CandidateDecision::Pending,
+                transcript_quality_status: window.transcript_quality_status,
+                transcript_quality_reasons: window.transcript_quality_reasons,
                 context_start_seconds,
                 context_end_seconds,
                 context_transcript: context_transcript(
@@ -2930,7 +3046,7 @@ fn context_transcript(
         .map(|segment| ContextTranscriptEntry {
             start_seconds: segment.start_seconds,
             end_seconds: segment.end_seconds,
-            text: segment.text.clone(),
+            text: safe_transcript_text(segment),
         })
         .collect::<Vec<_>>();
     entries.sort_by(|left, right| {
@@ -2940,6 +3056,14 @@ fn context_transcript(
             .then_with(|| left.text.cmp(&right.text))
     });
     entries
+}
+
+const UNCERTAIN_TRANSCRIPT_PLACEHOLDER: &str = "음성 인식 결과가 불확실해 원문을 표시하지 않습니다.";
+
+fn safe_transcript_text(segment: &TranscriptSegment) -> String {
+    if segment.quality_status == TranscriptQualityStatus::Uncertain || segment.text.contains('\u{fffd}') {
+        UNCERTAIN_TRANSCRIPT_PLACEHOLDER.into()
+    } else { segment.text.clone() }
 }
 
 fn normalized_score(value: f64, max: f64) -> u8 {
@@ -3029,11 +3153,15 @@ mod tests {
                 start_seconds: 9.0,
                 end_seconds: 11.0,
                 text: "before and inside".into(),
+                quality_status: TranscriptQualityStatus::Certain,
+                quality_reasons: Vec::new(),
             },
             TranscriptSegment {
                 start_seconds: 11.0,
                 end_seconds: 12.0,
                 text: "outside".into(),
+                quality_status: TranscriptQualityStatus::Certain,
+                quality_reasons: Vec::new(),
             },
         ];
         clip_segments_to_range(&mut segments, 10.0, 11.0);
@@ -3293,6 +3421,8 @@ mod tests {
             start_seconds: 20.0,
             end_seconds: 24.0,
             text: "같은 입력".into(),
+            quality_status: TranscriptQualityStatus::Certain,
+            quality_reasons: Vec::new(),
         }];
         let energy = (0..60)
             .map(|second| EnergyPoint {
@@ -3443,6 +3573,8 @@ mod tests {
             start_seconds: 10.0,
             end_seconds: 14.0,
             text: "이 구간은 발화가 많습니다 정말 많이 말합니다".into(),
+            quality_status: TranscriptQualityStatus::Certain,
+            quality_reasons: Vec::new(),
         }];
         let energy = (0..60)
             .map(|second| EnergyPoint {
@@ -3457,27 +3589,71 @@ mod tests {
     }
 
     #[test]
-    fn removes_english_repetition_and_nearby_duplicate_hallucinations() {
+    fn preserves_suspect_repetition_with_diagnostic_quality_metadata() {
         let sanitized = sanitize_transcript_segments(vec![
             TranscriptSegment {
                 start_seconds: 0.0,
                 end_seconds: 4.0,
                 text: "1/2 of the cream cheese. 1/2 of the cream cheese. 1/2 of the cream cheese."
                     .into(),
+                quality_status: TranscriptQualityStatus::Certain,
+                quality_reasons: Vec::new(),
             },
             TranscriptSegment {
                 start_seconds: 10.0,
                 end_seconds: 13.0,
                 text: "이건 진짜 말도 안 되잖아".into(),
+                quality_status: TranscriptQualityStatus::Certain,
+                quality_reasons: Vec::new(),
             },
             TranscriptSegment {
                 start_seconds: 20.0,
                 end_seconds: 23.0,
                 text: "이건 진짜 말도 안 되잖아".into(),
+                quality_status: TranscriptQualityStatus::Certain,
+                quality_reasons: Vec::new(),
             },
         ]);
-        assert_eq!(sanitized.len(), 1);
-        assert_eq!(sanitized[0].text, "이건 진짜 말도 안 되잖아");
+        assert_eq!(sanitized.len(), 3);
+        assert_eq!(sanitized[0].quality_status, TranscriptQualityStatus::Uncertain);
+        assert_eq!(sanitized[1].quality_status, TranscriptQualityStatus::Certain);
+        assert_eq!(sanitized[2].quality_status, TranscriptQualityStatus::Certain);
+    }
+
+    #[test]
+    fn marks_short_repetition_and_replacement_character_without_deleting_evidence() {
+        let sanitized = sanitize_transcript_segments(vec![
+            TranscriptSegment { start_seconds: 0.0, end_seconds: 2.0, text: "너 너 너".into(), quality_status: TranscriptQualityStatus::Certain, quality_reasons: Vec::new() },
+            TranscriptSegment { start_seconds: 4.0, end_seconds: 6.0, text: "노래 노래 노래".into(), quality_status: TranscriptQualityStatus::Certain, quality_reasons: Vec::new() },
+            TranscriptSegment { start_seconds: 8.0, end_seconds: 10.0, text: "깨진 � 문장".into(), quality_status: TranscriptQualityStatus::Certain, quality_reasons: Vec::new() },
+        ]);
+        assert_eq!(sanitized.len(), 3);
+        assert!(sanitized.iter().all(|segment| segment.quality_status == TranscriptQualityStatus::Uncertain));
+        assert!(sanitized[2].quality_reasons.iter().any(|reason| reason.contains("U+FFFD")));
+        let energy = (0..20).map(|second| EnergyPoint { start_seconds: second as f64, rms: 0.9 }).collect::<Vec<_>>();
+        let candidates = build_candidates(20.0, 0.0, 20.0, &sanitized, &energy, &[]);
+        assert!(!candidates.is_empty());
+        assert!(candidates.iter().any(|candidate| candidate.transcript_quality_status == TranscriptQualityStatus::Uncertain && !candidate.title.contains('�') && !candidate.transcript_excerpt.contains('�')));
+    }
+
+    #[test]
+    fn distinguishes_short_repetition_from_an_intentional_sentence() {
+        for (text, uncertain) in [("아 아 아", true), ("가 가 가 가", true), ("라라라라", true), ("오늘은 정말 재미있는 방송입니다", false)] {
+            let segment = sanitize_transcript_segments(vec![TranscriptSegment { start_seconds: 0.0, end_seconds: 2.0, text: text.into(), quality_status: TranscriptQualityStatus::Certain, quality_reasons: Vec::new() }]);
+            assert_eq!(segment[0].quality_status == TranscriptQualityStatus::Uncertain, uncertain, "{text}");
+        }
+    }
+
+    #[test]
+    fn preserves_laughter_exclamation_and_song_raw_text_but_masks_display() {
+        let raw = ["ㅋㅋㅋㅋ", "!!!", "라라라라"];
+        let sanitized = sanitize_transcript_segments(raw.iter().enumerate().map(|(index, text)| TranscriptSegment {
+            start_seconds: index as f64 * 3.0, end_seconds: index as f64 * 3.0 + 2.0, text: (*text).into(), quality_status: TranscriptQualityStatus::Certain, quality_reasons: Vec::new(),
+        }).collect());
+        assert_eq!(sanitized.iter().map(|segment| segment.text.as_str()).collect::<Vec<_>>(), raw);
+        assert_eq!(sanitized.iter().map(|segment| segment.quality_status).collect::<Vec<_>>(), vec![TranscriptQualityStatus::Uncertain, TranscriptQualityStatus::Certain, TranscriptQualityStatus::Uncertain]);
+        let context = context_transcript(&sanitized, 0.0, 10.0);
+        assert!(context.iter().all(|line| !line.text.contains('�')));
     }
 
     #[test]
@@ -3487,6 +3663,8 @@ mod tests {
                 start_seconds: index as f64 * 10.0,
                 end_seconds: index as f64 * 10.0 + 4.0,
                 text: format!("서로 다른 한국어 발화 구간 {index}"),
+                quality_status: TranscriptQualityStatus::Certain,
+                quality_reasons: Vec::new(),
             })
             .collect::<Vec<_>>();
         let energy = (0..120)
@@ -3522,6 +3700,8 @@ mod tests {
                 start_seconds: index as f64 * 30.0,
                 end_seconds: index as f64 * 30.0 + 4.0,
                 text: format!("범위 검증 발화 {index}"),
+                quality_status: TranscriptQualityStatus::Certain,
+                quality_reasons: Vec::new(),
             })
             .collect::<Vec<_>>();
         let energy = (0..1200)
@@ -3544,6 +3724,8 @@ mod tests {
             start_seconds: 1.0,
             end_seconds: 3.0,
             text: "범위 밖 발화".into(),
+            quality_status: TranscriptQualityStatus::Certain,
+            quality_reasons: Vec::new(),
         }];
         let energy = vec![EnergyPoint {
             start_seconds: 1.0,
@@ -3561,6 +3743,8 @@ mod tests {
             start_seconds: 10.0,
             end_seconds: 14.0,
             text: "근거가 있는 구간만 후보가 됩니다".into(),
+            quality_status: TranscriptQualityStatus::Certain,
+            quality_reasons: Vec::new(),
         }];
         let energy = (0..60)
             .map(|second| EnergyPoint {
@@ -3817,6 +4001,8 @@ mod tests {
             start_seconds: 10.0,
             end_seconds: 12.0,
             text: "이전 스키마 결과".into(),
+            quality_status: TranscriptQualityStatus::Certain,
+            quality_reasons: Vec::new(),
         });
         assert!(!checkpoint_is_compatible(
             &schema3,
@@ -3899,6 +4085,8 @@ mod tests {
             start_seconds: 1.0,
             end_seconds: 2.0,
             text: "부분 완료".into(),
+            quality_status: TranscriptQualityStatus::Certain,
+            quality_reasons: Vec::new(),
         });
         let err = align_checkpoint_with_job_units(&mut partial, 5, false).unwrap_err();
         assert!(err.contains("작업 스냅샷보다 미디어 체크포인트가 뒤에"));
@@ -3912,6 +4100,8 @@ mod tests {
             start_seconds: 700.0,
             end_seconds: 702.0,
             text: "스냅샷 이후".into(),
+            quality_status: TranscriptQualityStatus::Certain,
+            quality_reasons: Vec::new(),
         });
         assert_eq!(
             align_checkpoint_with_job_units(&mut ahead, 3, false).unwrap(),
