@@ -558,7 +558,19 @@ export async function listJobs(): Promise<StoredJobInfo[]> {
 export async function getQueue(): Promise<QueueIndex> {
   if (tauriAvailable) return invoke("get_queue");
   const orderedJobIds = mockJob ? [mockJob.id] : [];
-  return { schemaVersion: 1, orderedJobIds, transitionState: mockJob?.status === "ACQUIRING" ? "RUNNING" : "IDLE", executionMode: "SEQUENTIAL" };
+  return {
+    schemaVersion: 1,
+    orderedJobIds,
+    transitionState: mockJob?.status === "ACQUIRING" ? "RUNNING" : "IDLE",
+    executionMode: "SEQUENTIAL",
+    evaluation: {
+      status: "UNMEASURED_PENDING",
+      effectiveExecutionMode: "SEQUENTIAL",
+      maxConcurrency: 1,
+      parallelAvailable: false,
+      sequentialFallbackReason: null
+    }
+  };
 }
 
 export async function reorderJob(jobId: string, newIndex: number): Promise<QueueIndex> {

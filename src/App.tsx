@@ -43,6 +43,7 @@ import {
   deleteAllJobs,
   deleteStoredJob,
   getRuntimeInfo,
+  getQueue,
   getJobStorageInfo,
   listJobs,
   reorderJob,
@@ -68,6 +69,8 @@ import type {
   JobStatus,
   RuntimeInfo,
   PreviewMedia,
+  QueueEvaluation,
+  QueueIndex,
   Scenario,
   SourceKind,
   StoredJobInfo,
@@ -132,6 +135,13 @@ function resourceStageLabel(stage: string): string {
 
 export function resourceMetricValue(value: number | null | undefined, suffix = "") {
   return value == null ? "측정 불가" : `${value}${suffix}`;
+}
+
+export function queueEvaluationExplanation(evaluation: QueueEvaluation | null | undefined): string {
+  if (evaluation?.status === "SEQUENTIAL_FALLBACK" && evaluation.sequentialFallbackReason) {
+    return `순차 처리로 고정됨 · ${evaluation.sequentialFallbackReason}`;
+  }
+  return "승인된 하드웨어가 없고, 동일 입력의 실제 처리 시간·메모리·GPU 자원 측정도 없어 병렬 분석을 사용할 수 없습니다.";
 }
 
 function ResourcePanel({ job }: { job: JobSnapshot }) {
@@ -539,6 +549,7 @@ function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [storedJobs, setStoredJobs] = useState<StoredJobInfo[]>([]);
+  const [queue, setQueue] = useState<QueueIndex | null>(null);
   const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
   const [updateChecking, setUpdateChecking] = useState(false);
   const [updateInstalling, setUpdateInstalling] = useState(false);
@@ -567,10 +578,11 @@ function App() {
             setNewJobMode(false);
           }
         });
-        const [restored, runtimeInfo, queued] = await Promise.all([bootstrap(), getRuntimeInfo(), listJobs()]);
+        const [restored, runtimeInfo, queued, queueSnapshot] = await Promise.all([bootstrap(), getRuntimeInfo(), listJobs(), getQueue()]);
         if (!disposed) {
           setRuntime(runtimeInfo);
           setStoredJobs(queued);
+          setQueue(queueSnapshot);
           if (restored) {
             setJob(restored);
             setWhisperDevice(restored.whisper?.deviceMode ?? "auto");
@@ -920,7 +932,8 @@ function App() {
     const nextIndex = clamp(index + step, 0, storedJobs.length - 1);
     if (index < 0 || index === nextIndex) return;
     try {
-      await reorderJob(item.snapshot.id, nextIndex);
+      const updatedQueue = await reorderJob(item.snapshot.id, nextIndex);
+      setQueue(updatedQueue);
       await refreshStoredJobs();
     } catch (error) {
       setUiError(messageFrom(error));
@@ -1550,6 +1563,11 @@ function App() {
                 </div>
               </div>
             )) : <p className="quiet-copy">등록된 작업이 없습니다.</p>}
+          </div>
+          <div className="queue-evaluation" aria-label="병렬 분석 평가 상태">
+            <strong>병렬 분석: 사용할 수 없음</strong>
+            <span>{queueEvaluationExplanation(queue?.evaluation)}</span>
+            <small>현재 실행 상한: {queue?.evaluation.maxConcurrency ?? 1}개 · 평가 상태: {queue?.evaluation.status === "SEQUENTIAL_FALLBACK" ? "순차 전환" : "측정 전·대기"}</small>
           </div>
           <p className="queue-note">중단됨·실패·취소됨 작업은 사용자가 다시 시작하거나 취소하기 전까지 자동으로 진행하지 않습니다.</p>
         </section>

@@ -17,6 +17,7 @@ import App, {
   sortCandidates,
   writeUiSettings,
   normalizeWhisperSettings,
+  queueEvaluationExplanation,
   resourceMetricValue,
   type CandidateSortKey
 } from "./App";
@@ -111,6 +112,28 @@ describe("candidate count contract", () => {
     expect(item.totalScore).toBe(91);
     expect(item.qualityStatus).toBe("WARNING");
     expect(item.selectionReasons).not.toEqual(item.uncertaintyReasons);
+  });
+});
+
+describe("queue parallel evaluation display", () => {
+  it("explains that unmeasured parallel execution is unavailable", () => {
+    expect(queueEvaluationExplanation({
+      status: "UNMEASURED_PENDING",
+      effectiveExecutionMode: "SEQUENTIAL",
+      maxConcurrency: 1,
+      parallelAvailable: false,
+      sequentialFallbackReason: null
+    })).toContain("승인된 하드웨어가 없고");
+  });
+
+  it("keeps a persisted fallback reason read-only in the explanation", () => {
+    expect(queueEvaluationExplanation({
+      status: "SEQUENTIAL_FALLBACK",
+      effectiveExecutionMode: "SEQUENTIAL",
+      maxConcurrency: 1,
+      parallelAvailable: false,
+      sequentialFallbackReason: "동일 입력 측정이 없어 순차 처리로 고정했습니다."
+    })).toContain("동일 입력 측정이 없어 순차 처리로 고정했습니다.");
   });
 });
 
