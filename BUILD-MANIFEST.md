@@ -1,5 +1,24 @@
 # VOD Scout 빌드 명세
 
+## v0.5.0 로컬 후보 통합 빌드
+
+상태: **G1~G7 소스·자동 검증 PASS · NSIS/PE/hash/격리 앱 실행 PASS · 서명/공개 자산 HOLD**
+
+- 기준 커밋: `9c97600` 기반 `codex/v050-g8-integration-package`.
+- 버전 정본: `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, `src/releaseNotes.ts`, workflow/helper가 `0.5.0`.
+- `npm ci`: PASS. `npm test`: 49 passed. `npm run build`: PASS (1,793 modules).
+- `cargo.exe test --manifest-path src-tauri/Cargo.toml`: 126 passed, 1 ignored. Fixture worker: 6 passed.
+- `npm run test:security`: 6 passed. Archive/media-tool/sample-disk tests: 11 passed.
+- `npm run tauri:build` (PowerShell): **PASS through NSIS, HOLD at signing** — 새 FFmpeg 고정 자산과 media-tools를 준비하고 NSIS를 생성했으며 updater 개인키 부재로 서명 단계에서 종료.
+- `node scripts/generate-release-assets.mjs`: **HOLD** — 공개 Release 자산은 서명 키 부재로 생성하지 않았다.
+- `vod-scout.exe`: 16,270,848 bytes · SHA-256 `d29cbf3f2d55e993ef896ecddcc202b6586e0a335f8cc6692fc51dcca1ac2d2f` · PE ProductVersion/FileVersion `0.5.0`.
+- `VOD Scout_0.5.0_x64-setup.exe`: 337,435,060 bytes · SHA-256 `2e8cddd19cb756951b58b8937c3171e4a9029cd7de78136bdcd04d745971d0f8` · PE ProductVersion/FileVersion `0.5.0`.
+- fresh `VOD_SCOUT_E2E_DATA_DIR`: **PASS** — 빌드 앱 8초 생존 후 종료, 격리 폴더에 `instance.lock`·`queue.json` 2개 생성. 기존 설치·사용자 데이터는 변경하지 않았다.
+- 실제 YouTube/reference-video, GPU, Windows UI, resource/long-run, parallel measurements: **HOLD**. 기존 설치 앱·사용자 데이터는 변경하지 않았다.
+- G7 parallel option: **unavailable** until same-input resource measurements pass.
+
+정확한 FFmpeg asset: `https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-17-13-05/ffmpeg-n8.1.2-44-g7c533d0f86-win64-lgpl-shared-8.1.zip` · size 70,837,934 bytes · SHA-256 `681b9ca6d8f9be1e01d8873ad16f8a632f8a22b9653f1044837de6d5979b0fd6`.
+
 ## v0.4.0 공개 빌드
 
 상태: **PASS — exact tag·updater 서명·공개 자산·installer smoke·토큰 없는 직접 다운로드 확인 완료**. Authenticode `NotSigned`는 알려진 한계다.

@@ -2,6 +2,22 @@
 
 실제로 재현하거나 로그로 확인한 문제만 기록한다. 원인이 확정되지 않은 항목은 `HOLD`로 표시한다.
 
+## 2026-08-18 · v0.5.0 G5/G6/G7 통합 회귀
+
+- 증상: 후보 수 변경·정렬·수동 재음성 인식과 여러 영상 대기열을 G1~G7 브랜치 통합 후 한 번에 검증할 필요가 있었다.
+- 원인: G5는 후보 pool/evidence를 화면 목록과 별도로 유지하고 G6는 queue 저장·복구·실행권·삭제 순서를 추가했으므로, 통합 시 기존 판정 보존과 실패 작업 격리를 다시 확인해야 했다. G7은 실제 병렬 자원 측정이 없어 병렬 실행을 허용하면 안 됐다.
+- 수정: 후보 pool 동기화·evidence 품질 분리·개정 보존을 유지하고, queue mutation을 저장 성공 뒤에만 확정하며 실행권·`INTERRUPTED` 복구·실패 후 다음 작업·실행 중 삭제 경계를 fail-closed로 유지했다. 병렬 평가는 순차 처리로 고정했다.
+- 회귀 테스트: 프런트 49, Rust 본체 126 passed·1 ignored, fixture-worker 6, archive/media-tool/sample-disk 11, security 6, build PASS.
+- 상태: G5/G6/G7 자동 회귀 `PASS`; 실제 3개 영상 흐름·기준 영상 사람 판정·자원/장시간·병렬 측정은 `HOLD`.
+
+## 2026-08-18 · v0.5.0 G8 FFmpeg 핀 교정·패키징
+
+- 증상: 이전 `npm run tauri:build`가 설치 파일 생성 전에 종료됐다.
+- 원인: `prepare-media-tools.mjs`가 404가 된 이전 FFmpeg autobuild URL을 고정하고 있었다.
+- 수정: 공식 GitHub asset `autobuild-2026-08-17-13-05`의 URL·archive·SHA-256(`681b9ca6d8f9be1e01d8873ad16f8a632f8a22b9653f1044837de6d5979b0fd6`)로 핀을 교정하고 해당 값을 회귀 테스트에 고정했다.
+- 회귀 테스트: Windows PowerShell 패키징에서 FFmpeg 다운로드·해시·media-tools·release/NSIS 생성, EXE/installer 크기·SHA-256·PE ProductVersion/FileVersion `0.5.0`, fresh `VOD_SCOUT_E2E_DATA_DIR` 앱 8초 생존·종료를 확인했다. 기존 설치·사용자 데이터는 건드리지 않았다.
+- 상태: NSIS·PE version/hash·격리 앱 entrypoint `PASS`; updater 개인키 부재로 `.sig`와 공개 Release는 `HOLD`.
+
 ## 2026-08-08 · v0.4.0 · 초안 Release 설치 파일 조회 실패
 
 - 증상: installer smoke run `31240213255`가 제품 설치 전 `gh release download v0.4.0`에서 `release not found`로 실패했다. 목록 조회로 바꾼 run `31240340766`에서도 정확한 태그의 Release가 0개로 표시됐다.

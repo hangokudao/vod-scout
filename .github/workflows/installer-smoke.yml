@@ -6,7 +6,7 @@ on:
       release_tag:
         description: Draft or public release tag to test
         required: true
-        default: v0.4.0
+        default: v0.5.0
 
 permissions:
   # GitHub hides draft releases from a read-only Actions token.
@@ -47,8 +47,8 @@ jobs:
           $installer = $installers[0]
           $process = Start-Process -FilePath $installer.FullName -ArgumentList "/S" -WindowStyle Hidden -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "installer exit code $($process.ExitCode)" }
-          $apps = @(Get-ChildItem -LiteralPath $env:LOCALAPPDATA -Recurse -Filter "vod-scout.exe" -File | Where-Object { $_.VersionInfo.ProductVersion -like "0.4.0*" })
-          if ($apps.Count -ne 1) { throw "expected one installed vod-scout.exe v0.4.0, found $($apps.Count)" }
+          $apps = @(Get-ChildItem -LiteralPath $env:LOCALAPPDATA -Recurse -Filter "vod-scout.exe" -File | Where-Object { $_.VersionInfo.ProductVersion -like "0.5.0*" })
+          if ($apps.Count -ne 1) { throw "expected one installed vod-scout.exe v0.5.0, found $($apps.Count)" }
           $app = $apps[0]
           $acl = icacls $app.DirectoryName
           if ($acl -match "(Everyone|BUILTIN\\Users|Authenticated Users).*(\(F\)|\(M\)|\(W\))") { throw "shared principal has write permission: $acl" }

@@ -2,6 +2,38 @@
 
 이 문서는 사용자에게 영향을 주는 업데이트를 기록한다. 각 릴리스는 기능 추가뿐 아니라 버그 수정, 보안 수정, 알려진 문제를 함께 적는다.
 
+## 0.5.0 local candidate - 2026-08-18
+
+상태: **G1~G7 구현·자동 검증 PASS · G8 NSIS/PE/hash/격리 앱 실행 PASS · 실제 입력/장치/UI/자원·장시간·서명/공개 패키지 HOLD**
+
+### Added
+
+- G1~G4의 자막 provenance·GPU/CPU 대체·음성 인식 품질·자원 제한 상태를 작업 데이터에 기록한다.
+- G5 후보 `8/20/30`개 설정, 후보 pool/evidence 분리, 품질 경고와 후보 개정·판정 보존을 통합했다.
+- G6 여러 영상의 독립 작업·순차 대기열·실행권·`INTERRUPTED` 복구·작업별 삭제 경계를 통합했다.
+
+### Changed
+
+- 로컬 소스·package lock·Cargo lock·Tauri 설정·release notes·installer workflow/helper 기대 버전을 `0.5.0`으로 맞췄다.
+- G7은 측정되지 않은 병렬 처리를 fail-closed하고 순차 처리로 고정한다. 실제 측정 전 선택 항목은 제공하지 않는다.
+
+### Fixed
+
+- 후보 pool과 화면 목록의 동기화가 후보 수 변경·정렬·수동 재음성 인식 뒤에도 기존 판정을 잃지 않도록 했다.
+- 대기열 저장 실패·복구·실행권·실패 작업의 다음 작업 진행·실행 중 삭제 순서를 닫아 두었다.
+- 404가 된 FFmpeg autobuild 핀을 공식 `autobuild-2026-08-17-13-05` 자산 URL·archive·SHA-256으로 교정했다.
+
+### Security
+
+- 새 외부 AI·유료 API·API 키 저장·원본 미디어 전송 경로를 추가하지 않았다.
+- archive/media-tool/경로·자식 프로세스·체크포인트 경계 자동 테스트를 통과했다.
+
+### Known issues
+
+- 실제 YouTube/reference-video, GPU, Windows UI, resource/long-run, parallel measurement는 실행하지 않아 `HOLD`다.
+- 로컬 NSIS installer와 핵심 EXE의 크기·SHA-256·PE 버전, fresh 격리 데이터 경로 앱 실행은 `PASS`다. updater 개인키 부재로 `.sig`와 공개 v0.5.0 자산은 `HOLD`다.
+- 자동 검증: npm 49, Rust 126 passed·1 ignored, fixture 6, security 6, archive/media-tool 11 passed. `npm audit`의 개발 의존성 high 1건은 제품 경로 취약점으로 단정하지 않는다.
+
 ## 0.4.0 - 2026-08-08
 
 ### Added
