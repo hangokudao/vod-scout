@@ -2,7 +2,7 @@
 
 기준일: 2026-08-17
 
-현재 상태: **공개 v0.4.0 배포 완료 · v0.5.0 구현 전 문서 계약과 로컬 검증 완료 · 문서 PR 준비**
+현재 상태: **공개 v0.4.0 배포 완료 · v0.5.0 구현 전 문서 계약과 로컬 검증 완료 · 제품 코드 구현 시작 전 HOLD**
 
 - 공개 저장소: https://github.com/hangokudao/vod-scout
 - 최신 공개 Release: https://github.com/hangokudao/vod-scout/releases/tag/v0.4.0

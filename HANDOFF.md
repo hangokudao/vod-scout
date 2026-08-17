@@ -10,7 +10,7 @@
 | 공개 기준 | `main` `da5988d5b35ff517eb95eeaebfa5cc47d6fbd741` |
 | 최신 공개 Release | `v0.4.0` · https://github.com/hangokudao/vod-scout/releases/tag/v0.4.0 |
 | 현재 제품 버전 | `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` 모두 `0.4.0` |
-| 문서 작업 브랜치 | `codex/v050-research-plan` |
+| 문서 변경 추적 | PR #17 |
 | v0.5.0 상태 | 필수 문서 보완 완료, 코드·버전 변경 전 `HOLD` |
 
 v0.4.0의 기능·장시간 입력·설치·공개 자산 검증 근거는 [v0.4.0 릴리스 기록](docs/V0.4.0-RELEASE.md)과 [빌드 명세](BUILD-MANIFEST.md)를 따른다. 이 문서에서 해시와 실행 결과를 중복 관리하지 않는다.
@@ -86,7 +86,7 @@ v0.4.0의 기능·장시간 입력·설치·공개 자산 검증 근거는 [v0.4
 
 ## 다음 정확한 작업
 
-1. 로컬 문서 커밋을 기준으로 branch push와 PR 생성은 별도 승인 뒤 진행한다.
+1. PR #17 병합 뒤 갱신된 `origin/main` 정본을 확인한다.
 2. 기준 영상의 사용 권한·보관 범위와 실제 비교 입력을 확정한다.
 3. `origin/main` v0.4.0 기준의 제품 코드용 clean worktree와 `codex/` 작업 브랜치를 만든다.
 4. 첫 번째 음성 인식 품질 작업부터 구현하고 해당 테스트를 통과한 뒤 다음 기능으로 넘어간다.
