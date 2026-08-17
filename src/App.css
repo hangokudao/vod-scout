@@ -1709,6 +1709,18 @@ kbd {
   border-left: 1px solid var(--border);
 }
 
+.queue-panel { padding: 18px 18px 14px; border-bottom: 1px solid var(--line); }
+.queue-list { display: grid; gap: 6px; margin-top: 10px; }
+.queue-item { display: flex; align-items: center; gap: 4px; padding: 6px; border: 1px solid var(--line); border-radius: 10px; }
+.queue-item.selected { border-color: var(--accent); background: var(--surface-raised); }
+.queue-item-main { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; border: 0; background: transparent; color: inherit; text-align: left; padding: 0; }
+.queue-item-main > span:last-child { display: grid; min-width: 0; }
+.queue-item-main strong, .queue-item-main small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue-item-main small { color: var(--muted); font-size: 11px; }
+.queue-item-actions { display: flex; gap: 2px; }
+.queue-item-actions .icon-button { width: 24px; height: 24px; }
+.queue-note { color: var(--muted); font-size: 11px; line-height: 1.4; margin: 10px 0 0; }
+
 .activity-heading {
   display: flex;
   align-items: center;
