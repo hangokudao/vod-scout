@@ -1,4 +1,4 @@
-use super::{mutate_job, AppState};
+use super::{mutate_job, record_stage_metric, AppState};
 use crate::captions::{self, CaptionInterval, CaptionPlan, CaptionProvenance, VerificationState};
 use crate::domain::{
     AnalysisMode, Candidate, CandidateDecision, ContextTranscriptEntry, JobStatus, SourceKind,
@@ -15,6 +15,7 @@ use crate::whisper::{
     self, WhisperAttemptStatus, WhisperDeviceMode, WhisperRuntimeStatus, WhisperSettings,
     WhisperUnitState, MODEL_NAME,
 };
+use crate::resource::{ResourceSample, ResourceStage};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -160,6 +161,7 @@ fn wait_child_until(child: &mut Child, limit: Duration) -> bool {
 #[derive(Debug)]
 enum PipelineError {
     Cancelled,
+    ResourceLimit { stage: ResourceStage, reason: String },
     Message(String),
 }
 
@@ -591,6 +593,17 @@ pub fn run_media_pipeline<R: tauri::Runtime>(
     state: Arc<AppState>,
     job_id: String,
 ) {
+    let _heavy_tool_guard = match state.heavy_tool_gate.lock() {
+        Ok(guard) => guard,
+        Err(_) => {
+            state.running.store(false, Ordering::SeqCst);
+            return;
+        }
+    };
+    let _ = mutate_job(&app, &state, |job| {
+        job.owned_child_processes = 1;
+        Ok(())
+    });
     let result = run(&app, &state, &job_id);
     match result {
         Ok(candidates) => {
@@ -640,6 +653,21 @@ pub fn run_media_pipeline<R: tauri::Runtime>(
                 Ok(())
             });
         }
+        Err(PipelineError::ResourceLimit { stage, reason }) => {
+            let _ = mutate_job(&app, &state, |job| {
+                job.transition(JobStatus::Failed)?;
+                let failure = crate::resource::ResourceLimitFailure {
+                    stage,
+                    reason: reason.clone(),
+                    last_completed_units: job.completed_units,
+                };
+                job.resource_failure = Some(failure);
+                job.error_message = Some("자원 제한을 초과해 현재 작업을 중지했습니다.".into());
+                job.error_detail = Some(reason.clone());
+                job.push_activity("resource-limit", &format!("{}: {reason}", stage.label()));
+                Ok(())
+            });
+        }
         Err(PipelineError::Message(detail)) => {
             let _ = mutate_job(&app, &state, |job| {
                 if job.status == JobStatus::Cancelling {
@@ -666,10 +694,19 @@ pub fn run_media_pipeline<R: tauri::Runtime>(
         }
     }
     state.cancel_requested.store(false, Ordering::SeqCst);
+    let _ = mutate_job(&app, &state, |job| {
+        job.owned_child_processes = 0;
+        Ok(())
+    });
     state.running.store(false, Ordering::SeqCst);
 }
 
 pub fn run_candidate_recognition<R: tauri::Runtime>(app: tauri::AppHandle<R>, state: Arc<AppState>, job_id: String, candidate_id: String, run_id: String) {
+    let _heavy_tool_guard = state.heavy_tool_gate.lock().ok();
+    let _ = mutate_job(&app, &state, |job| {
+        job.owned_child_processes = 1;
+        Ok(())
+    });
     let result = recognize_candidate(&state, &job_id, &candidate_id, &run_id);
     let _ = mutate_job(&app, &state, |job| {
         let run = job.recognition_runs.iter_mut().find(|run| run.id == run_id)
@@ -695,6 +732,10 @@ pub fn run_candidate_recognition<R: tauri::Runtime>(app: tauri::AppHandle<R>, st
     });
     state.cancel_requested.store(false, Ordering::SeqCst);
     state.manual_running.store(false, Ordering::SeqCst);
+    let _ = mutate_job(&app, &state, |job| {
+        job.owned_child_processes = 0;
+        Ok(())
+    });
     state.running.store(false, Ordering::SeqCst);
 }
 
@@ -715,6 +756,7 @@ fn recognition_failure(error: PipelineError, evidence: &str) -> CandidateRecogni
     let cancelled = matches!(&error, PipelineError::Cancelled);
     let reason = match error {
         PipelineError::Cancelled => "사용자가 음성 인식을 취소했습니다.".into(),
+        PipelineError::ResourceLimit { reason, .. } => format!("자원 제한 초과: {reason}"),
         PipelineError::Message(message) => message,
     };
     let evidence = if cancelled {
@@ -818,28 +860,35 @@ fn preview_temporary_path(output: &Path) -> PathBuf {
     output.with_extension("tmp.mp4")
 }
 
-pub(crate) fn prepare_candidate_preview(
+pub(crate) fn prepare_candidate_preview<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
     state: &Arc<AppState>,
     job_id: &str,
     candidate_id: &str,
 ) -> Result<PreviewMedia, String> {
-    prepare_preview(state, job_id, candidate_id, PreviewKind::Candidate)
+    prepare_preview(app, state, job_id, candidate_id, PreviewKind::Candidate)
 }
 
-pub(crate) fn prepare_candidate_context_preview(
+pub(crate) fn prepare_candidate_context_preview<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
     state: &Arc<AppState>,
     job_id: &str,
     candidate_id: &str,
 ) -> Result<PreviewMedia, String> {
-    prepare_preview(state, job_id, candidate_id, PreviewKind::Context)
+    prepare_preview(app, state, job_id, candidate_id, PreviewKind::Context)
 }
 
-fn prepare_preview(
+fn prepare_preview<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
     state: &Arc<AppState>,
     job_id: &str,
     candidate_id: &str,
     preview_kind: PreviewKind,
 ) -> Result<PreviewMedia, String> {
+    let _heavy_tool_guard = state
+        .heavy_tool_gate
+        .lock()
+        .map_err(|_| "무거운 외부 도구 실행 잠금이 손상됐습니다.".to_string())?;
     if state.running.load(Ordering::SeqCst) {
         return Err("분석이 끝난 뒤 후보 영상을 준비할 수 있습니다.".into());
     }
@@ -876,6 +925,7 @@ fn prepare_preview(
         .0;
     let tools = locate_tools(&state.resource_dir).map_err(|error| match error {
         PipelineError::Cancelled => "미리보기 준비가 취소됐습니다.".to_string(),
+        PipelineError::ResourceLimit { reason, .. } => format!("자원 제한 초과: {reason}"),
         PipelineError::Message(message) => message,
     })?;
     let preview_dir = state.store.job_dir(job_id).join("review-clips");
@@ -924,6 +974,7 @@ fn prepare_preview(
     if !output.is_file() || fs::metadata(&output).map(|value| value.len()).unwrap_or(0) < 1024 {
         let temporary = preview_temporary_path(&output);
         fs::remove_file(&temporary).ok();
+        let preview_started = Instant::now();
         // Preview FFmpeg must honor the same job cancel flag as analysis tools.
         let result = run_command(
             &state.cancel_requested,
@@ -973,10 +1024,21 @@ fn prepare_preview(
             fs::remove_file(&temporary).ok();
             return Err(match error {
                 PipelineError::Cancelled => "미리보기 준비가 취소됐습니다.".into(),
+                PipelineError::ResourceLimit { reason, .. } => format!("미리보기 준비를 중단했습니다: {reason}"),
                 PipelineError::Message(message) => {
                     format!("후보 영상을 준비하지 못했습니다: {message}")
                 }
             });
+        }
+        if let Err(error) = record_stage_metric(
+            app,
+            state,
+            ResourceStage::Preview,
+            preview_started,
+            ResourceSample { external_tool_count: Some(0), ..Default::default() },
+        ) {
+            fs::remove_file(&temporary).ok();
+            return Err(format!("후보 영상을 준비하지 못했습니다: {error}"));
         }
         fs::remove_file(&output).ok();
         fs::rename(&temporary, &output).map_err(|error| error.to_string())?;
@@ -1318,6 +1380,7 @@ fn run<R: tauri::Runtime>(
         let wav = job_dir.join("active-chunk.wav");
         fs::remove_file(&wav).ok();
 
+        let ffmpeg_audio_started = Instant::now();
         run_command(
             &state.cancel_requested,
             &tools.ffmpeg,
@@ -1347,6 +1410,7 @@ fn run<R: tauri::Runtime>(
             &log_dir.join(format!("ffmpeg-{chunk_index:04}.stdout.log")),
             &log_dir.join(format!("ffmpeg-{chunk_index:04}.stderr.log")),
         )?;
+        persist_stage_metric(app, state, ResourceStage::FfmpegAudio, ffmpeg_audio_started)?;
 
         let mut energy = analyze_wav(&wav, offset)?;
         let (trusted_intervals, fallback_ranges) = partition_caption_chunk(
@@ -1507,6 +1571,7 @@ fn run<R: tauri::Runtime>(
                     )
                 });
                 let duration_ms = started.elapsed().as_millis() as u64;
+                persist_stage_metric(app, state, ResourceStage::Whisper, started)?;
                 match gpu_result {
                     Ok(result) => {
                         let unit = &mut checkpoint.whisper_units[state_index];
@@ -1532,6 +1597,9 @@ fn run<R: tauri::Runtime>(
                         fallback_segments = Some(result);
                     }
                     Err(PipelineError::Cancelled) => return Err(PipelineError::Cancelled),
+                    Err(PipelineError::ResourceLimit { stage, reason }) => {
+                        return Err(PipelineError::ResourceLimit { stage, reason });
+                    }
                     Err(PipelineError::Message(reason)) => {
                         let unit = &mut checkpoint.whisper_units[state_index];
                         unit.duration_ms = Some(duration_ms);
@@ -1607,6 +1675,7 @@ fn run<R: tauri::Runtime>(
                     &log_dir.join(format!("whisper-{chunk_index:04}-{fallback_index:02}.stderr.log")),
                 );
                 let duration_ms = started.elapsed().as_millis() as u64;
+                persist_stage_metric(app, state, ResourceStage::Whisper, started)?;
                 match cpu_result {
                     Ok(result) => {
                         let unit = &mut checkpoint.whisper_units[state_index];
@@ -1626,6 +1695,9 @@ fn run<R: tauri::Runtime>(
                         fallback_segments = Some(result);
                     }
                     Err(PipelineError::Cancelled) => return Err(PipelineError::Cancelled),
+                    Err(PipelineError::ResourceLimit { stage, reason }) => {
+                        return Err(PipelineError::ResourceLimit { stage, reason });
+                    }
                     Err(PipelineError::Message(reason)) => {
                         let gpu_failure_reason = {
                             let unit = &mut checkpoint.whisper_units[state_index];
@@ -1717,6 +1789,7 @@ fn run<R: tauri::Runtime>(
             AnalysisMode::Quick => (0.0, checkpoint.duration_seconds, QUICK_CHAT_SAMPLE_SECONDS),
             AnalysisMode::Full => (0.0, checkpoint.duration_seconds, CHAT_SAMPLE_SECONDS),
         };
+        let chat_started = Instant::now();
         let motion_result = analyze_chat_motion(
             &state.cancel_requested,
             &tools.ffmpeg,
@@ -1728,9 +1801,13 @@ fn run<R: tauri::Runtime>(
             &motion_raw,
             &log_dir.join("chat-motion.stderr.log"),
         );
+        persist_stage_metric(app, state, ResourceStage::ChatDecode, chat_started)?;
         match motion_result {
             Ok(points) => checkpoint.chat_motion = points,
             Err(PipelineError::Cancelled) => return Err(PipelineError::Cancelled),
+            Err(PipelineError::ResourceLimit { stage, reason }) => {
+                return Err(PipelineError::ResourceLimit { stage, reason });
+            }
             Err(PipelineError::Message(detail)) => {
                 checkpoint.chat_motion.clear();
                 let _ = mutate_job(app, state, |job| {
@@ -2191,6 +2268,37 @@ fn check_cancel(state: &Arc<AppState>) -> Result<(), PipelineError> {
         Err(PipelineError::Cancelled)
     } else {
         Ok(())
+    }
+}
+
+fn persist_stage_metric<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    state: &AppState,
+    stage: ResourceStage,
+    started: Instant,
+) -> Result<(), PipelineError> {
+    match record_stage_metric(
+        app,
+        state,
+        stage,
+        started,
+        ResourceSample {
+            external_tool_count: Some(0),
+            ..Default::default()
+        },
+    ) {
+        Ok(()) => Ok(()),
+        Err(detail) => {
+            let reason = detail
+                .strip_prefix("자원 제한 초과: ")
+                .unwrap_or(&detail)
+                .to_string();
+            if detail.starts_with("자원 제한 초과: ") {
+                Err(PipelineError::ResourceLimit { stage, reason })
+            } else {
+                Err(PipelineError::Message(detail))
+            }
+        }
     }
 }
 

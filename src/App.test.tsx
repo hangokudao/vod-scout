@@ -16,6 +16,7 @@ import App, {
   sortCandidates,
   writeUiSettings,
   normalizeWhisperSettings,
+  resourceMetricValue,
   type CandidateSortKey
 } from "./App";
 import type { Candidate } from "./types";
@@ -354,5 +355,12 @@ describe("Whisper settings payload", () => {
     });
     expect(normalizeWhisperSettings("cpu", "fast", "99").cpuThreads).toBe(32);
     expect(normalizeWhisperSettings("cpu", "fast", "0").cpuThreads).toBe(1);
+  });
+});
+
+describe("resource metric labels", () => {
+  it("keeps unavailable measurements visibly distinct from zero", () => {
+    expect(resourceMetricValue(null, "B")).toBe("측정 불가");
+    expect(resourceMetricValue(0, "개")).toBe("0개");
   });
 });

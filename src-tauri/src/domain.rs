@@ -1,5 +1,6 @@
 use crate::captions::{CaptionSource, VerificationState};
 use crate::whisper::{WhisperRuntimeState, WhisperSettings};
+use crate::resource::{ResourceLimitFailure, ResourcePolicy, ResourceStage, StageResourceMetric};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -336,6 +337,14 @@ pub struct JobSnapshot {
     pub whisper_runtime: WhisperRuntimeState,
     #[serde(default)]
     pub recognition_runs: Vec<CandidateRecognitionRun>,
+    #[serde(default)]
+    pub resource_policy: ResourcePolicy,
+    #[serde(default)]
+    pub resource_metrics: Vec<StageResourceMetric>,
+    #[serde(default)]
+    pub resource_failure: Option<ResourceLimitFailure>,
+    #[serde(default)]
+    pub owned_child_processes: u32,
 }
 
 fn legacy_whisper_settings() -> WhisperSettings {
@@ -384,6 +393,19 @@ impl JobSnapshot {
             whisper: WhisperSettings::default(),
             whisper_runtime: WhisperRuntimeState::default(),
             recognition_runs: Vec::new(),
+            resource_policy: ResourcePolicy::default(),
+            resource_metrics: [
+                ResourceStage::FfmpegAudio,
+                ResourceStage::Whisper,
+                ResourceStage::ChatDecode,
+                ResourceStage::Preview,
+                ResourceStage::UiResponsiveness,
+            ]
+            .into_iter()
+            .map(StageResourceMetric::unavailable)
+            .collect(),
+            resource_failure: None,
+            owned_child_processes: 0,
         };
         job.push_activity("job", "새 분석 작업을 만들었습니다.");
         job

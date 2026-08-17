@@ -11,7 +11,8 @@ import type {
   PreviewMedia,
   CandidateRecognitionRun,
   RuntimeInfo,
-  StoredJobInfo
+  StoredJobInfo,
+  ResourceStage
 } from "./types";
 
 const tauriAvailable = "__TAURI_INTERNALS__" in window;
@@ -172,10 +173,32 @@ export async function createJob(input: CreateJobInput): Promise<JobSnapshot> {
       unitIndex: null,
       effectiveCpuThreads: null,
       gpuFailureReason: null
-    }
+    },
+    resourcePolicy: {
+      warningMemoryBytes: null,
+      hardMemoryBytes: null,
+      warningTempBytes: null,
+      hardTempBytes: null,
+      warningExternalToolCount: null,
+      hardExternalToolCount: null
+    },
+    resourceMetrics: (["ffmpegAudio", "whisper", "chatDecode", "preview", "uiResponsiveness"] as ResourceStage[]).map((stage) => ({
+      stage,
+      elapsedMs: null,
+      cpuPercent: null,
+      memoryBytes: null,
+      diskBytes: null,
+      tempBytes: null,
+      ownedChildProcesses: null,
+      unavailableReasons: ["이 단계의 측정값을 아직 수집하지 않았습니다."],
+      policyStatus: "UNCONFIGURED",
+      policyReason: null
+    })),
+    resourceFailure: null,
+    ownedChildProcesses: 0
   };
   notifyMock();
-  return structuredClone(mockJob);
+  return structuredClone(mockJob!);
 }
 
 export async function startJob(jobId: string): Promise<JobSnapshot> {
