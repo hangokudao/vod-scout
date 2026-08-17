@@ -138,7 +138,7 @@ worktree `codex/v050-transcript-quality`는 이미 존재하며 커밋되지 않
 
 - `cmd.exe /c npm.cmd test`: **PASS, 42 passed**
 - `cmd.exe /c npm.cmd run build`: **PASS**
-- `cargo.exe test --manifest-path src-tauri/Cargo.toml`: **PASS, 103 passed, 1 ignored**
+- `cargo.exe test --manifest-path src-tauri/Cargo.toml`: **PASS, 104 passed, 1 ignored**
 - `cargo.exe test --manifest-path src-tauri/fixture-worker/Cargo.toml`: **PASS, 5 passed**
 - `node --test scripts/archive-safety.test.mjs scripts/prepare-media-tools.test.mjs`: **PASS, 8 passed**
 - `git diff --check`: **PASS**

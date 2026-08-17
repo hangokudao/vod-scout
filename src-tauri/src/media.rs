@@ -595,7 +595,10 @@ pub fn run_media_pipeline<R: tauri::Runtime>(
 ) {
     let _heavy_tool_guard = match acquire_heavy_tool_gate(&state) {
         Ok(guard) => guard,
-        Err(_) => {
+        Err(reason) => {
+            let _ = terminalize_heavy_tool_gate_failure(&app, &state, reason);
+            state.cancel_requested.store(false, Ordering::SeqCst);
+            state.manual_running.store(false, Ordering::SeqCst);
             state.running.store(false, Ordering::SeqCst);
             return;
         }
@@ -729,6 +732,31 @@ fn acquire_heavy_tool_gate(state: &AppState) -> Result<MutexGuard<'_, ()>, Strin
         .heavy_tool_gate
         .lock()
         .map_err(|_| "무거운 외부 도구 실행 잠금이 손상됐습니다.".to_string())
+}
+
+fn apply_heavy_tool_gate_failure(
+    job: &mut crate::domain::JobSnapshot,
+    reason: String,
+) -> Result<(), String> {
+    job.transition(JobStatus::Failed)?;
+    job.current_stage_label = "외부 도구 실행 잠금 실패".into();
+    job.error_message = Some("외부 도구 실행 잠금 오류로 분석을 시작하지 못했습니다.".into());
+    job.error_detail = Some(reason.clone());
+    job.owned_child_processes = 0;
+    job.push_activity(
+        "error",
+        &format!("외부 도구 실행 잠금 오류로 분석을 중지했습니다: {reason}"),
+    );
+    Ok(())
+}
+
+fn terminalize_heavy_tool_gate_failure<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    state: &AppState,
+    reason: String,
+) -> Result<(), String> {
+    mutate_job(app, state, |job| apply_heavy_tool_gate_failure(job, reason))?;
+    Ok(())
 }
 
 fn apply_resource_limit_failure(
@@ -3259,6 +3287,52 @@ mod tests {
             panic!("poison test");
         }));
         assert!(acquire_heavy_tool_gate(&state).is_err());
+    }
+
+    #[test]
+    fn heavy_tool_gate_failure_terminalization_preserves_checkpoint_and_candidate_decision() {
+        let mut job = JobSnapshot::new(
+            "gate-job".into(),
+            SourceKind::Local,
+            "source.mp4".into(),
+            Scenario::Normal,
+            AnalysisMode::Full,
+            None,
+            None,
+        );
+        job.status = JobStatus::Transcribing;
+        job.completed_units = 6;
+        job.owned_child_processes = 1;
+        job.acquired_media_path = Some("job/media-checkpoint.json".into());
+        job.candidates.push(Candidate {
+            id: "candidate-keep".into(),
+            start_seconds: 10,
+            end_seconds: 20,
+            title: "기존 제목".into(),
+            summary: "기존 요약".into(),
+            transcript_excerpt: "기존 결과".into(),
+            audio_score: 80,
+            dialogue_score: 70,
+            chat_score: Some(60),
+            total_score: 75,
+            decision: CandidateDecision::Accepted,
+            transcript_quality_status: TranscriptQualityStatus::Certain,
+            transcript_quality_reasons: Vec::new(),
+            context_start_seconds: 0.0,
+            context_end_seconds: 30.0,
+            context_transcript: Vec::new(),
+        });
+        let reason = "무거운 외부 도구 실행 잠금이 손상됐습니다.".to_string();
+        let checkpoint_identity = job.acquired_media_path.clone();
+
+        apply_heavy_tool_gate_failure(&mut job, reason.clone()).expect("terminalization");
+
+        assert_eq!(job.status, JobStatus::Failed);
+        assert_eq!(job.completed_units, 6);
+        assert_eq!(job.acquired_media_path, checkpoint_identity);
+        assert_eq!(job.error_detail.as_deref(), Some(reason.as_str()));
+        assert_eq!(job.owned_child_processes, 0);
+        assert_eq!(job.candidates[0].decision, CandidateDecision::Accepted);
     }
 
     #[test]
