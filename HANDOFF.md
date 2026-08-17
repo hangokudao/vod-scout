@@ -107,7 +107,7 @@ worktree `codex/v050-transcript-quality`는 이미 존재하며 커밋되지 않
 
 - 음성 인식 결과의 비정상 반복·깨진 문자 품질 정보를 원문과 분리해 저장하고, 불확실한 원문은 후보 제목·요약·화면·CSV에서 가리면서 오디오·화면 근거 후보는 유지한다. 웃음·감탄·노래·의도적 반복은 원문을 삭제하지 않는다.
 - `REVIEW_READY`에서 선택한 후보만 내장 G2 Whisper 런타임·모델로 다시 음성 인식하며, 실행 ID·개정·STARTED와 정확히 하나의 COMPLETED/FAILED·원문·표시 결과·실제 백엔드/대체 근거를 작업 데이터에 저장한다. 기존 후보 판정과 순위는 유지하고 자동 재분석·재정렬은 하지 않는다.
-- 자동 검증 PASS: `cmd.exe /c npm.cmd test` 41 passed, `cmd.exe /c npm.cmd run build`, `cargo.exe test --manifest-path src-tauri/Cargo.toml` 96 passed·1 ignored, `cargo.exe test --manifest-path src-tauri/fixture-worker/Cargo.toml` 5 passed, `node --test scripts/archive-safety.test.mjs` 6 passed, `git diff --check`.
+- 자동 검증 PASS: `cmd.exe /c npm.cmd test` 41 passed, `cmd.exe /c npm.cmd run build`, `cargo.exe test --manifest-path src-tauri/Cargo.toml` 96 tests total·95 passed·1 ignored, `cargo.exe test --manifest-path src-tauri/fixture-worker/Cargo.toml` 5 passed, `node --test scripts/archive-safety.test.mjs` 6 passed, `git diff --check`.
 - 실제 선택 후보 미디어를 이용한 Whisper 재실행·GPU/CPU 대체 증거와 실제 Windows UI 흐름은 입력·환경이 없어 실행하지 않았다.
 
 ## G1 이후 HOLD
