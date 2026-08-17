@@ -1,5 +1,22 @@
 # VOD Scout 빌드 명세
 
+## v0.5.0 로컬 후보 통합 빌드
+
+상태: **G1~G7 소스·자동 검증 PASS · NSIS/서명/설치본/공개 자산 HOLD**
+
+- 기준 커밋: `b60d1c6` 기반 `codex/v050-g8-integration-package`.
+- 버전 정본: `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, `src/releaseNotes.ts`, workflow/helper가 `0.5.0`.
+- `npm ci`: PASS. `npm test`: 49 passed. `npm run build`: PASS (1,793 modules).
+- `cargo.exe test --manifest-path src-tauri/Cargo.toml`: 126 passed, 1 ignored. Fixture worker: 6 passed.
+- `npm run test:security`: 6 passed. Archive/media-tool/sample-disk tests: 11 passed.
+- `npm run tauri:build` (PowerShell): **HOLD** — `prepare-media-tools.mjs`의 고정 FFmpeg URL HTTP 404. Sidecar 준비 후 NSIS 이전에 종료.
+- `node scripts/generate-release-assets.mjs`: **HOLD** — NSIS bundle 부재로 fail-closed. release 자산을 만들지 않았다.
+- 생성된 v0.5.0 installer/EXE/`.sig`가 없으므로 파일명·크기·SHA-256·PE ProductVersion/FileVersion을 기록하지 않는다. 서명 키 부재만으로 `.sig` 단계에서 중단된 결과가 아니다.
+- 실제 YouTube/reference-video, GPU, Windows UI, resource/long-run, parallel measurements: **HOLD**. 기존 설치 앱·사용자 데이터는 변경하지 않았다.
+- G7 parallel option: **unavailable** until same-input resource measurements pass.
+
+정확한 패키지 차단 URL: `https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-01-13-21/ffmpeg-n8.1.2-34-g9b6c8969e0-win64-lgpl-shared-8.1.zip` (HTTP 404).
+
 ## v0.4.0 공개 빌드
 
 상태: **PASS — exact tag·updater 서명·공개 자산·installer smoke·토큰 없는 직접 다운로드 확인 완료**. Authenticode `NotSigned`는 알려진 한계다.

@@ -4,11 +4,15 @@
 
 ## Windows 설치 파일
 
-[**VOD Scout v0.4.0 다운로드 (.exe)**](https://github.com/hangokudao/vod-scout/releases/download/v0.4.0/VOD.Scout_0.4.0_x64-setup.exe)
+현재 공개 다운로드는 v0.4.0입니다. [**VOD Scout v0.4.0 다운로드 (.exe)**](https://github.com/hangokudao/vod-scout/releases/download/v0.4.0/VOD.Scout_0.4.0_x64-setup.exe)
 
 [변경 내용·SHA-256·서명 파일 보기](https://github.com/hangokudao/vod-scout/releases/tag/v0.4.0)
 
 Windows 코드 서명 인증서가 없어 처음 설치할 때 SmartScreen 경고가 표시될 수 있습니다. 설치 파일 크기·SHA-256·updater 서명은 [v0.4.0 릴리스 기록](docs/V0.4.0-RELEASE.md)과 [빌드 명세](BUILD-MANIFEST.md)를 따릅니다.
+
+## v0.5.0 로컬 후보
+
+현재 소스와 로컬 패키지 기준 버전은 **v0.5.0 후보**입니다. 아직 공개 v0.5.0 Release나 다운로드 링크가 없으므로 위 v0.4.0 공개 파일을 유지합니다. v0.5.0 공개 링크·Release 자산은 패키지·서명·Windows 설치 검증 뒤에 결정합니다 (**HOLD**).
 
 ## 0.4.0에서 되는 것
 
@@ -107,6 +111,7 @@ cargo test --manifest-path src-tauri/fixture-worker/Cargo.toml
 - [v0.4.0 앱 내 업데이트 안내](docs/V0.4.0-UPDATER-NOTES.md)
 - [v0.5.0 품질·작업 대기열 개선 계획](docs/V0.5.0-PLAN.md)
 - [v0.5.0 릴리스 작업 정본](docs/V0.5.0-RELEASE.md)
+- [v0.5.0 앱 내 업데이트 안내](docs/V0.5.0-UPDATER-NOTES.md)
 - [VOD 편집점 자동 탐색 연구·구현 가이드](docs/HIGHLIGHT-DETECTION-RESEARCH.md)
 - [오픈소스 라이선스 결정 기록](docs/LICENSE-DECISION.md)
 - [제품·개발 계획](docs/PLAN.md)

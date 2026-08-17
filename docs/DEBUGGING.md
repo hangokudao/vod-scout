@@ -2,6 +2,22 @@
 
 실제로 재현하거나 로그로 확인한 문제만 기록한다. 원인이 확정되지 않은 항목은 `HOLD`로 표시한다.
 
+## 2026-08-18 · v0.5.0 G5/G6/G7 통합 회귀
+
+- 증상: 후보 수 변경·정렬·수동 재음성 인식과 여러 영상 대기열을 G1~G7 브랜치 통합 후 한 번에 검증할 필요가 있었다.
+- 원인: G5는 후보 pool/evidence를 화면 목록과 별도로 유지하고 G6는 queue 저장·복구·실행권·삭제 순서를 추가했으므로, 통합 시 기존 판정 보존과 실패 작업 격리를 다시 확인해야 했다. G7은 실제 병렬 자원 측정이 없어 병렬 실행을 허용하면 안 됐다.
+- 수정: 후보 pool 동기화·evidence 품질 분리·개정 보존을 유지하고, queue mutation을 저장 성공 뒤에만 확정하며 실행권·`INTERRUPTED` 복구·실패 후 다음 작업·실행 중 삭제 경계를 fail-closed로 유지했다. 병렬 평가는 순차 처리로 고정했다.
+- 회귀 테스트: 프런트 49, Rust 본체 126 passed·1 ignored, fixture-worker 6, archive/media-tool/sample-disk 11, security 6, build PASS.
+- 상태: G5/G6/G7 자동 회귀 `PASS`; 실제 3개 영상 흐름·기준 영상 사람 판정·자원/장시간·병렬 측정은 `HOLD`.
+
+## 2026-08-18 · v0.5.0 G8 패키징 시도
+
+- 증상: `npm run tauri:build`가 설치 파일 생성 전에 종료됐다.
+- 원인: Windows PowerShell 실행에서 `prepare-sidecar`는 성공했지만 `prepare-media-tools.mjs`가 고정 FFmpeg URL에 HTTP 404를 받았다.
+- 수정: 제품 데이터·기존 설치를 건드리지 않고 결과를 중단했다. 404 자산을 임의의 최신 URL로 바꾸거나 해시를 추측하지 않았다.
+- 회귀 테스트: `npm ci`, `npm test`, `npm run build`, 두 Cargo test, security 및 archive/media-tool/sample-disk 테스트는 위 통합 회귀 결과로 PASS.
+- 상태: NSIS·PE version/hash·updater `.sig`·headless 설치 앱은 생성되지 않아 `HOLD`. 서명 키 부재만으로 `.sig` 단계가 중단된 결과가 아니다.
+
 ## 2026-08-08 · v0.4.0 · 초안 Release 설치 파일 조회 실패
 
 - 증상: installer smoke run `31240213255`가 제품 설치 전 `gh release download v0.4.0`에서 `release not found`로 실패했다. 목록 조회로 바꾼 run `31240340766`에서도 정확한 태그의 Release가 0개로 표시됐다.
