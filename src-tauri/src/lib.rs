@@ -3,6 +3,7 @@ mod captions;
 mod domain;
 mod integrity;
 mod media;
+mod queue;
 mod resource;
 mod storage;
 mod whisper;
@@ -15,6 +16,7 @@ use crate::domain::{
 use crate::whisper::WhisperSettings;
 use crate::resource::{ResourceDecision, ResourceSample, ResourceStage, StageResourceMetric};
 use crate::storage::JobStore;
+use crate::queue::{InstanceLease, QueueIndex, QueueStore, QueueTransitionState};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -30,6 +32,9 @@ use uuid::Uuid;
 
 struct AppState {
     store: JobStore,
+    queue_store: QueueStore,
+    queue: Mutex<QueueIndex>,
+    _instance_lease: InstanceLease,
     resource_dir: PathBuf,
     job: Mutex<Option<JobSnapshot>>,
     running: AtomicBool,
@@ -40,8 +45,16 @@ struct AppState {
 
 impl AppState {
     fn new(data_dir: PathBuf, resource_dir: PathBuf) -> Result<Self, String> {
+        let store = JobStore::new(data_dir.clone()).map_err(|error| error.to_string())?;
+        let queue_store = QueueStore::new(data_dir.clone()).map_err(|error| error.to_string())?;
+        let _instance_lease = InstanceLease::acquire(&data_dir)?;
+        let ids = store.list_jobs().map_err(|error| error.to_string())?.into_iter().map(|job| job.id);
+        let queue = queue_store.load_or_create(ids)?;
         Ok(Self {
-            store: JobStore::new(data_dir).map_err(|error| error.to_string())?,
+            store,
+            queue_store,
+            queue: Mutex::new(queue),
+            _instance_lease,
             resource_dir,
             job: Mutex::new(None),
             running: AtomicBool::new(false),
@@ -143,6 +156,52 @@ fn validate_source(input: &CreateJobInput) -> Result<(), String> {
 
 fn last_sequence(job: &JobSnapshot) -> u64 {
     job.activity.last().map(|event| event.sequence).unwrap_or(0)
+}
+
+fn save_queue(state: &AppState, queue: &QueueIndex) -> Result<(), String> {
+    state.queue_store.save(queue)
+}
+
+fn queue_snapshot(state: &AppState) -> Result<QueueIndex, String> {
+    state.queue.lock().map(|queue| queue.clone()).map_err(|_| "작업 대기열 잠금이 손상됐습니다.".into())
+}
+
+fn set_queue_state(state: &AppState, transition_state: QueueTransitionState) -> Result<QueueIndex, String> {
+    let queue = {
+        let mut guard = state.queue.lock().map_err(|_| "작업 대기열 잠금이 손상됐습니다.".to_string())?;
+        guard.transition_state = transition_state;
+        guard.clone()
+    };
+    save_queue(state, &queue)?;
+    Ok(queue)
+}
+
+fn register_job_in_queue(state: &AppState, id: String) -> Result<(), String> {
+    let queue = {
+        let mut guard = state.queue.lock().map_err(|_| "작업 대기열 잠금이 손상됐습니다.".to_string())?;
+        guard.add(id)?;
+        guard.clone()
+    };
+    save_queue(state, &queue)
+}
+
+fn remove_job_from_queue(state: &AppState, id: &str) -> Result<(), String> {
+    let queue = {
+        let mut guard = state.queue.lock().map_err(|_| "작업 대기열 잠금이 손상됐습니다.".to_string())?;
+        guard.remove(id)?;
+        guard.clone()
+    };
+    save_queue(state, &queue)
+}
+
+fn record_delete_failure(state: &AppState, id: &str, reason: &str) {
+    let Ok(mut jobs) = state.store.list_jobs() else { return; };
+    let Some(mut job) = jobs.drain(..).find(|job| job.id == id) else { return; };
+    job.delete_failure_reason = Some(reason.into());
+    job.error_message = Some("작업 폴더 삭제 실패".into());
+    job.error_detail = Some(reason.into());
+    job.push_activity("delete-error", &format!("작업 폴더를 삭제하지 못했습니다: {reason}"));
+    let _ = state.store.save(&job);
 }
 
 fn mutate_job<R, F>(
@@ -269,44 +328,37 @@ fn bootstrap(
     app: tauri::AppHandle,
     state: State<'_, Arc<AppState>>,
 ) -> Result<Option<JobSnapshot>, String> {
-    let loaded = match state.store.load_latest() {
-        Ok(job) => job,
-        Err(_) => return Ok(None),
-    };
-
-    let (mut loaded, migrated) = migrate_snapshot(loaded);
-
-    let recovered_runs = recover_started_recognition_runs(&mut loaded);
-    if loaded.status.is_active() {
-        loaded.status = JobStatus::Interrupted;
-        loaded.error_message = Some("이전 실행이 끝나기 전에 앱이 종료됐습니다.".into());
-        loaded.error_detail = Some("마지막 완료 단위 다음부터 재개할 수 있습니다.".into());
-        loaded.push_activity("recovery", "중단된 작업을 복원했습니다.");
-    }
-    if migrated || recovered_runs || loaded.status == JobStatus::Interrupted {
-        state
-            .store
-            .save(&loaded)
-            .map_err(|error| error.to_string())?;
-        if recovered_runs {
-            if let Some(event) = loaded
-                .activity
-                .iter()
-                .rev()
-                .find(|event| event.kind == "recovery" && event.message.contains("음성 인식"))
-            {
-                state
-                    .store
-                    .append_event(&loaded.id, event)
-                    .map_err(|error| error.to_string())?;
-            }
+    let jobs = state.store.list_jobs().map_err(|error| error.to_string())?;
+    if jobs.is_empty() { return Ok(None); }
+    let mut interrupted = false;
+    for original in jobs {
+        let (mut loaded, migrated) = migrate_snapshot(original);
+        let recovered_runs = recover_started_recognition_runs(&mut loaded);
+        let was_active = loaded.status.is_active();
+        if was_active {
+            loaded.status = JobStatus::Interrupted;
+            loaded.error_message = Some("이전 실행이 끝나기 전에 앱이 종료됐습니다.".into());
+            loaded.error_detail = Some("마지막 완료 단위 다음부터 재개할 수 있습니다.".into());
+            loaded.push_activity("recovery", "중단된 작업을 복원했습니다. 사용자가 재개 또는 취소해야 합니다.");
+            interrupted = true;
+        }
+        if migrated || recovered_runs || was_active {
+            state.store.save(&loaded).map_err(|error| error.to_string())?;
         }
     }
-
-    *state
-        .job
-        .lock()
-        .map_err(|_| "작업 상태 잠금이 손상됐습니다.".to_string())? = Some(loaded.clone());
+    if interrupted {
+        set_queue_state(&state, QueueTransitionState::Interrupted)?;
+    } else if queue_snapshot(&state)?.transition_state == QueueTransitionState::Running {
+        set_queue_state(&state, QueueTransitionState::Idle)?;
+    }
+    let queue = queue_snapshot(&state)?;
+    let selected_id = state.store.load_latest().ok().map(|job| job.id)
+        .filter(|id| queue.contains(id))
+        .or_else(|| queue.ordered_job_ids.first().cloned());
+    let Some(selected_id) = selected_id else { return Ok(None); };
+    let loaded = state.store.list_jobs().map_err(|error| error.to_string())?.into_iter().find(|job| job.id == selected_id)
+        .ok_or_else(|| "대기열 작업 폴더를 찾을 수 없습니다.".to_string())?;
+    *state.job.lock().map_err(|_| "작업 상태 잠금이 손상됐습니다.".to_string())? = Some(loaded.clone());
     app.emit("job-updated", &loaded)
         .map_err(|error| error.to_string())?;
     Ok(Some(loaded))
@@ -318,9 +370,6 @@ fn create_job(
     state: State<'_, Arc<AppState>>,
     input: CreateJobInput,
 ) -> Result<JobSnapshot, String> {
-    if state.running.load(Ordering::SeqCst) {
-        return Err("실행 중인 작업을 먼저 취소해 주세요.".into());
-    }
     validate_source(&input)?;
     let job = JobSnapshot::new(
         Uuid::new_v4().to_string(),
@@ -335,18 +384,21 @@ fn create_job(
     job.candidate_count = normalize_candidate_count(input.candidate_count);
     job.whisper = input.whisper.normalized();
     state.store.save(&job).map_err(|error| error.to_string())?;
+    register_job_in_queue(&state, job.id.clone())?;
     if let Some(event) = job.activity.last() {
         state
             .store
             .append_event(&job.id, event)
             .map_err(|error| error.to_string())?;
     }
-    *state
-        .job
-        .lock()
-        .map_err(|_| "작업 상태 잠금이 손상됐습니다.".to_string())? = Some(job.clone());
-    app.emit("job-updated", &job)
-        .map_err(|error| error.to_string())?;
+    if !state.running.load(Ordering::SeqCst) {
+        *state
+            .job
+            .lock()
+            .map_err(|_| "작업 상태 잠금이 손상됐습니다.".to_string())? = Some(job.clone());
+        app.emit("job-updated", &job)
+            .map_err(|error| error.to_string())?;
+    }
     Ok(job)
 }
 
@@ -384,6 +436,30 @@ fn candidates_for_count(job: &JobSnapshot, count: u8) -> Vec<Candidate> {
         candidate.decision = decisions.get(candidate.id.as_str()).copied().unwrap_or(CandidateDecision::Pending);
     }
     candidates
+}
+
+pub(crate) fn continue_queue<R: tauri::Runtime>(app: tauri::AppHandle<R>, state: Arc<AppState>) {
+    if state.queue.lock().ok().map(|queue| queue.transition_state != QueueTransitionState::Running).unwrap_or(true) { return; }
+    let next = state.store.list_jobs().ok().and_then(|jobs| {
+        let queue = state.queue.lock().ok()?;
+        queue.ordered_job_ids.iter().find_map(|id| jobs.iter().find(|job| &job.id == id && job.status == JobStatus::Created).cloned())
+    });
+    let Some(mut next) = next else {
+        let _ = set_queue_state(&state, QueueTransitionState::Idle);
+        return;
+    };
+    next.current_stage_label = "worker 시작".into();
+    next.push_activity("start", "앞선 작업이 끝나 대기열의 다음 작업을 시작합니다.");
+    if next.transition(JobStatus::Acquiring).is_err() { return; }
+    if state.store.save(&next).is_err() { return; }
+    if let Ok(mut guard) = state.job.lock() { *guard = Some(next.clone()); } else { return; }
+    state.running.store(true, Ordering::SeqCst);
+    let next_id = next.id.clone();
+    match next.source_kind {
+        SourceKind::Local => tauri::async_runtime::spawn_blocking(move || media::run_media_pipeline(app, state, next_id)),
+        SourceKind::Youtube => tauri::async_runtime::spawn_blocking(move || acquisition::run_youtube_pipeline(app, state, next_id)),
+        SourceKind::Demo => tauri::async_runtime::spawn(run_worker(app, state, next_id)),
+    };
 }
 
 fn sync_candidate_decision(
@@ -429,7 +505,7 @@ fn set_candidate_count(
     })
 }
 
-async fn run_worker(app: tauri::AppHandle, state: Arc<AppState>, job_id: String) {
+async fn run_worker<R: tauri::Runtime>(app: tauri::AppHandle<R>, state: Arc<AppState>, job_id: String) {
     let (scenario, start_unit) = {
         let guard = match state.job.lock() {
             Ok(guard) => guard,
@@ -479,6 +555,7 @@ async fn run_worker(app: tauri::AppHandle, state: Arc<AppState>, job_id: String)
             return;
         }
     };
+    let mut child = Some(child);
 
     let _ = mutate_job(&app, &state, |job| {
         job.owned_child_processes = 1;
@@ -488,23 +565,19 @@ async fn run_worker(app: tauri::AppHandle, state: Arc<AppState>, job_id: String)
     let mut last_heartbeat = Instant::now();
     let mut completed = false;
     let mut terminal_state_written = false;
+    let mut cancel_completion = false;
 
     loop {
         if state.cancel_requested.load(Ordering::SeqCst) {
-            let _ = child.kill();
-            let _ = mutate_job(&app, &state, |job| {
-                job.transition(JobStatus::Cancelled)?;
-                job.current_stage_label = "사용자가 취소함".into();
-                job.error_message = None;
-                job.error_detail = None;
-                job.push_activity(
-                    "cancel",
-                    "작업을 안전하게 취소했습니다. 이어서 재개할 수 있습니다.",
-                );
-                Ok(())
-            });
-            terminal_state_written = true;
-            break;
+            if !cancel_completion {
+                if let Some(child) = child.take() { let _ = child.kill(); }
+                cancel_completion = true;
+                let _ = mutate_job(&app, &state, |job| {
+                    job.current_stage_label = "실행 중 도구 종료 중".into();
+                    job.push_activity("cancel", "취소 요청을 반영했습니다. 자식 프로세스 종료를 기다립니다.");
+                    Ok(())
+                });
+            }
         }
 
         match tokio::time::timeout(Duration::from_millis(250), receiver.recv()).await {
@@ -513,7 +586,7 @@ async fn run_worker(app: tauri::AppHandle, state: Arc<AppState>, job_id: String)
                 let event = match serde_json::from_str::<WorkerEvent>(&line) {
                     Ok(event) => event,
                     Err(error) => {
-                        let _ = child.kill();
+                        if let Some(child) = child.take() { let _ = child.kill(); }
                         let _ = mutate_job(&app, &state, |job| {
                             job.transition(JobStatus::Failed)?;
                             job.error_message =
@@ -553,7 +626,7 @@ async fn run_worker(app: tauri::AppHandle, state: Arc<AppState>, job_id: String)
                         })
                         .is_err()
                         {
-                            let _ = child.kill();
+                            if let Some(child) = child.take() { let _ = child.kill(); }
                             let _ = mutate_job(&app, &state, |job| {
                                 job.transition(JobStatus::Failed)?;
                                 job.error_message =
@@ -620,6 +693,9 @@ async fn run_worker(app: tauri::AppHandle, state: Arc<AppState>, job_id: String)
                 }
             }
             Ok(Some(CommandEvent::Terminated(payload))) => {
+                if cancel_completion {
+                    break;
+                }
                 if !completed && !terminal_state_written {
                     let _ = mutate_job(&app, &state, |job| {
                         job.transition(JobStatus::Interrupted)?;
@@ -650,7 +726,7 @@ async fn run_worker(app: tauri::AppHandle, state: Arc<AppState>, job_id: String)
             Ok(Some(_)) => {}
             Ok(None) => break,
             Err(_) if last_heartbeat.elapsed() >= Duration::from_secs(3) => {
-                let _ = child.kill();
+                if let Some(child) = child.take() { let _ = child.kill(); }
                 let _ = mutate_job(&app, &state, |job| {
                     job.transition(JobStatus::Interrupted)?;
                     job.error_message = Some("분석 worker의 응답이 멈췄습니다.".into());
@@ -665,7 +741,7 @@ async fn run_worker(app: tauri::AppHandle, state: Arc<AppState>, job_id: String)
         }
     }
 
-    if !terminal_state_written && !completed {
+    if !terminal_state_written && !completed && !cancel_completion {
         let _ = mutate_job(&app, &state, |job| {
             job.transition(JobStatus::Interrupted)?;
             job.error_message = Some("worker 이벤트 스트림이 예고 없이 끝났습니다.".into());
@@ -678,12 +754,23 @@ async fn run_worker(app: tauri::AppHandle, state: Arc<AppState>, job_id: String)
         });
     }
 
-    state.cancel_requested.store(false, Ordering::SeqCst);
     let _ = mutate_job(&app, &state, |job| {
         job.owned_child_processes = 0;
         Ok(())
     });
+    if cancel_completion {
+        let _ = mutate_job(&app, &state, |job| {
+            if job.status != JobStatus::Cancelled { job.transition(JobStatus::Cancelled)?; }
+            job.current_stage_label = "사용자가 취소함".into();
+            job.error_message = None;
+            job.error_detail = None;
+            job.push_activity("cancel", "자식 프로세스 0개를 확인하고 작업을 취소했습니다. 이어서 재개할 수 있습니다.");
+            Ok(())
+        });
+    }
+    state.cancel_requested.store(false, Ordering::SeqCst);
     state.running.store(false, Ordering::SeqCst);
+    continue_queue(app, state);
 }
 
 #[tauri::command]
@@ -701,6 +788,36 @@ async fn start_job(
     }
 
     state.cancel_requested.store(false, Ordering::SeqCst);
+    let current_id = state.job.lock().map_err(|_| "작업 상태 잠금이 손상됐습니다.".to_string())?.as_ref().map(|job| job.id.clone());
+    if current_id.as_deref() != Some(job_id.as_str()) {
+        let loaded = match state.store.list_jobs().map_err(|error| error.to_string())?.into_iter().find(|job| job.id == job_id) {
+            Some(job) => job,
+            None => {
+                state.running.store(false, Ordering::SeqCst);
+                return Err("대기열에서 작업을 찾을 수 없습니다.".into());
+            }
+        };
+        *state.job.lock().map_err(|_| "작업 상태 잠금이 손상됐습니다.".to_string())? = Some(loaded);
+    }
+    let queue_before_start = queue_snapshot(&state)?;
+    let requested_status = state.job.lock().map_err(|_| "작업 상태 잠금이 손상됐습니다.".to_string())?.as_ref().map(|job| job.status);
+    if queue_before_start.transition_state == QueueTransitionState::Interrupted && requested_status != Some(JobStatus::Interrupted) {
+        state.running.store(false, Ordering::SeqCst);
+        return Err("중단된 작업을 먼저 재개하거나 취소해야 다음 작업을 시작할 수 있습니다.".into());
+    }
+    if requested_status == Some(JobStatus::Created) {
+        let first_waiting = state.store.list_jobs().map_err(|error| error.to_string())?.into_iter()
+            .find(|job| queue_before_start.contains(&job.id) && job.status == JobStatus::Created)
+            .map(|job| job.id);
+        if first_waiting.as_deref() != Some(job_id.as_str()) {
+            state.running.store(false, Ordering::SeqCst);
+            return Err("대기열 순서가 먼저인 작업부터 시작해야 합니다.".into());
+        }
+    }
+    if let Err(error) = set_queue_state(&state, QueueTransitionState::Running) {
+        state.running.store(false, Ordering::SeqCst);
+        return Err(error);
+    }
     let snapshot = mutate_job(&app, &state, |job| {
         if job.id != job_id {
             return Err("현재 작업과 요청한 작업이 다릅니다.".into());
@@ -739,6 +856,7 @@ async fn start_job(
         Ok(snapshot) => snapshot,
         Err(error) => {
             state.running.store(false, Ordering::SeqCst);
+            let _ = set_queue_state(&state, QueueTransitionState::Idle);
             return Err(error);
         }
     };
@@ -908,6 +1026,23 @@ fn cancel_job(
     state: State<'_, Arc<AppState>>,
     job_id: String,
 ) -> Result<JobSnapshot, String> {
+    if !state.running.load(Ordering::SeqCst) {
+        let interrupted = state.job.lock().map_err(|_| "작업 상태 잠금이 손상됐습니다.".to_string())?.as_ref().is_some_and(|job| job.id == job_id && job.status == JobStatus::Interrupted);
+        if interrupted {
+            let snapshot = mutate_job(&app, &state, |job| {
+                job.transition(JobStatus::Cancelled)?;
+                job.current_stage_label = "사용자가 중단 작업을 취소함".into();
+                job.error_message = None;
+                job.error_detail = None;
+                job.push_activity("cancel", "중단된 작업을 사용자가 취소했습니다. 대기열은 다음 작업을 진행합니다.");
+                Ok(())
+            })?;
+            set_queue_state(&state, QueueTransitionState::Running)?;
+            continue_queue(app, Arc::clone(state.inner()));
+            return Ok(snapshot);
+        }
+        return Err("현재 실행 중인 작업이 없습니다.".into());
+    }
     arm_cancel_signal(&state, &job_id)?;
     if state.manual_running.load(Ordering::SeqCst) {
         return mutate_job(&app, &state, |job| {
@@ -960,13 +1095,53 @@ fn get_job_storage_info(
 }
 
 #[tauri::command]
-fn delete_job(
+fn get_queue(state: State<'_, Arc<AppState>>) -> Result<QueueIndex, String> {
+    queue_snapshot(&state)
+}
+
+#[tauri::command]
+fn reorder_job(
+    app: tauri::AppHandle,
+    state: State<'_, Arc<AppState>>,
+    job_id: String,
+    new_index: usize,
+) -> Result<QueueIndex, String> {
+    queue::validate_job_id(&job_id)?;
+    if state.running.load(Ordering::SeqCst) { return Err("분석 중에는 대기 순서를 바꿀 수 없습니다.".into()); }
+    let target = state.store.list_jobs().map_err(|error| error.to_string())?.into_iter().find(|job| job.id == job_id)
+        .ok_or_else(|| "대기열에서 작업을 찾을 수 없습니다.".to_string())?;
+    if target.status != JobStatus::Created { return Err("실행 대기 상태인 작업만 순서를 바꿀 수 있습니다.".into()); }
+    let queue = {
+        let mut guard = state.queue.lock().map_err(|_| "작업 대기열 잠금이 손상됐습니다.".to_string())?;
+        guard.move_job(&job_id, new_index)?;
+        guard.clone()
+    };
+    save_queue(&state, &queue)?;
+    app.emit("queue-updated", &queue).map_err(|error| error.to_string())?;
+    Ok(queue)
+}
+
+#[tauri::command]
+async fn delete_job(
     app: tauri::AppHandle,
     state: State<'_, Arc<AppState>>,
     job_id: String,
 ) -> Result<(), String> {
     if state.running.load(Ordering::SeqCst) {
-        return Err("실행 중인 작업은 삭제할 수 없습니다. 먼저 안전하게 취소해 주세요.".into());
+        let current_id = state.job.lock().map_err(|_| "작업 상태 잠금이 손상됐습니다.".to_string())?.as_ref().map(|job| job.id.clone());
+        if current_id.as_deref() != Some(job_id.as_str()) { return Err("현재 실행 중인 작업만 안전하게 삭제할 수 있습니다.".into()); }
+        arm_cancel_signal(&state, &job_id)?;
+        let _ = mutate_job(&app, &state, |job| {
+            if job.status.is_active() { job.transition(JobStatus::Cancelling)?; }
+            job.current_stage_label = "삭제 전 안전하게 종료하는 중".into();
+            job.push_activity("delete", "삭제 요청을 반영하고 자식 프로세스 종료를 기다립니다.");
+            Ok(())
+        });
+        for _ in 0..200 {
+            if !state.running.load(Ordering::SeqCst) { break; }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        if state.running.load(Ordering::SeqCst) { return Err("삭제 전 자식 프로세스를 종료하지 못했습니다.".into()); }
     }
     {
         let guard = state
@@ -980,10 +1155,12 @@ fn delete_job(
             return Err("삭제할 작업 ID가 현재 작업과 일치하지 않습니다.".into());
         }
     }
-    state
-        .store
-        .delete_job(&job_id)
-        .map_err(|error| error.to_string())?;
+    if let Err(error) = state.store.delete_job(&job_id) {
+        let reason = error.to_string();
+        record_delete_failure(&state, &job_id, &reason);
+        return Err(reason);
+    }
+    remove_job_from_queue(&state, &job_id)?;
     *state
         .job
         .lock()
@@ -1107,10 +1284,11 @@ fn export_candidates_csv(
 
 #[tauri::command]
 fn list_jobs(state: State<'_, Arc<AppState>>) -> Result<Vec<StoredJobInfo>, String> {
-    state
-        .store
-        .list_jobs()
-        .map_err(|error| error.to_string())?
+    let jobs = state.store.list_jobs().map_err(|error| error.to_string())?;
+    let ordered = queue_snapshot(&state)?.ordered_job_ids;
+    let mut jobs = jobs;
+    jobs.sort_by_key(|job| ordered.iter().position(|id| id == &job.id).unwrap_or(usize::MAX));
+    jobs
         .into_iter()
         .map(|snapshot| {
             let size_bytes = state
@@ -1131,14 +1309,15 @@ fn delete_stored_job(
     state: State<'_, Arc<AppState>>,
     job_id: String,
 ) -> Result<(), String> {
-    if state.running.load(Ordering::SeqCst) {
-        return Err("분석 중에는 저장된 작업을 삭제할 수 없습니다.".into());
-    }
+    let active_id = state.job.lock().map_err(|_| "작업 상태 잠금이 손상됐습니다.".to_string())?.as_ref().filter(|_| state.running.load(Ordering::SeqCst)).map(|job| job.id.clone());
+    if active_id.as_deref() == Some(job_id.as_str()) { return Err("실행 중인 작업은 안전하게 종료한 뒤 삭제해 주세요.".into()); }
     Uuid::parse_str(&job_id).map_err(|_| "삭제할 작업 ID가 올바르지 않습니다.".to_string())?;
-    state
-        .store
-        .delete_job(&job_id)
-        .map_err(|error| error.to_string())?;
+    if let Err(error) = state.store.delete_job(&job_id) {
+        let reason = error.to_string();
+        record_delete_failure(&state, &job_id, &reason);
+        return Err(reason);
+    }
+    remove_job_from_queue(&state, &job_id)?;
     let cleared_current = {
         let mut guard = state
             .job
@@ -1167,6 +1346,11 @@ fn delete_all_jobs(app: tauri::AppHandle, state: State<'_, Arc<AppState>>) -> Re
         .store
         .delete_all_jobs()
         .map_err(|error| error.to_string())?;
+    {
+        let queue = QueueIndex::default();
+        *state.queue.lock().map_err(|_| "작업 대기열 잠금이 손상됐습니다.".to_string())? = queue.clone();
+        save_queue(&state, &queue)?;
+    }
     *state
         .job
         .lock()
@@ -1535,6 +1719,8 @@ pub fn run() {
             start_job,
             cancel_job,
             get_job_storage_info,
+            get_queue,
+            reorder_job,
             delete_job,
             list_jobs,
             delete_stored_job,

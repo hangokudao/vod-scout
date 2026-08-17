@@ -45,6 +45,7 @@ import {
   getRuntimeInfo,
   getJobStorageInfo,
   listJobs,
+  reorderJob,
   isDesktopRuntime,
   prepareCandidateContextPreview,
   previewMediaUrl,
@@ -557,12 +558,19 @@ function App() {
         unsubscribe = await subscribeToJob((nextJob) => {
           if (!disposed) {
             setJob(nextJob);
+            setStoredJobs((current) => {
+              const found = current.some((item) => item.snapshot.id === nextJob.id);
+              return found
+                ? current.map((item) => item.snapshot.id === nextJob.id ? { ...item, snapshot: nextJob } : item)
+                : [...current, { snapshot: nextJob, sizeBytes: 0 }];
+            });
             setNewJobMode(false);
           }
         });
-        const [restored, runtimeInfo] = await Promise.all([bootstrap(), getRuntimeInfo()]);
+        const [restored, runtimeInfo, queued] = await Promise.all([bootstrap(), getRuntimeInfo(), listJobs()]);
         if (!disposed) {
           setRuntime(runtimeInfo);
+          setStoredJobs(queued);
           if (restored) {
             setJob(restored);
             setWhisperDevice(restored.whisper?.deviceMode ?? "auto");
@@ -739,6 +747,7 @@ function App() {
         });
         setJob(target);
         setNewJobMode(false);
+        await refreshStoredJobs();
       }
       const started = await startJob(target.id);
       setJob(started);
@@ -750,7 +759,7 @@ function App() {
   }
 
   async function requestCancel() {
-    if (!job || (!active && !recognitionBusy) || job.status === "CANCELLING") return;
+    if (!job || (!active && !recognitionBusy && job.status !== "INTERRUPTED") || job.status === "CANCELLING") return;
     setActionBusy(true);
     setUiError(null);
     try {
@@ -893,6 +902,26 @@ function App() {
   async function refreshStoredJobs() {
     try {
       setStoredJobs(await listJobs());
+    } catch (error) {
+      setUiError(messageFrom(error));
+    }
+  }
+
+  function openQueuedJob(item: StoredJobInfo) {
+    if (active && item.snapshot.id !== job?.id) return;
+    setJob(item.snapshot);
+    setNewJobMode(false);
+    setSettingsOpen(false);
+  }
+
+  async function moveQueuedJob(item: StoredJobInfo, step: number) {
+    if (active) return;
+    const index = storedJobs.findIndex((entry) => entry.snapshot.id === item.snapshot.id);
+    const nextIndex = clamp(index + step, 0, storedJobs.length - 1);
+    if (index < 0 || index === nextIndex) return;
+    try {
+      await reorderJob(item.snapshot.id, nextIndex);
+      await refreshStoredJobs();
     } catch (error) {
       setUiError(messageFrom(error));
     }
@@ -1255,9 +1284,12 @@ function App() {
                     <Pause size={16} /> {job.status === "CANCELLING" ? "취소 중…" : "안전하게 취소"}
                   </button>
                 ) : job.status !== "REVIEW_READY" ? (
-                  <button className="button primary" disabled={actionBusy} onClick={() => void runPrimary()}>
-                    {resumable ? <RotateCcw size={16} /> : <Play size={16} fill="currentColor" />} {primaryLabel}
-                  </button>
+                  <>
+                    <button className="button primary" disabled={actionBusy} onClick={() => void runPrimary()}>
+                      {resumable ? <RotateCcw size={16} /> : <Play size={16} fill="currentColor" />} {primaryLabel}
+                    </button>
+                    {job.status === "INTERRUPTED" ? <button className="button ghost" disabled={actionBusy} onClick={() => void requestCancel()}><X size={16} /> 중단 작업 취소</button> : null}
+                  </>
                 ) : null}
               </div>
             </section>
@@ -1500,6 +1532,27 @@ function App() {
       </main>
 
       <aside className="activity-panel">
+        <section className="queue-panel" aria-label="분석 작업 대기열">
+          <div className="activity-heading">
+            <div><span className="eyebrow">SEQUENTIAL QUEUE</span><h2>작업 대기열</h2></div>
+            <span className="quiet-copy">분석 1개</span>
+          </div>
+          <div className="queue-list">
+            {storedJobs.length ? storedJobs.map((item, index) => (
+              <div className={`queue-item ${item.snapshot.id === job?.id ? "selected" : ""}`} key={item.snapshot.id}>
+                <button className="queue-item-main" onClick={() => openQueuedJob(item)} disabled={active && item.snapshot.id !== job?.id}>
+                  <StatusPill status={item.snapshot.status} />
+                  <span><strong>{shortSource(item.snapshot.sourceLabel, 30)}</strong><small>{item.snapshot.currentStageLabel} · {item.snapshot.completedUnits}/{item.snapshot.totalUnits}</small></span>
+                </button>
+                <div className="queue-item-actions">
+                  <button className="icon-button" aria-label="위로 이동" disabled={active || index === 0} onClick={() => void moveQueuedJob(item, -1)}><ChevronLeft size={14} /></button>
+                  <button className="icon-button" aria-label="아래로 이동" disabled={active || index === storedJobs.length - 1} onClick={() => void moveQueuedJob(item, 1)}><ChevronRight size={14} /></button>
+                </div>
+              </div>
+            )) : <p className="quiet-copy">등록된 작업이 없습니다.</p>}
+          </div>
+          <p className="queue-note">중단됨·실패·취소됨 작업은 사용자가 다시 시작하거나 취소하기 전까지 자동으로 진행하지 않습니다.</p>
+        </section>
         <div className="activity-heading">
           <div><span className="eyebrow">AGENT ACTIVITY</span><h2>실행 기록</h2></div>
           {active ? <span className="listening"><span /> LIVE</span> : null}

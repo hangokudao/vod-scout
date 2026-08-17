@@ -168,6 +168,7 @@ pub(crate) fn run_youtube_pipeline<R: tauri::Runtime>(
                 if job.status != JobStatus::Cancelling && job.status.is_active() {
                     job.transition(JobStatus::Cancelling)?;
                 }
+                job.owned_child_processes = 0;
                 job.transition(JobStatus::Cancelled)?;
                 job.current_stage_label = "다운로드 취소됨".into();
                 job.error_message = None;
@@ -178,11 +179,12 @@ pub(crate) fn run_youtube_pipeline<R: tauri::Runtime>(
                 );
                 Ok(())
             });
-            finish(&state);
+            finish(&app, &state);
         }
         Err(AcquisitionError::Message(detail)) => {
             let _ = mutate_job(&app, &state, |job| {
                 if job.status == JobStatus::Cancelling {
+                    job.owned_child_processes = 0;
                     job.transition(JobStatus::Cancelled)?;
                     job.current_stage_label = "다운로드 취소됨".into();
                     job.error_message = None;
@@ -200,14 +202,15 @@ pub(crate) fn run_youtube_pipeline<R: tauri::Runtime>(
                 }
                 Ok(())
             });
-            finish(&state);
+            finish(&app, &state);
         }
     }
 }
 
-fn finish(state: &Arc<AppState>) {
+fn finish<R: tauri::Runtime>(app: &tauri::AppHandle<R>, state: &Arc<AppState>) {
     state.cancel_requested.store(false, Ordering::SeqCst);
     state.running.store(false, Ordering::SeqCst);
+    crate::continue_queue(app.clone(), Arc::clone(state));
 }
 
 fn acquire<R: tauri::Runtime>(

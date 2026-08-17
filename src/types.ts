@@ -18,6 +18,16 @@ export type JobStatus =
   | "NEEDS_INPUT"
   | "REVIEW_READY";
 
+export type QueueTransitionState = "IDLE" | "RUNNING" | "INTERRUPTED";
+export type QueueExecutionMode = "SEQUENTIAL";
+
+export interface QueueIndex {
+  schemaVersion: number;
+  orderedJobIds: string[];
+  transitionState: QueueTransitionState;
+  executionMode: QueueExecutionMode;
+}
+
 export type CandidateDecision = "PENDING" | "ACCEPTED" | "REJECTED";
 export type CandidateCount = 8 | 20 | 30;
 export type CandidateQualityStatus = "VALID" | "WARNING" | "INVALID";
@@ -188,6 +198,7 @@ export interface JobSnapshot {
   updatedAt: string;
   errorMessage: string | null;
   errorDetail: string | null;
+  deleteFailureReason?: string | null;
   candidates: Candidate[];
   candidatePool?: Candidate[];
   candidateCount: CandidateCount;

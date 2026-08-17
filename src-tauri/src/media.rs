@@ -601,6 +601,7 @@ pub fn run_media_pipeline<R: tauri::Runtime>(
             state.cancel_requested.store(false, Ordering::SeqCst);
             state.manual_running.store(false, Ordering::SeqCst);
             state.running.store(false, Ordering::SeqCst);
+            crate::continue_queue(app, Arc::clone(&state));
             return;
         }
     };
@@ -646,6 +647,7 @@ pub fn run_media_pipeline<R: tauri::Runtime>(
                         "취소 요청을 반영했습니다. 관련 도구 프로세스를 종료하는 중입니다.",
                     );
                 }
+                job.owned_child_processes = 0;
                 job.transition(JobStatus::Cancelled)?;
                 job.current_stage_label = "사용자가 취소함".into();
                 job.error_message = None;
@@ -663,6 +665,7 @@ pub fn run_media_pipeline<R: tauri::Runtime>(
         Err(PipelineError::Message(detail)) => {
             let _ = mutate_job(&app, &state, |job| {
                 if job.status == JobStatus::Cancelling {
+                    job.owned_child_processes = 0;
                     job.transition(JobStatus::Cancelled)?;
                     job.current_stage_label = "사용자가 취소함".into();
                     job.error_message = None;
@@ -690,7 +693,9 @@ pub fn run_media_pipeline<R: tauri::Runtime>(
         job.owned_child_processes = 0;
         Ok(())
     });
+    drop(_heavy_tool_guard);
     state.running.store(false, Ordering::SeqCst);
+    crate::continue_queue(app, state);
 }
 
 pub fn run_candidate_recognition<R: tauri::Runtime>(app: tauri::AppHandle<R>, state: Arc<AppState>, job_id: String, candidate_id: String, run_id: String) {

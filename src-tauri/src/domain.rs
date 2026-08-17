@@ -354,6 +354,8 @@ pub struct JobSnapshot {
     pub error_message: Option<String>,
     #[serde(default)]
     pub error_detail: Option<String>,
+    #[serde(default)]
+    pub delete_failure_reason: Option<String>,
     pub candidates: Vec<Candidate>,
     #[serde(default)]
     pub candidate_pool: Vec<Candidate>,
@@ -425,6 +427,7 @@ impl JobSnapshot {
             updated_at: now,
             error_message: None,
             error_detail: None,
+            delete_failure_reason: None,
             candidates: Vec::new(),
             candidate_pool: Vec::new(),
             candidate_count: 20,
