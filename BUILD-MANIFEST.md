@@ -2,20 +2,22 @@
 
 ## v0.5.0 로컬 후보 통합 빌드
 
-상태: **G1~G7 소스·자동 검증 PASS · NSIS/PE/hash/격리 앱 실행 PASS · 서명/공개 자산 HOLD**
+상태: **G1~G8 로컬 통합·자동 검증 PASS · 로컬 NSIS/PE/해시(hash)/빌드 앱 격리 8초 생존 PASS · 실제 설치 파일 설치/Windows 화면/updater 서명/공개 자산 HOLD**
 
-- 기준 커밋: `9c97600` 기반 `codex/v050-g8-integration-package`.
+- origin/main 기준: `eee71e04776a6179c289167596e9d82d52e94e13` (PR #18 반영).
+- G8 패키지 증거 원본: `6ecbd49` · 로컬 통합 병합: `7c8b336` · 현재 브랜치: `codex/v050-integration`.
+- G1~G8은 이 작업 트리(worktree)에 로컬 통합되어 있다. 이 통합에서 push, PR 생성, remote merge(원격 병합), tag, Release, deploy(배포)는 발생하지 않았고 `main`은 수정하지 않았다.
 - 버전 정본: `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, `src/releaseNotes.ts`, workflow/helper가 `0.5.0`.
 - `npm ci`: PASS. `npm test`: 49 passed. `npm run build`: PASS (1,793 modules).
 - `cargo.exe test --manifest-path src-tauri/Cargo.toml`: 126 passed, 1 ignored. Fixture worker: 6 passed.
 - `npm run test:security`: 6 passed. Archive/media-tool/sample-disk tests: 11 passed.
-- `npm run tauri:build` (PowerShell): **PASS through NSIS, HOLD at signing** — 새 FFmpeg 고정 자산과 media-tools를 준비하고 NSIS를 생성했으며 updater 개인키 부재로 서명 단계에서 종료.
+- `npm run tauri:build` (PowerShell): **NSIS 생성까지 PASS, 서명은 HOLD** — 새 FFmpeg 고정 자산과 media-tools를 준비하고 NSIS를 생성했으며 updater 개인키가 없다. fresh 격리 앱은 8초 생존 확인 직후 테스트 프로세스를 의도적으로 중단했으므로 정상 종료로 기록하지 않는다.
 - `node scripts/generate-release-assets.mjs`: **HOLD** — 공개 Release 자산은 서명 키 부재로 생성하지 않았다.
 - `vod-scout.exe`: 16,270,848 bytes · SHA-256 `d29cbf3f2d55e993ef896ecddcc202b6586e0a335f8cc6692fc51dcca1ac2d2f` · PE ProductVersion/FileVersion `0.5.0`.
 - `VOD Scout_0.5.0_x64-setup.exe`: 337,435,060 bytes · SHA-256 `2e8cddd19cb756951b58b8937c3171e4a9029cd7de78136bdcd04d745971d0f8` · PE ProductVersion/FileVersion `0.5.0`.
-- fresh `VOD_SCOUT_E2E_DATA_DIR`: **PASS** — 빌드 앱 8초 생존 후 종료, 격리 폴더에 `instance.lock`·`queue.json` 2개 생성. 기존 설치·사용자 데이터는 변경하지 않았다.
-- 실제 YouTube/reference-video, GPU, Windows UI, resource/long-run, parallel measurements: **HOLD**. 기존 설치 앱·사용자 데이터는 변경하지 않았다.
-- G7 parallel option: **unavailable** until same-input resource measurements pass.
+- fresh `VOD_SCOUT_E2E_DATA_DIR`: **PASS** — 빌드 앱이 8초 생존했고, 확인 직후 테스트 프로세스를 의도적으로 중단했다(정상 종료 아님). 격리 폴더에 `instance.lock`·`queue.json` 2개가 생성됐으며 실제 설치 파일 설치·설치 후 실행·Windows 화면은 확인하지 않았다. 기존 설치 앱·사용자 데이터는 변경하지 않았다.
+- 실제 설치 파일 설치·설치 후 실행, Windows 화면, updater 서명, 공개 v0.5.0 Release 자산, YouTube/reference-video, GPU, 자원·장시간·병렬 측정: **HOLD**.
+- G7 병렬 옵션: 같은 입력의 자원 측정을 통과하기 전까지 **사용할 수 없음**.
 
 정확한 FFmpeg asset: `https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-17-13-05/ffmpeg-n8.1.2-44-g7c533d0f86-win64-lgpl-shared-8.1.zip` · size 70,837,934 bytes · SHA-256 `681b9ca6d8f9be1e01d8873ad16f8a632f8a22b9653f1044837de6d5979b0fd6`.
 

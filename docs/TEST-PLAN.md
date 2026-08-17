@@ -1,6 +1,8 @@
 # 테스트와 완료 기준
 
-v0.5.0 G1~G7 구현·자동 검증은 **PASS**다. 실제 YouTube/기준 영상, 실제 GPU, Windows UI, 자원·장시간·병렬 측정과 설치본 검증은 **HOLD**다. G7 병렬 옵션은 실제 측정 전까지 사용할 수 없다.
+v0.5.0 G1~G8은 `codex/v050-integration` 작업 트리(worktree)에 로컬 통합되어 있고 구현·자동 검증은 **PASS**다. origin/main 기준은 `eee71e04776a6179c289167596e9d82d52e94e13`(PR #18 반영), G8 패키지 증거 원본은 `6ecbd49`, 로컬 통합 병합은 `7c8b336`이다. 실제 설치 파일 설치·Windows 화면·updater 서명·공개 Release, 실제 YouTube/기준 영상, GPU, 자원·장시간·병렬 측정은 **HOLD**다. G7 병렬 옵션은 실제 측정 전까지 사용할 수 없다.
+
+G8 로컬 패키지 증거는 NSIS 생성, PE 버전·크기·SHA-256, fresh 격리 경로의 빌드 앱 8초 생존 확인까지 **PASS**다. 8초 생존 확인 직후 테스트 프로세스를 의도적으로 중단했으며 정상 종료가 아니다. 실제 설치 파일 설치·설치 후 실행·Windows 화면과 updater 서명·공개 Release는 확인하지 않았고, 이 통합에서 push·PR·remote merge(원격 병합)·tag·Release·deploy(배포)는 발생하지 않았으며 `main`은 수정하지 않았다. README의 공개 v0.4.0 다운로드·Release 상태는 유지한다.
 
 ## 자동 테스트
 
