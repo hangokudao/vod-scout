@@ -65,8 +65,23 @@ import type {
   PreviewMedia,
   Scenario,
   SourceKind,
-  StoredJobInfo
+  StoredJobInfo,
+  WhisperDeviceMode,
+  WhisperProfile
 } from "./types";
+
+export function normalizeWhisperSettings(
+  deviceMode: WhisperDeviceMode,
+  profile: WhisperProfile,
+  cpuThreads: string
+) {
+  const parsed = cpuThreads === "auto" ? null : Number(cpuThreads);
+  return {
+    deviceMode,
+    profile,
+    cpuThreads: parsed == null || !Number.isFinite(parsed) ? null : Math.min(Math.max(Math.trunc(parsed), 1), 32)
+  };
+}
 
 function captionSummaryLabel(captions: CaptionSummary | null | undefined): string | null {
   if (!captions) return null;
@@ -166,6 +181,18 @@ const ANALYSIS_MODES: Array<{ value: AnalysisMode; label: string; detail: string
   { value: "quick", label: "빠른 분석", detail: "전체를 훑고 최대 120분만 분산 음성 인식" },
   { value: "range", label: "구간 지정", detail: "선택한 시작·종료 범위만 정밀 분석" },
   { value: "full", label: "전체 정밀 분석", detail: "전체 오디오를 10분 단위로 음성 인식" }
+];
+
+const WHISPER_DEVICES: Array<{ value: WhisperDeviceMode; label: string; detail: string }> = [
+  { value: "auto", label: "자동(GPU 우선)", detail: "짧은 실제 시험이 성공한 경우에만 GPU를 사용합니다." },
+  { value: "gpu", label: "GPU", detail: "GPU 시험·실행 실패 시 해당 구간만 CPU로 한 번 대체합니다." },
+  { value: "cpu", label: "CPU", detail: "GPU를 명시적으로 끄고 CPU에서만 실행합니다." }
+];
+
+const WHISPER_PROFILES: Array<{ value: WhisperProfile; label: string; detail: string }> = [
+  { value: "fast", label: "빠르게", detail: "낮은 탐색 폭으로 빠르게 처리" },
+  { value: "balanced", label: "균형", detail: "기본 설정" },
+  { value: "accurate", label: "정확하게", detail: "더 넓은 탐색 폭으로 처리" }
 ];
 
 export type CandidateSortKey =
@@ -410,6 +437,9 @@ function App() {
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("quick");
   const [rangeStart, setRangeStart] = useState("00:00:00");
   const [rangeEnd, setRangeEnd] = useState("01:00:00");
+  const [whisperDevice, setWhisperDevice] = useState<WhisperDeviceMode>("auto");
+  const [whisperProfile, setWhisperProfile] = useState<WhisperProfile>("balanced");
+  const [cpuThreads, setCpuThreads] = useState("auto");
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [settings, setSettings] = useState<UiSettings>(() => readUiSettings());
   const [systemPrefersDark, setSystemPrefersDark] = useState(
@@ -452,6 +482,9 @@ function App() {
           setRuntime(runtimeInfo);
           if (restored) {
             setJob(restored);
+            setWhisperDevice(restored.whisper?.deviceMode ?? "auto");
+            setWhisperProfile(restored.whisper?.profile ?? "balanced");
+            setCpuThreads(restored.whisper?.cpuThreads == null ? "auto" : String(restored.whisper.cpuThreads));
             setNewJobMode(false);
           }
         }
@@ -612,7 +645,8 @@ function App() {
           scenario,
           analysisMode,
           analysisStartSeconds: start,
-          analysisEndSeconds: end
+          analysisEndSeconds: end,
+          whisper: normalizeWhisperSettings(whisperDevice, whisperProfile, cpuThreads)
         });
         setJob(target);
         setNewJobMode(false);
@@ -1025,6 +1059,30 @@ function App() {
               </div> : null}
             </section> : null}
 
+            <section className="analysis-mode-panel whisper-settings-panel" aria-label="음성 인식 설정">
+              <div className="panel-heading"><span><Mic2 size={17} /> 음성 인식 장치</span><strong>{WHISPER_DEVICES.find((item) => item.value === whisperDevice)?.label}</strong></div>
+              <div className="analysis-mode-options">
+                {WHISPER_DEVICES.map((item) => (
+                  <button key={item.value} type="button" className={whisperDevice === item.value ? "selected" : ""} onClick={() => setWhisperDevice(item.value)}>
+                    <strong>{item.label}</strong><small>{item.detail}</small>
+                  </button>
+                ))}
+              </div>
+              <div className="analysis-mode-options">
+                {WHISPER_PROFILES.map((item) => (
+                  <button key={item.value} type="button" className={whisperProfile === item.value ? "selected" : ""} onClick={() => setWhisperProfile(item.value)}>
+                    <strong>{item.label}</strong><small>{item.detail}</small>
+                  </button>
+                ))}
+              </div>
+              <label className="cpu-thread-control">CPU 사용량
+                <select value={cpuThreads} onChange={(event) => setCpuThreads(event.target.value)}>
+                  <option value="auto">자동</option>
+                  {[1, 2, 4, 8, 16, 32].map((value) => <option key={value} value={value}>{value}개 스레드</option>)}
+                </select>
+              </label>
+            </section>
+
             {sourceKind === "demo" ? <details className="scenario-panel">
               <summary><TerminalSquare size={16} /> 복구 시나리오 선택 <span>{SCENARIOS.find((item) => item.value === scenario)?.label}</span></summary>
               <div className="scenario-options">
@@ -1056,6 +1114,7 @@ function App() {
                 <p>{job.status === "REVIEW_READY" ? `후보 ${job.candidates.length}개 중 ${reviewedCount}개를 판정했습니다.` : `${job.completedUnits} / ${job.totalUnits} 체크포인트 완료${job.mediaDurationSeconds ? ` · 원본 ${formatTime(Math.round(job.mediaDurationSeconds))}` : ""}${active && timing ? ` · 경과 ${formatDuration(timing.elapsedSeconds)}${timing.remainingSeconds === null ? " · 남은 시간 계산 중" : ` · 약 ${formatDuration(timing.remainingSeconds)} 남음`}` : ""}`}</p>
                 {job.sourceKind === "youtube" && captionSummaryLabel(job.captions) ? <small className="caption-summary">{captionSummaryLabel(job.captions)}</small> : null}
                 {job.sourceKind === "youtube" && job.captions ? <CaptionDetails captions={job.captions} /> : null}
+                <small className="whisper-status">음성 인식: {WHISPER_DEVICES.find((item) => item.value === (job.whisper?.deviceMode ?? "auto"))?.label} · {WHISPER_PROFILES.find((item) => item.value === (job.whisper?.profile ?? "balanced"))?.label} · CPU {job.whisper?.cpuThreads == null ? "자동" : `${job.whisper.cpuThreads}개 스레드`}</small>
               </div>
               <div className="job-actions">
                 {storageBytes !== null ? <span className="storage-label"><HardDrive size={14} /> {formatBytes(storageBytes)}</span> : null}

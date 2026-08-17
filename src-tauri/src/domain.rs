@@ -1,4 +1,5 @@
 use crate::captions::{CaptionSource, VerificationState};
+use crate::whisper::WhisperSettings;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -260,6 +261,8 @@ pub struct JobSnapshot {
     pub activity: Vec<ActivityEvent>,
     #[serde(default)]
     pub captions: Option<CaptionSummary>,
+    #[serde(default)]
+    pub whisper: WhisperSettings,
 }
 
 impl JobSnapshot {
@@ -274,7 +277,7 @@ impl JobSnapshot {
     ) -> Self {
         let now = Utc::now();
         let mut job = Self {
-            schema_version: 4,
+            schema_version: 5,
             id,
             source_kind,
             source_label,
@@ -297,6 +300,7 @@ impl JobSnapshot {
             candidates: Vec::new(),
             activity: Vec::new(),
             captions: None,
+            whisper: WhisperSettings::default(),
         };
         job.push_activity("job", "새 분석 작업을 만들었습니다.");
         job

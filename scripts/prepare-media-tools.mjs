@@ -23,6 +23,12 @@ const artifacts = {
     sha256: "7d8be46ecd31828e1eb7a2ecdd0d6b314feafd82163038ab6092594b0a063539",
     archive: "whisper-bin-x64-v1.9.1.zip"
   },
+  whisperGpu: {
+    url: "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.1/whisper-cublas-11.8.0-bin-x64.zip",
+    sha256: "aecdce0e4d4bb758a7c72a31f3f9f19a7b6d861405fd2da743cd86398633c963",
+    archive: "whisper-cublas-11.8.0-bin-x64-v1.9.1.zip",
+    prepare: false
+  },
   model: {
     url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin?download=true",
     sha256: "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
@@ -161,6 +167,9 @@ async function ready() {
     return manifest.schemaVersion === 5
       && manifest.artifacts.ffmpeg.sha256 === artifacts.ffmpeg.sha256
       && manifest.artifacts.whisper.sha256 === artifacts.whisper.sha256
+      && manifest.artifacts.whisperGpu.url === artifacts.whisperGpu.url
+      && manifest.artifacts.whisperGpu.sha256 === artifacts.whisperGpu.sha256
+      && manifest.artifacts.whisperGpu.prepare === false
       && manifest.artifacts.model.sha256 === artifacts.model.sha256
       && manifest.artifacts.whisperLicense.sha256 === artifacts.whisperLicense.sha256
       && manifest.artifacts.modelLicense.sha256 === artifacts.modelLicense.sha256

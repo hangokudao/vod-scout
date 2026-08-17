@@ -4,10 +4,12 @@ mod domain;
 mod integrity;
 mod media;
 mod storage;
+mod whisper;
 
 use crate::domain::{
     AnalysisMode, Candidate, CandidateDecision, JobSnapshot, JobStatus, Scenario, SourceKind,
 };
+use crate::whisper::WhisperSettings;
 use crate::storage::JobStore;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -54,6 +56,8 @@ struct CreateJobInput {
     analysis_start_seconds: Option<u32>,
     #[serde(default)]
     analysis_end_seconds: Option<u32>,
+    #[serde(default)]
+    whisper: WhisperSettings,
 }
 
 #[derive(Debug, Serialize)]
@@ -213,20 +217,11 @@ fn bootstrap(
         Err(_) => return Ok(None),
     };
 
-    if loaded.schema_version < 4 {
-        loaded.schema_version = 4;
-        loaded.analysis_mode = AnalysisMode::Full;
-        loaded.analysis_start_seconds = None;
-        loaded.analysis_end_seconds = None;
-        if loaded.status != JobStatus::ReviewReady {
-            loaded.completed_units = 0;
-            loaded.total_units = 12;
-            loaded.status = JobStatus::Interrupted;
-            loaded.error_message =
-                Some("이전 버전 작업은 분석 설정을 확인한 뒤 다시 시작해야 합니다.".into());
-            loaded.error_detail = Some("v0.3.2 체크포인트 fingerprint 초기화".into());
-            loaded.push_activity("migration", "이전 체크포인트를 안전하게 무효화했습니다.");
-        }
+    let migrated_legacy = loaded.schema_version < 5;
+    if migrated_legacy {
+        loaded.schema_version = 5;
+        loaded.whisper = WhisperSettings::default();
+        loaded.push_activity("migration", "이전 작업을 CPU 기본 설정으로 복원했습니다.");
     }
 
     if loaded.status.is_active() {
@@ -234,6 +229,8 @@ fn bootstrap(
         loaded.error_message = Some("이전 실행이 끝나기 전에 앱이 종료됐습니다.".into());
         loaded.error_detail = Some("마지막 완료 단위 다음부터 재개할 수 있습니다.".into());
         loaded.push_activity("recovery", "중단된 작업을 복원했습니다.");
+    }
+    if migrated_legacy || loaded.status == JobStatus::Interrupted {
         state
             .store
             .save(&loaded)
@@ -268,6 +265,8 @@ fn create_job(
         input.analysis_start_seconds,
         input.analysis_end_seconds,
     );
+    let mut job = job;
+    job.whisper = input.whisper.normalized();
     state.store.save(&job).map_err(|error| error.to_string())?;
     if let Some(event) = job.activity.last() {
         state
