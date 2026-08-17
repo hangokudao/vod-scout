@@ -1,17 +1,18 @@
 # VOD Scout 인계서
 
-현재 게이트: **v0.4.0 공개 완료 · v0.5.0 문서 계약 수정 PASS · 제품 구현·실제 자막·GPU·자원·UI 검증 HOLD**
+현재 게이트: **v0.4.0 공개 완료 · v0.5.0 G1 구현 로컬 완료 · 실제 YouTube 자막·GPU·자원·UI 검증 HOLD**
 
 ## 현재 정본
 
 | 항목 | 값 |
 |---|---|
 | 저장소 | `hangokudao/vod-scout` |
-| 문서 기준 | `origin/main` `42410bade1c6ef390e25cce0bbad34f4fb4dc25d` |
+| 문서 기준 | `origin/main` `eee71e04776a6179c289167596e9d82d52e94e13` |
 | 최신 공개 Release | `v0.4.0` · https://github.com/hangokudao/vod-scout/releases/tag/v0.4.0 |
 | 현재 제품 버전 | `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` 모두 `0.4.0` |
-| 문서 변경 추적 | PR #17 |
-| v0.5.0 상태 | 여섯 정본의 문서 계약 수정 `PASS`, 코드·버전 변경과 실제 검증 `HOLD` |
+| 문서 변경 추적 | PR #18 merged · roadmap correction committed |
+| 현재 구현 | `codex/v050-g1-youtube-captions` 로컬·미 push 구현 |
+| v0.5.0 상태 | G1 코드·자동 테스트 구현, 실제 기준 영상·GPU·자원·UI 검증 `HOLD` |
 
 v0.4.0의 기능·장시간 입력·설치·공개 자산 검증 근거는 [v0.4.0 릴리스 기록](docs/V0.4.0-RELEASE.md)과 [빌드 명세](BUILD-MANIFEST.md)를 따른다. 이 문서에서 해시와 실행 결과를 중복 관리하지 않는다.
 
@@ -66,7 +67,7 @@ v0.4.0의 기능·장시간 입력·설치·공개 자산 검증 근거는 [v0.4
 - 최초 판정은 `HOLD`였으며 필수 수정 7개는 앱 재실행과 단일 실행권, 자동 대체 처리 상태 보존, 기존 후보 판정, 실행 중 삭제, 자원 상한, 품질 조건 효과, 채팅 기준선이었다.
 - 위 7개는 현재 문서에 최소 계약으로 반영했다. 같은 요청을 반복하지 않기 위해 두 번째 Oracle 검수는 실행하지 않았으므로 `Oracle PASS`라고 기록하지 않는다.
 
-## 이번 문서 보정 실행 기록
+## 이전 문서 보정 실행 기록
 
 - 동시 worker 상한: 1개
 - 브랜치: `codex/v050-roadmap-correction`
@@ -75,7 +76,8 @@ v0.4.0의 기능·장시간 입력·설치·공개 자산 검증 근거는 [v0.4
 - 실제 적용 모델: `gpt-5.6-luna`
 - Oracle: 없음
 - 수행 범위: 지정된 여섯 Markdown 문서의 문서 보정
-- 수행하지 않음: 제품 구현, 통합, commit, push, PR, merge
+- 수행하지 않음: 제품 구현, 통합, push, PR, merge
+- 정본 반영: `origin/main` `eee71e04776a6179c289167596e9d82d52e94e13`, PR #18 merged, roadmap correction committed
 
 ## 일시 중지된 기존 작업
 
@@ -93,18 +95,17 @@ worktree `codex/v050-transcript-quality`는 이미 존재하며 커밋되지 않
 
 기능별 검증이 끝나기 전에 다음 기능을 미리 구현하지 않는다. 구현·PR·병합·배포 승인은 서로 별개다.
 
-## 구현 시작 전 HOLD
+## G1 이후 HOLD
 
 - YouTube 기준 영상의 사용 권한·보관 범위와 실제 입력 미확정
 - 실제 자막 시간 오프셋·트랙 품질 검증 미실행. 기준 영상 전에는 시간 허용 오차나 시간 오차 합격 임계값을 정하지 않는다.
 - `codex/v050-transcript-quality`는 커밋되지 않은 변경이 있는 상태로 일시 중지·보존 중이며, 현재 편집·통합하지 않는다.
-- v0.5.0 구현·실제 자막·실제 GPU·실제 자원·사용자 화면 흐름·실제 장시간 검증 미실행
+- 실제 G1 YouTube 자막·시간 오프셋·장시간 검증과 v0.5.0 GPU·자원·사용자 화면 흐름 검증 미실행
 
 ## 다음 정확한 작업
 
 1. 기준 영상의 사용 권한·보관 범위와 실제 비교 입력을 먼저 확정한다.
-2. `origin/main` v0.4.0 기준의 별도 clean feature worktree와 `codex/` 작업 브랜치를 만든다.
-3. 그 별도 clean feature worktree에서 YouTube 자막 계약부터 구현하고 해당 테스트와 실제 기준 검증을 통과한다.
-4. 그 뒤에만 `codex/v050-transcript-quality`의 음성 인식 품질 안전장치 재사용을 별도로 검토하며, 그 전에는 편집하거나 통합하지 않는다.
+2. G1 실제 YouTube 자막 선택·시간 오프셋·Whisper 혼합 처리 검증을 수행한다.
+3. 그 뒤에만 `codex/v050-transcript-quality`의 음성 인식 품질 안전장치 재사용을 별도로 검토하며, 그 전에는 편집하거나 통합하지 않는다.
 
 원본 작업 폴더, 기존 설치 폴더, 기존 작업 데이터와 개인 파일은 수정하거나 삭제하지 않는다. 공개 문서에는 비밀값·개인 영상·개인 절대 경로를 넣지 않는다.

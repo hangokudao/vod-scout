@@ -1,4 +1,5 @@
 mod acquisition;
+mod captions;
 mod domain;
 mod integrity;
 mod media;

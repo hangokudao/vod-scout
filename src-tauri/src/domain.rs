@@ -1,3 +1,4 @@
+use crate::captions::{CaptionSource, VerificationState};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -191,6 +192,43 @@ pub struct ActivityEvent {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CaptionProvenanceSummary {
+    pub original_file: String,
+    #[serde(default)]
+    pub language: Option<String>,
+    pub track_id: String,
+    pub sha256: String,
+    pub revision: String,
+    pub verification_state: VerificationState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptionDiagnosticSummary {
+    pub kind: String,
+    pub interval_index: Option<usize>,
+    pub start_seconds: Option<f64>,
+    pub end_seconds: Option<f64>,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptionSummary {
+    pub source: Option<CaptionSource>,
+    #[serde(default)]
+    pub language: Option<String>,
+    pub quality: String,
+    pub fallback_intervals: u32,
+    #[serde(default)]
+    pub local_whisper_fallback: bool,
+    #[serde(default)]
+    pub diagnostics: Vec<CaptionDiagnosticSummary>,
+    pub provenance: Option<CaptionProvenanceSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct JobSnapshot {
     pub schema_version: u8,
     pub id: String,
@@ -220,6 +258,8 @@ pub struct JobSnapshot {
     pub error_detail: Option<String>,
     pub candidates: Vec<Candidate>,
     pub activity: Vec<ActivityEvent>,
+    #[serde(default)]
+    pub captions: Option<CaptionSummary>,
 }
 
 impl JobSnapshot {
@@ -256,6 +296,7 @@ impl JobSnapshot {
             error_detail: None,
             candidates: Vec::new(),
             activity: Vec::new(),
+            captions: None,
         };
         job.push_activity("job", "새 분석 작업을 만들었습니다.");
         job

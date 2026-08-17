@@ -56,6 +56,7 @@ import {
 import type {
   Candidate,
   CandidateDecision,
+  CaptionSummary,
   ContextLine,
   AnalysisMode,
   JobSnapshot,
@@ -66,6 +67,59 @@ import type {
   SourceKind,
   StoredJobInfo
 } from "./types";
+
+function captionSummaryLabel(captions: CaptionSummary | null | undefined): string | null {
+  if (!captions) return null;
+  const source = captions.provenance?.verificationState === "FAILED"
+    ? "출처 알 수 없는 자막"
+    : captions.source === "creator" ? "제작자 한국어 자막" : captions.source === "automatic" ? "한국어 자동 자막" : "자막 없음";
+  const quality = captions.quality === "failed" ? "검증 실패" : captions.quality === "trusted" ? "검증된 구간" : captions.quality === "mixed" ? "일부 구간 대체" : "검증 전";
+  if (captions.quality === "failed") return `${source} · ${quality}`;
+  if (captions.fallbackIntervals > 0) return `${source} · Whisper 대체 ${captions.fallbackIntervals}구간`;
+  return `${source} · ${quality}`;
+}
+
+function captionDiagnosticLabel(kind: string): string {
+  if (["StartAfterEnd", "OutOfRange", "Overlap", "Duplicate", "EmptyText", "QualityWarning"].includes(kind)) return "시간·내용 구조";
+  if (kind === "OffsetUnverified") return "시간 오프셋";
+  if (kind === "GapObserved") return "자막 공백";
+  if (kind === "ProvenanceInvalid") return "근거 확인";
+  return "음성 인식 대체";
+}
+
+function captionVerificationLabel(value: CaptionSummary["provenance"]): string {
+  if (!value) return "확인 정보 없음";
+  return value.verificationState === "VERIFIED" ? "검증됨" : value.verificationState === "FAILED" ? "검증 실패" : "검증 전";
+}
+
+function CaptionDetails({ captions }: { captions: CaptionSummary }) {
+  const provenance = captions.provenance;
+  const source = provenance?.verificationState === "FAILED"
+    ? "알 수 없음"
+    : captions.source === "creator" ? "제작자" : captions.source === "automatic" ? "자동" : "없음";
+  return (
+    <div className="caption-details" aria-label="YouTube 자막 근거">
+      <div className="caption-detail-row">
+        <span>자막 출처: {source}</span>
+        <span>언어: {captions.language ?? provenance?.language ?? "알 수 없음"}</span>
+        <span>트랙: {provenance?.trackId || "알 수 없음"}</span>
+      </div>
+      <div className="caption-detail-row">
+        <span>원본 파일: {provenance?.originalFile || "없음"}</span>
+        <span>SHA-256: {provenance?.sha256 || "없음"}</span>
+        <span>검증: {captionVerificationLabel(provenance)}</span>
+      </div>
+      <div className="caption-detail-row">
+        <span>로컬 음성 인식 대체: {captions.localWhisperFallback ? `${captions.fallbackIntervals}구간` : "없음"}</span>
+      </div>
+      {captions.diagnostics.length > 0 ? (
+        <ul className="caption-diagnostics">
+          {captions.diagnostics.map((diagnostic, index) => <li key={`${diagnostic.kind}-${index}`}><strong>{captionDiagnosticLabel(diagnostic.kind)}</strong> · {diagnostic.detail}</li>)}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
 import {
   ACTIVE_STATUSES,
   estimateJobTiming,
@@ -1000,6 +1054,8 @@ function App() {
                 </div>
                 <h1>{job.status === "REVIEW_READY" ? "편집 후보를 검토하세요" : job.currentStageLabel}</h1>
                 <p>{job.status === "REVIEW_READY" ? `후보 ${job.candidates.length}개 중 ${reviewedCount}개를 판정했습니다.` : `${job.completedUnits} / ${job.totalUnits} 체크포인트 완료${job.mediaDurationSeconds ? ` · 원본 ${formatTime(Math.round(job.mediaDurationSeconds))}` : ""}${active && timing ? ` · 경과 ${formatDuration(timing.elapsedSeconds)}${timing.remainingSeconds === null ? " · 남은 시간 계산 중" : ` · 약 ${formatDuration(timing.remainingSeconds)} 남음`}` : ""}`}</p>
+                {job.sourceKind === "youtube" && captionSummaryLabel(job.captions) ? <small className="caption-summary">{captionSummaryLabel(job.captions)}</small> : null}
+                {job.sourceKind === "youtube" && job.captions ? <CaptionDetails captions={job.captions} /> : null}
               </div>
               <div className="job-actions">
                 {storageBytes !== null ? <span className="storage-label"><HardDrive size={14} /> {formatBytes(storageBytes)}</span> : null}
