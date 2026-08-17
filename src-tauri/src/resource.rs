@@ -169,6 +169,7 @@ pub struct StageResourceMetric {
     pub memory_bytes: Option<u64>,
     pub disk_bytes: Option<u64>,
     pub temp_bytes: Option<u64>,
+    /// Peak concurrently owned external-tool processes observed during this stage.
     pub owned_child_processes: Option<u32>,
     #[serde(default)]
     pub unavailable_reasons: Vec<String>,
@@ -239,11 +240,43 @@ mod tests {
     }
 
     #[test]
+    fn external_tool_limit_uses_the_observed_peak_count() {
+        let policy = ResourcePolicy {
+            hard_external_tool_count: Some(0),
+            ..Default::default()
+        };
+        assert_eq!(
+            policy.evaluate(&ResourceSample {
+                external_tool_count: Some(1),
+                ..Default::default()
+            }),
+            ResourceDecision::HardLimit("외부 도구 1개가 강제 중단 기준 0개를 초과했습니다.".into())
+        );
+    }
+
+    #[test]
     fn stage_metric_serializes_unavailable_values_as_null() {
         let value = serde_json::to_value(StageResourceMetric::unavailable(ResourceStage::UiResponsiveness)).unwrap();
         assert!(value["elapsedMs"].is_null());
         assert!(value["cpuPercent"].is_null());
         assert!(value["memoryBytes"].is_null());
         assert!(value["unavailableReasons"].as_array().is_some_and(|items| !items.is_empty()));
+    }
+
+    #[test]
+    fn stage_metric_records_known_external_tool_peak() {
+        let metric = StageResourceMetric {
+            stage: ResourceStage::FfmpegAudio,
+            elapsed_ms: Some(12),
+            cpu_percent: None,
+            memory_bytes: None,
+            disk_bytes: None,
+            temp_bytes: None,
+            owned_child_processes: Some(1),
+            unavailable_reasons: vec!["cpuPercent: CPU 사용량 측정을 사용할 수 없습니다.".into()],
+            policy_status: ResourcePolicyStatus::Unconfigured,
+            policy_reason: None,
+        };
+        assert_eq!(metric.owned_child_processes, Some(1));
     }
 }

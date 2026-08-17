@@ -344,6 +344,7 @@ pub struct JobSnapshot {
     #[serde(default)]
     pub resource_failure: Option<ResourceLimitFailure>,
     #[serde(default)]
+    /// Number of currently owned external-tool processes, not a planned or inferred count.
     pub owned_child_processes: u32,
 }
 

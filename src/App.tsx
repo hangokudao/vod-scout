@@ -148,7 +148,7 @@ function ResourcePanel({ job }: { job: JobSnapshot }) {
             <span>메모리 {resourceMetricValue(metric.memoryBytes, "B")}</span>
             <span>디스크 {resourceMetricValue(metric.diskBytes, "B")}</span>
             <span>임시 {resourceMetricValue(metric.tempBytes, "B")}</span>
-            <span>자식 {resourceMetricValue(metric.ownedChildProcesses, "개")}</span>
+            <span>피크 자식 {resourceMetricValue(metric.ownedChildProcesses, "개")}</span>
             {metric.policyStatus === "UNCONFIGURED" ? <em className="resource-unconfigured">기준 미설정 · HOLD</em> : null}
             {metric.policyStatus === "WARNING" ? <em className="resource-warning">경고 · {metric.policyReason}</em> : null}
             {metric.policyStatus === "HARD_LIMIT" ? <em className="resource-hard-limit">강제 중단 · {metric.policyReason}</em> : null}

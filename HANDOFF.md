@@ -124,6 +124,7 @@ worktree `codex/v050-transcript-quality`는 이미 존재하며 커밋되지 않
 3. 그 뒤에만 `codex/v050-transcript-quality`의 음성 인식 품질 안전장치 재사용을 별도로 검토하며, 그 전에는 편집하거나 통합하지 않는다.
 
 원본 작업 폴더, 기존 설치 폴더, 기존 작업 데이터와 개인 파일은 수정하거나 삭제하지 않는다. 공개 문서에는 비밀값·개인 영상·개인 절대 경로를 넣지 않는다.
+
 # G4 자원 제한 구현 인계
 
 ## 현재 완료 상태
@@ -137,7 +138,7 @@ worktree `codex/v050-transcript-quality`는 이미 존재하며 커밋되지 않
 
 - `cmd.exe /c npm.cmd test`: **PASS, 42 passed**
 - `cmd.exe /c npm.cmd run build`: **PASS**
-- `cargo.exe test --manifest-path src-tauri/Cargo.toml`: **PASS, 98 passed, 1 ignored**
+- `cargo.exe test --manifest-path src-tauri/Cargo.toml`: **PASS, 103 passed, 1 ignored**
 - `cargo.exe test --manifest-path src-tauri/fixture-worker/Cargo.toml`: **PASS, 5 passed**
 - `node --test scripts/archive-safety.test.mjs scripts/prepare-media-tools.test.mjs`: **PASS, 8 passed**
 - `git diff --check`: **PASS**

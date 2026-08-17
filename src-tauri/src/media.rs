@@ -26,7 +26,7 @@ use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -593,17 +593,13 @@ pub fn run_media_pipeline<R: tauri::Runtime>(
     state: Arc<AppState>,
     job_id: String,
 ) {
-    let _heavy_tool_guard = match state.heavy_tool_gate.lock() {
+    let _heavy_tool_guard = match acquire_heavy_tool_gate(&state) {
         Ok(guard) => guard,
         Err(_) => {
             state.running.store(false, Ordering::SeqCst);
             return;
         }
     };
-    let _ = mutate_job(&app, &state, |job| {
-        job.owned_child_processes = 1;
-        Ok(())
-    });
     let result = run(&app, &state, &job_id);
     match result {
         Ok(candidates) => {
@@ -654,19 +650,7 @@ pub fn run_media_pipeline<R: tauri::Runtime>(
             });
         }
         Err(PipelineError::ResourceLimit { stage, reason }) => {
-            let _ = mutate_job(&app, &state, |job| {
-                job.transition(JobStatus::Failed)?;
-                let failure = crate::resource::ResourceLimitFailure {
-                    stage,
-                    reason: reason.clone(),
-                    last_completed_units: job.completed_units,
-                };
-                job.resource_failure = Some(failure);
-                job.error_message = Some("자원 제한을 초과해 현재 작업을 중지했습니다.".into());
-                job.error_detail = Some(reason.clone());
-                job.push_activity("resource-limit", &format!("{}: {reason}", stage.label()));
-                Ok(())
-            });
+            let _ = terminalize_resource_limit(&app, &state, stage, reason);
         }
         Err(PipelineError::Message(detail)) => {
             let _ = mutate_job(&app, &state, |job| {
@@ -702,12 +686,13 @@ pub fn run_media_pipeline<R: tauri::Runtime>(
 }
 
 pub fn run_candidate_recognition<R: tauri::Runtime>(app: tauri::AppHandle<R>, state: Arc<AppState>, job_id: String, candidate_id: String, run_id: String) {
-    let _heavy_tool_guard = state.heavy_tool_gate.lock().ok();
-    let _ = mutate_job(&app, &state, |job| {
-        job.owned_child_processes = 1;
-        Ok(())
-    });
-    let result = recognize_candidate(&state, &job_id, &candidate_id, &run_id);
+    let result = match acquire_heavy_tool_gate(&state) {
+        Ok(_heavy_tool_guard) => recognize_candidate(&state, &job_id, &candidate_id, &run_id),
+        Err(error) => Err(CandidateRecognitionFailure {
+            reason: error,
+            evidence: "무거운 외부 도구 실행 잠금이 손상되어 실행하지 않았습니다.".into(),
+        }),
+    };
     let _ = mutate_job(&app, &state, |job| {
         let run = job.recognition_runs.iter_mut().find(|run| run.id == run_id)
             .ok_or_else(|| "음성 인식 실행 기록을 찾을 수 없습니다.".to_string())?;
@@ -737,6 +722,41 @@ pub fn run_candidate_recognition<R: tauri::Runtime>(app: tauri::AppHandle<R>, st
         Ok(())
     });
     state.running.store(false, Ordering::SeqCst);
+}
+
+fn acquire_heavy_tool_gate(state: &AppState) -> Result<MutexGuard<'_, ()>, String> {
+    state
+        .heavy_tool_gate
+        .lock()
+        .map_err(|_| "무거운 외부 도구 실행 잠금이 손상됐습니다.".to_string())
+}
+
+fn apply_resource_limit_failure(
+    job: &mut crate::domain::JobSnapshot,
+    stage: ResourceStage,
+    reason: String,
+) -> Result<(), String> {
+    job.transition(JobStatus::Failed)?;
+    job.resource_failure = Some(crate::resource::ResourceLimitFailure {
+        stage,
+        reason: reason.clone(),
+        last_completed_units: job.completed_units,
+    });
+    job.error_message = Some("자원 제한을 초과해 현재 작업을 중지했습니다.".into());
+    job.error_detail = Some(reason.clone());
+    job.owned_child_processes = 0;
+    job.push_activity("resource-limit", &format!("{}: {reason}", stage.label()));
+    Ok(())
+}
+
+fn terminalize_resource_limit<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    state: &AppState,
+    stage: ResourceStage,
+    reason: String,
+) -> Result<(), String> {
+    mutate_job(app, state, |job| apply_resource_limit_failure(job, stage, reason))?;
+    Ok(())
 }
 
 struct CandidateRecognitionOutput {
@@ -885,10 +905,7 @@ fn prepare_preview<R: tauri::Runtime>(
     candidate_id: &str,
     preview_kind: PreviewKind,
 ) -> Result<PreviewMedia, String> {
-    let _heavy_tool_guard = state
-        .heavy_tool_gate
-        .lock()
-        .map_err(|_| "무거운 외부 도구 실행 잠금이 손상됐습니다.".to_string())?;
+    let _heavy_tool_guard = acquire_heavy_tool_gate(state)?;
     if state.running.load(Ordering::SeqCst) {
         return Err("분석이 끝난 뒤 후보 영상을 준비할 수 있습니다.".into());
     }
@@ -1035,7 +1052,7 @@ fn prepare_preview<R: tauri::Runtime>(
             state,
             ResourceStage::Preview,
             preview_started,
-            ResourceSample { external_tool_count: Some(0), ..Default::default() },
+            ResourceSample { external_tool_count: Some(1), ..Default::default() },
         ) {
             fs::remove_file(&temporary).ok();
             return Err(format!("후보 영상을 준비하지 못했습니다: {error}"));
@@ -2283,7 +2300,7 @@ fn persist_stage_metric<R: tauri::Runtime>(
         stage,
         started,
         ResourceSample {
-            external_tool_count: Some(0),
+            external_tool_count: Some(1),
             ..Default::default()
         },
     ) {
@@ -3221,12 +3238,93 @@ fn truncate_chars(value: &str, maximum: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::{JobSnapshot, Scenario};
+    use crate::resource::ResourceDecision;
     use std::env;
     use std::process::Stdio as ProcessStdio;
 
     #[test]
     fn parses_srt_timestamp() {
         assert_eq!(parse_srt_time("01:02:03,500"), Some(3723.5));
+    }
+
+    #[test]
+    fn poisoned_heavy_tool_gate_fails_closed_before_external_execution() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let state = crate::AppState::new(temp.path().to_path_buf(), temp.path().to_path_buf())
+            .expect("AppState");
+        let gate = &state.heavy_tool_gate;
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = gate.lock().expect("unpoisoned gate");
+            panic!("poison test");
+        }));
+        assert!(acquire_heavy_tool_gate(&state).is_err());
+    }
+
+    #[test]
+    fn hard_limit_terminalization_preserves_completed_review_data_and_checkpoint_identity() {
+        let mut job = JobSnapshot::new(
+            "resource-job".into(),
+            SourceKind::Local,
+            "source.mp4".into(),
+            Scenario::Normal,
+            AnalysisMode::Full,
+            None,
+            None,
+        );
+        job.status = JobStatus::Transcribing;
+        job.completed_units = 6;
+        job.owned_child_processes = 1;
+        job.acquired_media_path = Some("job/media-checkpoint.json".into());
+        job.resource_policy.hard_external_tool_count = Some(0);
+        job.candidates.push(Candidate {
+            id: "candidate-keep".into(),
+            start_seconds: 10,
+            end_seconds: 20,
+            title: "기존 제목".into(),
+            summary: "기존 요약".into(),
+            transcript_excerpt: "기존 결과".into(),
+            audio_score: 80,
+            dialogue_score: 70,
+            chat_score: Some(60),
+            total_score: 75,
+            decision: CandidateDecision::Accepted,
+            transcript_quality_status: TranscriptQualityStatus::Certain,
+            transcript_quality_reasons: Vec::new(),
+            context_start_seconds: 0.0,
+            context_end_seconds: 30.0,
+            context_transcript: Vec::new(),
+        });
+        let candidate_ids_and_decisions = job
+            .candidates
+            .iter()
+            .map(|candidate| (candidate.id.clone(), candidate.decision))
+            .collect::<Vec<_>>();
+        let checkpoint_identity = job.acquired_media_path.clone();
+        let reason = match job.resource_policy.evaluate(&ResourceSample {
+            external_tool_count: Some(1),
+            ..Default::default()
+        }) {
+            ResourceDecision::HardLimit(reason) => reason,
+            decision => panic!("expected deterministic hard limit, got {decision:?}"),
+        };
+
+        apply_resource_limit_failure(&mut job, ResourceStage::FfmpegAudio, reason.clone())
+            .expect("terminalization");
+
+        assert_eq!(job.status, JobStatus::Failed);
+        assert_eq!(job.resource_failure.as_ref().unwrap().reason, reason);
+        assert_eq!(job.resource_failure.as_ref().unwrap().last_completed_units, 6);
+        assert_eq!(job.owned_child_processes, 0);
+        assert_eq!(job.acquired_media_path, checkpoint_identity);
+        assert_eq!(
+            job.candidates
+                .iter()
+                .map(|candidate| (candidate.id.clone(), candidate.decision))
+                .collect::<Vec<_>>(),
+            candidate_ids_and_decisions
+        );
+        assert_eq!(job.resource_policy.hard_external_tool_count, Some(0));
     }
 
     #[test]

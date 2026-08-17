@@ -739,6 +739,8 @@ pub(crate) fn record_stage_metric<R: tauri::Runtime>(
         if sample.memory_bytes.is_none() { unavailable_reasons.push("memoryBytes: OS별 프로세스 메모리 측정을 사용할 수 없습니다.".into()); }
         if sample.temp_bytes.is_none() { unavailable_reasons.push("tempBytes: 임시 파일 표본을 이 단계에서 수집하지 않았습니다.".into()); }
         if disk_bytes.is_none() { unavailable_reasons.push("diskBytes: 작업 폴더 크기를 확인할 수 없습니다.".into()); }
+        if sample.external_tool_count.is_none() { unavailable_reasons.push("ownedChildProcesses: 외부 도구 프로세스 수를 이 단계에서 관찰하지 않았습니다.".into()); }
+        unavailable_reasons.push("cpuPercent: CPU 사용량 측정을 사용할 수 없습니다.".into());
         let policy_status = if job.resource_policy.is_configured() {
             decision.status()
         } else {
@@ -751,7 +753,7 @@ pub(crate) fn record_stage_metric<R: tauri::Runtime>(
             memory_bytes: sample.memory_bytes,
             disk_bytes,
             temp_bytes: sample.temp_bytes,
-            owned_child_processes: sample.external_tool_count.map(|_| 0),
+            owned_child_processes: sample.external_tool_count,
             unavailable_reasons,
             policy_status,
             policy_reason: decision.reason().map(str::to_string),
@@ -760,10 +762,7 @@ pub(crate) fn record_stage_metric<R: tauri::Runtime>(
     };
     mutate_job(app, state, |job| {
         if let Some(existing) = job.resource_metrics.iter_mut().find(|item| item.stage == stage) {
-            let elapsed_ms = existing
-                .elapsed_ms
-                .zip(metric.elapsed_ms)
-                .map(|(previous, current)| previous.saturating_add(current));
+            let elapsed_ms = accumulate_elapsed_ms(existing.elapsed_ms, metric.elapsed_ms);
             *existing = metric.clone();
             existing.elapsed_ms = elapsed_ms;
         } else {
@@ -781,6 +780,14 @@ pub(crate) fn record_stage_metric<R: tauri::Runtime>(
         return Err(format!("자원 제한 초과: {reason}"));
     }
     Ok(())
+}
+
+fn accumulate_elapsed_ms(previous: Option<u64>, current: Option<u64>) -> Option<u64> {
+    match (previous, current) {
+        (Some(previous), Some(current)) => Some(previous.saturating_add(current)),
+        (None, current) => current,
+        (previous, None) => previous,
+    }
 }
 
 /// Validate `job_id` against the active job, then set `cancel_requested`.
@@ -1185,6 +1192,13 @@ mod tests {
         assert!(safe.contains("불확실"));
         assert_eq!(safe_candidate_derived_text("오디오 근거 구간"), "오디오 근거 구간");
         assert!(safe_candidate_derived_text("깨진 � 제목").contains("불확실"));
+    }
+
+    #[test]
+    fn first_stage_elapsed_is_preserved_and_later_measurements_saturate() {
+        assert_eq!(accumulate_elapsed_ms(None, Some(17)), Some(17));
+        assert_eq!(accumulate_elapsed_ms(Some(17), Some(23)), Some(40));
+        assert_eq!(accumulate_elapsed_ms(Some(u64::MAX - 1), Some(23)), Some(u64::MAX));
     }
 
     /// Holds AppState and its temp data dir. Field order matters: Rust drops
