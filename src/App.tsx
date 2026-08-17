@@ -57,6 +57,7 @@ import {
 import type {
   Candidate,
   CandidateDecision,
+  CandidateRecognitionRun,
   CaptionSummary,
   ContextLine,
   AnalysisMode,
@@ -322,6 +323,17 @@ export function safeTranscriptText(text: string, status?: TranscriptQualityStatu
   return status === "UNCERTAIN" || text.includes("\uFFFD")
     ? "음성 인식 결과가 불확실해 원문을 표시하지 않습니다."
     : text;
+}
+
+/** 불확실한 후보의 제목·요약은 오디오·채팅 같은 안전한 근거를 계속 보여준다. */
+export function safeCandidateDerivedText(text: string): string {
+  return text.includes("\uFFFD")
+    ? "음성 인식 결과가 불확실해 원문을 표시하지 않습니다."
+    : text;
+}
+
+export function hasStartedRecognitionRun(runs: CandidateRecognitionRun[] | null | undefined): boolean {
+  return (runs ?? []).some((run) => run.status === "STARTED");
 }
 
 export interface CandidateContext {
@@ -600,7 +612,7 @@ function App() {
   const selectedRun = selected && job
     ? [...(job.recognitionRuns ?? [])].filter((run) => run.candidateId === selected.id).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0]
     : undefined;
-  const recognitionBusy = selectedRun?.status === "STARTED";
+  const recognitionBusy = hasStartedRecognitionRun(job?.recognitionRuns);
 
   useEffect(() => {
     if (!job?.id || !selected) return;
@@ -1217,8 +1229,8 @@ function App() {
                           <span className="candidate-rank">{String(index + 1).padStart(2, "0")}</span>
                           <span className="candidate-copy">
                             <span className="candidate-time">{formatTime(candidate.startSeconds)} — {formatTime(candidate.endSeconds)}</span>
-                            <strong>{safeTranscriptText(candidate.title, candidate.transcriptQualityStatus)}</strong>
-                            <small>{safeTranscriptText(candidate.summary, candidate.transcriptQualityStatus)}</small>
+                            <strong>{safeCandidateDerivedText(candidate.title)}</strong>
+                            <small>{safeCandidateDerivedText(candidate.summary)}</small>
                           </span>
                           <span className="candidate-score">{candidate.totalScore}</span>
                           <DecisionMark decision={candidate.decision} />
@@ -1260,7 +1272,7 @@ function App() {
                     <div className="detail-title">
                       <div>
                         <span className="eyebrow">CANDIDATE {String(selectedIndex + 1).padStart(2, "0")}</span>
-                        <h2>{safeTranscriptText(selected.title, selected.transcriptQualityStatus)}</h2>
+                        <h2>{safeCandidateDerivedText(selected.title)}</h2>
                       </div>
                       <span className="total-score"><small>TOTAL</small>{selected.totalScore}</span>
                     </div>

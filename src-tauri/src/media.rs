@@ -686,9 +686,9 @@ pub fn run_candidate_recognition<R: tauri::Runtime>(app: tauri::AppHandle<R>, st
                 job.push_activity("recognition", "선택 후보 음성 인식을 완료했습니다. 기존 후보 판정은 유지했습니다.");
             }
             Err(error) => {
-                run.fail(Utc::now(), error.clone(), "내장 G2 Whisper 런타임 실행 실패".into())?;
+                run.fail(Utc::now(), error.reason.clone(), error.evidence.clone())?;
                 job.current_stage_label = "선택 후보 음성 인식 실패".into();
-                job.push_activity("recognition-error", &format!("선택 후보 음성 인식에 실패했습니다: {error}"));
+                job.push_activity("recognition-error", &format!("선택 후보 음성 인식에 실패했습니다: {}", error.reason));
             }
         }
         Ok(())
@@ -706,24 +706,51 @@ struct CandidateRecognitionOutput {
     backend_evidence: String,
 }
 
-fn recognize_candidate(state: &Arc<AppState>, job_id: &str, candidate_id: &str, run_id: &str) -> Result<CandidateRecognitionOutput, String> {
+struct CandidateRecognitionFailure {
+    reason: String,
+    evidence: String,
+}
+
+fn recognition_failure(error: PipelineError, evidence: &str) -> CandidateRecognitionFailure {
+    let cancelled = matches!(&error, PipelineError::Cancelled);
+    let reason = match error {
+        PipelineError::Cancelled => "사용자가 음성 인식을 취소했습니다.".into(),
+        PipelineError::Message(message) => message,
+    };
+    let evidence = if cancelled {
+        format!("{evidence}; 취소 요청 확인")
+    } else {
+        evidence.into()
+    };
+    CandidateRecognitionFailure { reason, evidence }
+}
+
+fn recognize_candidate(state: &Arc<AppState>, job_id: &str, candidate_id: &str, run_id: &str) -> Result<CandidateRecognitionOutput, CandidateRecognitionFailure> {
     let (source_path, candidate, settings) = {
-        let guard = state.job.lock().map_err(|_| "작업 상태 잠금이 손상됐습니다.".to_string())?;
-        let job = guard.as_ref().ok_or_else(|| "현재 작업이 없습니다.".to_string())?;
+        let guard = state.job.lock().map_err(|_| CandidateRecognitionFailure { reason: "작업 상태 잠금이 손상됐습니다.".into(), evidence: "후보 음성 인식 시작 전 상태 잠금 확인 실패".into() })?;
+        let job = guard.as_ref().ok_or_else(|| CandidateRecognitionFailure { reason: "현재 작업이 없습니다.".into(), evidence: "후보 음성 인식 시작 전 현재 작업 확인 실패".into() })?;
         if job.id != job_id || job.status != JobStatus::ReviewReady {
-            return Err("검토 준비가 끝난 현재 작업에서만 다시 음성 인식을 실행할 수 있습니다.".into());
+            return Err(CandidateRecognitionFailure { reason: "검토 준비가 끝난 현재 작업에서만 다시 음성 인식을 실행할 수 있습니다.".into(), evidence: "후보 음성 인식 시작 전 작업 상태 확인 실패".into() });
         }
         let candidate = job.candidates.iter().find(|candidate| candidate.id == candidate_id).cloned()
-            .ok_or_else(|| "선택한 후보를 찾을 수 없습니다.".to_string())?;
+            .ok_or_else(|| CandidateRecognitionFailure { reason: "선택한 후보를 찾을 수 없습니다.".into(), evidence: "후보 음성 인식 시작 전 후보 확인 실패".into() })?;
         let source_path = job.acquired_media_path.clone().unwrap_or_else(|| job.source_label.clone());
         (source_path, candidate, job.whisper.clone())
     };
-    check_cancel(state).map_err(|_| "사용자가 음성 인식을 취소했습니다.".to_string())?;
+    let threads = whisper::effective_cpu_threads(&settings, thread::available_parallelism().map(|count| count.get()).unwrap_or(4));
+    let mut evidence = format!("요청 장치={:?}; 프로필={:?}; CPU 스레드={threads}; 모델={MODEL_NAME}", settings.device_mode, settings.profile);
+    if state.cancel_requested.load(Ordering::SeqCst) {
+        evidence.push_str("; 취소 요청 확인");
+        return Err(recognition_failure(PipelineError::Cancelled, &evidence));
+    }
     let source = PathBuf::from(source_path);
-    if !source.is_file() { return Err("후보의 원본 영상 파일을 찾을 수 없습니다.".into()); }
-    let tools = locate_tools(&state.resource_dir).map_err(pipeline_error_message)?;
+    if !source.is_file() {
+        evidence.push_str("; 원본 영상 파일 없음");
+        return Err(CandidateRecognitionFailure { reason: "후보의 원본 영상 파일을 찾을 수 없습니다.".into(), evidence });
+    }
+    let tools = locate_tools(&state.resource_dir).map_err(|error| recognition_failure(error, &evidence))?;
     let run_dir = state.store.job_dir(job_id).join("recognition-runs").join(run_id);
-    fs::create_dir_all(&run_dir).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&run_dir).map_err(|error| CandidateRecognitionFailure { reason: error.to_string(), evidence: format!("{evidence}; 실행 디렉터리 생성 실패") })?;
     let wav = run_dir.join("candidate.wav");
     let prefix = run_dir.join("transcript");
     let log_prefix = run_dir.join("whisper");
@@ -734,9 +761,7 @@ fn recognize_candidate(state: &Arc<AppState>, job_id: &str, candidate_id: &str, 
         "-protocol_whitelist".into(), "file,crypto,data".into(), "-i".into(), source.as_os_str().into(),
         "-vn".into(), "-ac".into(), "1".into(), "-ar".into(), "16000".into(), "-c:a".into(), "pcm_s16le".into(), wav.as_os_str().into(),
     ], &log_prefix.with_extension("ffmpeg.stdout.log"), &log_prefix.with_extension("ffmpeg.stderr.log"))
-        .map_err(pipeline_error_message)?;
-    let threads = whisper::effective_cpu_threads(&settings, thread::available_parallelism().map(|count| count.get()).unwrap_or(4));
-    let mut evidence = format!("요청 장치={:?}; 프로필={:?}; CPU 스레드={threads}; 모델={MODEL_NAME}", settings.device_mode, settings.profile);
+        .map_err(|error| recognition_failure(error, &format!("{evidence}; 오디오 추출 시도")))?;
     let mut segments = None;
     if !matches!(settings.device_mode, WhisperDeviceMode::Cpu) {
         if let Some(gpu) = tools.whisper_gpu.as_ref() {
@@ -744,27 +769,30 @@ fn recognize_candidate(state: &Arc<AppState>, job_id: &str, candidate_id: &str, 
             let gpu_probe = run_gpu_probe(&state.cancel_requested, &tools.ffmpeg, &tools.ffmpeg_dir, gpu, &tools.whisper_gpu_dir, &tools.model, &wav, &run_dir.join("gpu-probe.wav"), &gpu_prefix, threads, &settings, &run_dir.join("gpu-probe.stdout.log"), &run_dir.join("gpu-probe.stderr.log"));
             match gpu_probe.and_then(|_| run_whisper_attempt(&state.cancel_requested, gpu, &tools.whisper_gpu_dir, &tools.model, &wav, &prefix, candidate.start_seconds as f64, threads, &settings, true, &run_dir.join("gpu.stdout.log"), &run_dir.join("gpu.stderr.log"))) {
                 Ok(value) => { evidence.push_str("; 실제 백엔드=whisper.cpp-gpu; GPU 시험·결과 확인"); segments = Some(value); }
+                Err(error @ PipelineError::Cancelled) => {
+                    evidence.push_str("; GPU 시도 중 취소 요청");
+                    return Err(recognition_failure(error, &evidence));
+                }
                 Err(error) => evidence.push_str(&format!("; GPU 실패 후 CPU 대체={}", sanitize_gpu_failure_reason(&format!("{error:?}")))),
             }
         } else { evidence.push_str("; GPU 런타임 없음·CPU 대체"); }
     }
     if segments.is_none() {
         let value = run_whisper_attempt(&state.cancel_requested, &tools.whisper, &tools.whisper_dir, &tools.model, &wav, &prefix, candidate.start_seconds as f64, threads, &settings, false, &run_dir.join("cpu.stdout.log"), &run_dir.join("cpu.stderr.log"))
-            .map_err(pipeline_error_message)?;
+            .map_err(|error| recognition_failure(error, &format!("{evidence}; CPU 음성 인식 시도")))?;
         evidence.push_str("; 실제 백엔드=whisper.cpp-cpu");
         segments = Some(value);
     }
     let segments = sanitize_transcript_segments(segments.unwrap_or_default());
     let raw_result = segments.iter().map(|segment| segment.text.as_str()).collect::<Vec<_>>().join(" ");
-    if raw_result.is_empty() { return Err("Whisper 음성 인식 결과가 비어 있습니다.".into()); }
+    if raw_result.is_empty() {
+        evidence.push_str("; 실제 백엔드 결과가 비어 있음");
+        return Err(CandidateRecognitionFailure { reason: "Whisper 음성 인식 결과가 비어 있습니다.".into(), evidence });
+    }
     let quality_reasons = segments.iter().flat_map(|segment| segment.quality_reasons.iter().cloned()).fold(Vec::new(), |mut reasons, reason| { if !reasons.contains(&reason) { reasons.push(reason); } reasons });
     let quality_status = if quality_reasons.is_empty() { TranscriptQualityStatus::Certain } else { TranscriptQualityStatus::Uncertain };
     let display_result = if quality_status == TranscriptQualityStatus::Uncertain || raw_result.contains('\u{fffd}') { UNCERTAIN_TRANSCRIPT_PLACEHOLDER.into() } else { raw_result.clone() };
     Ok(CandidateRecognitionOutput { raw_result, display_result, quality_status, quality_reasons, backend_evidence: evidence })
-}
-
-fn pipeline_error_message(error: PipelineError) -> String {
-    match error { PipelineError::Cancelled => "사용자가 음성 인식을 취소했습니다.".into(), PipelineError::Message(message) => message }
 }
 
 pub(crate) fn preview_cache_key(

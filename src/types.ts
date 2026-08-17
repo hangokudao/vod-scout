@@ -106,6 +106,8 @@ export interface CandidateRecognitionRun {
   startedAt: string;
   completedAt: string | null;
   resultRevision: number;
+  /** 다시 실행하기 전 선택 후보에 저장돼 있던 음성 인식 결과. */
+  originalResult?: string | null;
   rawResult: string | null;
   displayResult: string | null;
   failureReason: string | null;

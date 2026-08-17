@@ -9,7 +9,9 @@ import App, {
   resolveCandidateContext,
   resolveTheme,
   resolveUpdateStatus,
+  safeCandidateDerivedText,
   safeTranscriptText,
+  hasStartedRecognitionRun,
   selectionStorageKey,
   sortCandidates,
   writeUiSettings,
@@ -129,9 +131,14 @@ describe("transcript quality display", () => {
       transcriptExcerpt: "음성 인식 결과가 불확실해 원문을 표시하지 않습니다.",
       transcriptQualityStatus: "UNCERTAIN"
     });
-    expect(safeTranscriptText(uncertain.title)).toContain("오디오 근거 구간");
-    expect(safeTranscriptText(uncertain.summary)).toContain("오디오 반응 91");
-    expect(safeTranscriptText(uncertain.transcriptExcerpt)).toContain("불확실");
+    expect(safeCandidateDerivedText(uncertain.title)).toContain("오디오 근거 구간");
+    expect(safeCandidateDerivedText(uncertain.summary)).toContain("오디오 반응 91");
+    expect(safeTranscriptText(uncertain.transcriptExcerpt, uncertain.transcriptQualityStatus)).toContain("불확실");
+  });
+
+  it("masks unsafe derived text even when its status is unavailable", () => {
+    expect(safeCandidateDerivedText("제목 � 손상")).toContain("불확실");
+    expect(safeCandidateDerivedText("오디오 반응 91 · 채팅 움직임 84")).toBe("오디오 반응 91 · 채팅 움직임 84");
   });
 
   it("masks only context lines that contain unsafe text", () => {
@@ -148,6 +155,26 @@ describe("transcript quality display", () => {
       "음성 인식 결과가 불확실해 원문을 표시하지 않습니다.",
       "안전한 뒤 맥락"
     ]);
+  });
+});
+
+describe("manual recognition busy state", () => {
+  it("stays busy when a started run belongs to a non-selected candidate", () => {
+    expect(hasStartedRecognitionRun([
+      {
+        id: "run-other",
+        candidateId: "candidate-other",
+        status: "STARTED",
+        startedAt: "2026-08-18T00:00:00.000Z",
+        completedAt: null,
+        resultRevision: 1,
+        originalResult: "기존 결과",
+        rawResult: null,
+        displayResult: null,
+        failureReason: null,
+        backendEvidence: "CPU 시도"
+      }
+    ])).toBe(true);
   });
 });
 

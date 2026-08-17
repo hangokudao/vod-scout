@@ -213,6 +213,8 @@ pub struct CandidateRecognitionRun {
     pub completed_at: Option<DateTime<Utc>>,
     pub result_revision: u32,
     #[serde(default)]
+    pub original_result: Option<String>,
+    #[serde(default)]
     pub raw_result: Option<String>,
     #[serde(default)]
     pub display_result: Option<String>,
@@ -586,11 +588,29 @@ mod tests {
         let now = Utc::now();
         let mut run = CandidateRecognitionRun {
             id: "run".into(), candidate_id: "candidate".into(), status: RecognitionRunStatus::Started,
-            started_at: now, completed_at: None, result_revision: 1, raw_result: None,
+            started_at: now, completed_at: None, result_revision: 1, original_result: Some("before".into()), raw_result: None,
             display_result: None, failure_reason: None, backend_evidence: "started".into(),
         };
         run.complete(now, "raw".into(), "display".into(), "cpu".into()).unwrap();
         assert_eq!(run.status, RecognitionRunStatus::Completed);
         assert!(run.fail(now, "late".into(), "late".into()).is_err());
+    }
+
+    #[test]
+    fn legacy_recognition_run_defaults_original_result_to_none() {
+        let value = serde_json::json!({
+            "id": "legacy-run",
+            "candidateId": "candidate",
+            "status": "FAILED",
+            "startedAt": Utc::now(),
+            "completedAt": Utc::now(),
+            "resultRevision": 1,
+            "rawResult": "old",
+            "displayResult": "old",
+            "failureReason": null,
+            "backendEvidence": "legacy"
+        });
+        let run: CandidateRecognitionRun = serde_json::from_value(value).unwrap();
+        assert_eq!(run.original_result, None);
     }
 }

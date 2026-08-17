@@ -300,6 +300,7 @@ export async function rerunCandidateTranscription(jobId: string, candidateId: st
     startedAt,
     completedAt: null,
     resultRevision: revision,
+    originalResult: candidate.transcriptExcerpt,
     rawResult: null,
     displayResult: null,
     failureReason: null,
@@ -378,6 +379,10 @@ export function previewMediaUrl(path: string): string {
 
 function mockCsv(): string {
   if (!mockJob) return "";
+  const safeDerived = (value: string) =>
+    value.includes("\uFFFD")
+      ? "음성 인식 결과가 불확실해 원문을 표시하지 않습니다."
+      : value;
   const safeTranscript = (value: string, status?: string) =>
     status === "UNCERTAIN" || value.includes("\uFFFD")
       ? "음성 인식 결과가 불확실해 원문을 표시하지 않습니다."
@@ -398,7 +403,7 @@ function mockCsv(): string {
       candidate.dialogueScore,
       candidate.chatScore ?? "",
       candidate.decision,
-      escape(safeTranscript(candidate.title, candidate.transcriptQualityStatus)),
+      escape(safeDerived(candidate.title)),
       escape(safeTranscript(candidate.transcriptExcerpt, candidate.transcriptQualityStatus))
     ].join(","));
   });
