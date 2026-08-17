@@ -20,12 +20,22 @@ export type JobStatus =
 
 export type QueueTransitionState = "IDLE" | "RUNNING" | "INTERRUPTED";
 export type QueueExecutionMode = "SEQUENTIAL";
+export type QueueEvaluationStatus = "UNMEASURED_PENDING" | "SEQUENTIAL_FALLBACK";
+
+export interface QueueEvaluation {
+  status: QueueEvaluationStatus;
+  effectiveExecutionMode: QueueExecutionMode;
+  maxConcurrency: 1;
+  parallelAvailable: false;
+  sequentialFallbackReason: string | null;
+}
 
 export interface QueueIndex {
   schemaVersion: number;
   orderedJobIds: string[];
   transitionState: QueueTransitionState;
   executionMode: QueueExecutionMode;
+  evaluation: QueueEvaluation;
 }
 
 export type CandidateDecision = "PENDING" | "ACCEPTED" | "REJECTED";

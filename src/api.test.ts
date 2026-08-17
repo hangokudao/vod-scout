@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getQueue,
   selectCandidatesForCount,
   syncCandidateDecision,
   syncCandidateTranscript
@@ -49,5 +50,19 @@ describe("mock candidate pool synchronization", () => {
     expect(syncCandidateTranscript(visible, pool, "candidate-1", update)).toBe(true);
     expect(visible[0]).toMatchObject(update);
     expect(pool[0]).toMatchObject(update);
+  });
+});
+
+describe("mock queue evaluation contract", () => {
+  it("exposes only unavailable sequential execution with max concurrency one", async () => {
+    const queue = await getQueue();
+    expect(queue.executionMode).toBe("SEQUENTIAL");
+    expect(queue.evaluation).toMatchObject({
+      status: "UNMEASURED_PENDING",
+      effectiveExecutionMode: "SEQUENTIAL",
+      maxConcurrency: 1,
+      parallelAvailable: false,
+      sequentialFallbackReason: null
+    });
   });
 });

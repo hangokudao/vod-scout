@@ -1719,6 +1719,9 @@ kbd {
 .queue-item-main small { color: var(--muted); font-size: 11px; }
 .queue-item-actions { display: flex; gap: 2px; }
 .queue-item-actions .icon-button { width: 24px; height: 24px; }
+.queue-evaluation { display: grid; gap: 3px; margin-top: 10px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); font-size: 11px; line-height: 1.4; }
+.queue-evaluation strong { color: var(--text); font-size: 12px; }
+.queue-evaluation small { color: var(--muted); }
 .queue-note { color: var(--muted); font-size: 11px; line-height: 1.4; margin: 10px 0 0; }
 
 .activity-heading {
