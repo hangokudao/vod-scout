@@ -10,6 +10,11 @@ use crate::integrity::{
 use crate::storage::{
     previous_generation_path, replace_file_preserving_previous,
 };
+use crate::whisper::{
+    self, WhisperAttemptStatus, WhisperDeviceMode, WhisperRuntimeStatus, WhisperSettings,
+    WhisperUnitState, MODEL_NAME,
+};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering as CmpOrdering;
@@ -40,7 +45,7 @@ const QUICK_CHAT_SAMPLE_SECONDS: f64 = 15.0;
 const CHAT_FRAME_SIDE: usize = 64;
 const CONTEXT_PADDING_SECONDS: f64 = 15.0;
 /// Media checkpoint schema for P0 compatibility fields (fingerprint/tools/ranker).
-const MEDIA_CHECKPOINT_SCHEMA: u8 = 4;
+const MEDIA_CHECKPOINT_SCHEMA: u8 = 5;
 /// Candidate scoring contract recorded in checkpoints and provenance.
 const RANKER_VERSION: &str = "rules-v0.4.0-p0";
 const TRANSCRIPTION_LANGUAGE: &str = "ko";
@@ -258,6 +263,10 @@ struct MediaCheckpoint {
     chat_motion_completed: bool,
     #[serde(default)]
     chat_motion: Vec<ChatMotionPoint>,
+    #[serde(default)]
+    whisper_settings: WhisperSettings,
+    #[serde(default)]
+    whisper_units: Vec<WhisperUnitState>,
 }
 
 impl MediaCheckpoint {
@@ -297,6 +306,8 @@ impl MediaCheckpoint {
             energy: Vec::new(),
             chat_motion_completed: false,
             chat_motion: Vec::new(),
+            whisper_settings: WhisperSettings::default(),
+            whisper_units: Vec::new(),
         }
     }
 }
@@ -864,6 +875,7 @@ fn run<R: tauri::Runtime>(
         requested_end,
         source_kind,
         source_url,
+        whisper_settings,
     ) = {
         let guard = state
             .job
@@ -887,6 +899,7 @@ fn run<R: tauri::Runtime>(
             job.analysis_end_seconds,
             job.source_kind,
             job.source_label.clone(),
+            job.whisper.clone().normalized(),
         )
     };
 
@@ -901,6 +914,7 @@ fn run<R: tauri::Runtime>(
     fs::create_dir_all(&job_dir)?;
     let log_dir = job_dir.join("tool-logs");
     fs::create_dir_all(&log_dir)?;
+    let whisper_budget_path = job_dir.join("whisper-budget.json");
 
     if completed_units == 0 {
         progress(
@@ -949,6 +963,7 @@ fn run<R: tauri::Runtime>(
         input_bytes,
         &runtime_sha256,
         caption_provenance,
+        &whisper_settings,
     )?;
     // load_checkpoint returns None for missing, corrupt, or incompatible (schema/fingerprint/tools/ranker).
     // In those cases we rebuild a fresh media checkpoint and must recompute intermediates only.
@@ -1007,11 +1022,16 @@ fn run<R: tauri::Runtime>(
             input_bytes,
             runtime_sha256.clone(),
         ));
+        if let Some(checkpoint) = checkpoint.as_mut() {
+            checkpoint.whisper_settings = whisper_settings.clone();
+        }
         if let (Some(checkpoint), Some(provenance)) = (checkpoint.as_mut(), caption_provenance) {
             apply_caption_identity(checkpoint, provenance);
         }
     }
     let mut checkpoint = checkpoint.expect("checkpoint initialized");
+    checkpoint.schema_version = MEDIA_CHECKPOINT_SCHEMA;
+    checkpoint.whisper_settings = whisper_settings.clone();
     let chunk_count = checkpoint.planned_chunks.len().max(1) as u32;
     let total_units = chunk_count + 6;
 
@@ -1086,8 +1106,7 @@ fn run<R: tauri::Runtime>(
         })
         .map_err(PipelineError::Message)?;
     }
-    save_checkpoint(&checkpoint_path, &checkpoint)?;
-    write_pipeline_provenance(&job_dir, &source, &checkpoint)?;
+    persist_whisper_state(&checkpoint_path, &whisper_budget_path, &checkpoint)?;
     let caption_plan = caption_plan_for_duration(
         caption_artifacts.as_ref(),
         checkpoint.duration_seconds,
@@ -1212,9 +1231,10 @@ fn run<R: tauri::Runtime>(
                 text: interval.text,
             })
             .collect::<Vec<_>>();
-        let threads = thread::available_parallelism()
-            .map(|count| count.get().saturating_sub(1).clamp(1, 8))
-            .unwrap_or(4);
+        let threads = whisper::effective_cpu_threads(
+            &whisper_settings,
+            thread::available_parallelism().map(|count| count.get()).unwrap_or(4),
+        );
         let mut segments = trusted_segments;
         for (fallback_index, (fallback_start, fallback_end)) in fallback_ranges.iter().enumerate() {
             check_cancel(state)?;
@@ -1260,33 +1280,244 @@ fn run<R: tauri::Runtime>(
             let whisper_prefix = job_dir.join(format!("active-transcript-{chunk_index:04}-{fallback_index:02}"));
             let whisper_srt = whisper_prefix.with_extension("srt");
             fs::remove_file(&whisper_srt).ok();
-            run_command(
-                &state.cancel_requested,
-                &tools.whisper,
-                tools.whisper_dir.as_path(),
-                [
-                    "-m".into(),
-                    tools.model.as_os_str().into(),
-                    "-f".into(),
-                    whisper_wav.as_os_str().into(),
-                    "-l".into(),
-                    "ko".into(),
-                    "-nth".into(),
-                    "0.72".into(),
-                    "-nf".into(),
-                    "-sns".into(),
-                    "-sow".into(),
-                    "-osrt".into(),
-                    "-of".into(),
-                    whisper_prefix.as_os_str().into(),
-                    "-np".into(),
-                    "-t".into(),
-                    threads.to_string().into(),
-                ],
-                &log_dir.join(format!("whisper-{chunk_index:04}-{fallback_index:02}.stdout.log")),
-                &log_dir.join(format!("whisper-{chunk_index:04}-{fallback_index:02}.stderr.log")),
-            )?;
-            let mut fallback_segments = parse_srt(&whisper_srt, *fallback_start)?;
+            let state_index = checkpoint
+                .whisper_units
+                .iter()
+                .position(|unit| unit.chunk_index == chunk_index && unit.fallback_index == fallback_index as u32);
+            let state_index = state_index.unwrap_or_else(|| {
+                checkpoint.whisper_units.push(WhisperUnitState {
+                    chunk_index: chunk_index,
+                    fallback_index: fallback_index as u32,
+                    device: WhisperDeviceMode::Cpu,
+                    model: MODEL_NAME.into(),
+                    profile: whisper_settings.profile,
+                    cpu_threads: whisper_settings.cpu_threads,
+                    duration_ms: None,
+                    gpu_failure_reason: None,
+                    gpu: Default::default(),
+                    cpu_fallback: Default::default(),
+                });
+                checkpoint.whisper_units.len() - 1
+            });
+            if !whisper::should_try_cpu(&checkpoint.whisper_units[state_index]) {
+                return Err(PipelineError::Message(
+                    "이 구간의 CPU 음성 인식이 이미 실패해 자동 재시도하지 않습니다.".into(),
+                ));
+            }
+            let gpu_allowed = whisper::should_try_gpu(
+                &whisper_settings,
+                &checkpoint.whisper_units[state_index],
+            );
+            let mut fallback_segments = None;
+            let probe_wav = job_dir.join(format!("active-gpu-probe-{chunk_index:04}-{fallback_index:02}.wav"));
+            let probe_prefix = job_dir.join(format!("active-gpu-probe-{chunk_index:04}-{fallback_index:02}"));
+            if gpu_allowed {
+                update_whisper_runtime(
+                    app,
+                    state,
+                    WhisperRuntimeStatus::Testing,
+                    chunk_index,
+                    threads,
+                    None,
+                )?;
+                mutate_job(app, state, |job| {
+                    job.current_stage_label = "GPU 시험·음성 인식 중".into();
+                    job.push_activity("whisper", "짧은 실제 Whisper 실행에서 GPU 백엔드와 음성 인식 결과를 확인합니다.");
+                    Ok(())
+                }).map_err(PipelineError::Message)?;
+                let unit = &mut checkpoint.whisper_units[state_index];
+                unit.device = WhisperDeviceMode::Gpu;
+                unit.model = MODEL_NAME.into();
+                unit.profile = whisper_settings.profile;
+                unit.cpu_threads = Some(threads as u16);
+                unit.gpu.status = WhisperAttemptStatus::Started;
+                unit.gpu.started_at = Some(Utc::now().to_rfc3339());
+                persist_whisper_state(&checkpoint_path, &whisper_budget_path, &checkpoint)?;
+                let started = Instant::now();
+                fs::remove_file(&probe_wav).ok();
+                fs::remove_file(probe_prefix.with_extension("srt")).ok();
+                let gpu_result = tools.whisper_gpu.as_ref().ok_or_else(|| {
+                    PipelineError::Message("GPU 런타임을 찾지 못했습니다.".into())
+                }).and_then(|gpu| {
+                    run_gpu_probe(
+                        &state.cancel_requested,
+                        &tools.ffmpeg,
+                        &tools.ffmpeg_dir,
+                        gpu,
+                        &tools.whisper_gpu_dir,
+                        &tools.model,
+                        &whisper_wav,
+                        &probe_wav,
+                        &probe_prefix,
+                        threads,
+                        &whisper_settings,
+                        &log_dir.join(format!("whisper-gpu-probe-{chunk_index:04}-{fallback_index:02}.stdout.log")),
+                        &log_dir.join(format!("whisper-gpu-probe-{chunk_index:04}-{fallback_index:02}.stderr.log")),
+                    )?;
+                    // The actual unit run remains the source of transcript output; the
+                    // preceding three-second probe only establishes backend evidence.
+                    run_whisper_attempt(
+                        &state.cancel_requested,
+                        gpu,
+                        &tools.whisper_gpu_dir,
+                        &tools.model,
+                        &whisper_wav,
+                        &whisper_prefix,
+                        *fallback_start,
+                        threads,
+                        &whisper_settings,
+                        true,
+                        &log_dir.join(format!("whisper-gpu-{chunk_index:04}-{fallback_index:02}.stdout.log")),
+                        &log_dir.join(format!("whisper-gpu-{chunk_index:04}-{fallback_index:02}.stderr.log")),
+                    )
+                });
+                let duration_ms = started.elapsed().as_millis() as u64;
+                match gpu_result {
+                    Ok(result) => {
+                        let unit = &mut checkpoint.whisper_units[state_index];
+                        unit.device = WhisperDeviceMode::Gpu;
+                        unit.duration_ms = Some(duration_ms);
+                        unit.gpu.duration_ms = Some(duration_ms);
+                        unit.gpu.status = WhisperAttemptStatus::Completed;
+                        unit.gpu.completed_at = Some(Utc::now().to_rfc3339());
+                        persist_whisper_state(&checkpoint_path, &whisper_budget_path, &checkpoint)?;
+                        update_whisper_runtime(
+                            app,
+                            state,
+                            WhisperRuntimeStatus::Gpu,
+                            chunk_index,
+                            threads,
+                            None,
+                        )?;
+                        mutate_job(app, state, |job| {
+                            job.current_stage_label = "GPU 사용 중".into();
+                            job.push_activity("whisper", "GPU 백엔드 로드와 비어 있지 않은 음성 인식 결과를 확인했습니다.");
+                            Ok(())
+                        }).map_err(PipelineError::Message)?;
+                        fallback_segments = Some(result);
+                    }
+                    Err(PipelineError::Cancelled) => return Err(PipelineError::Cancelled),
+                    Err(PipelineError::Message(reason)) => {
+                        let unit = &mut checkpoint.whisper_units[state_index];
+                        unit.duration_ms = Some(duration_ms);
+                        unit.gpu.duration_ms = Some(duration_ms);
+                        unit.gpu.status = WhisperAttemptStatus::Failed;
+                        unit.gpu.completed_at = Some(Utc::now().to_rfc3339());
+                        let safe_reason = sanitize_gpu_failure_reason(&reason);
+                        unit.gpu.failure_reason = Some(safe_reason.clone());
+                        unit.gpu_failure_reason = Some(safe_reason.clone());
+                        persist_whisper_state(&checkpoint_path, &whisper_budget_path, &checkpoint)?;
+                        update_whisper_runtime(
+                            app,
+                            state,
+                            WhisperRuntimeStatus::CpuFallback,
+                            chunk_index,
+                            threads,
+                            Some(safe_reason),
+                        )?;
+                        mutate_job(app, state, |job| {
+                            job.current_stage_label = "CPU 대체 처리 중".into();
+                            job.push_activity("whisper", "GPU 실행에 실패해 이 구간만 CPU로 한 번 대체합니다.");
+                            Ok(())
+                        }).map_err(PipelineError::Message)?;
+                    }
+                }
+            }
+            if fallback_segments.is_none() {
+                let runtime_status = if matches!(whisper_settings.device_mode, WhisperDeviceMode::Cpu) {
+                    WhisperRuntimeStatus::Cpu
+                } else {
+                    WhisperRuntimeStatus::CpuFallback
+                };
+                update_whisper_runtime(
+                    app,
+                    state,
+                    runtime_status,
+                    chunk_index,
+                    threads,
+                    checkpoint.whisper_units[state_index].gpu_failure_reason.clone(),
+                )?;
+                let unit = &mut checkpoint.whisper_units[state_index];
+                unit.device = WhisperDeviceMode::Cpu;
+                unit.model = MODEL_NAME.into();
+                unit.profile = whisper_settings.profile;
+                unit.cpu_threads = Some(threads as u16);
+                unit.cpu_fallback.status = WhisperAttemptStatus::Started;
+                unit.cpu_fallback.started_at = Some(Utc::now().to_rfc3339());
+                persist_whisper_state(&checkpoint_path, &whisper_budget_path, &checkpoint)?;
+                mutate_job(app, state, |job| {
+                    if matches!(whisper_settings.device_mode, WhisperDeviceMode::Cpu) {
+                        job.current_stage_label = "CPU 음성 인식 중".into();
+                        job.push_activity("whisper", "CPU 모드로 실행합니다. GPU를 사용하지 않습니다.");
+                    } else {
+                        job.current_stage_label = "CPU 대체 처리 중".into();
+                        job.push_activity("whisper", "GPU 실패 구간을 CPU로 처리합니다. 이 구간의 자동 전환은 한 번만 허용됩니다.");
+                    }
+                    Ok(())
+                }).map_err(PipelineError::Message)?;
+                fs::remove_file(&whisper_srt).ok();
+                let started = Instant::now();
+                let cpu_result = run_whisper_attempt(
+                    &state.cancel_requested,
+                    &tools.whisper,
+                    &tools.whisper_dir,
+                    &tools.model,
+                    &whisper_wav,
+                    &whisper_prefix,
+                    *fallback_start,
+                    threads,
+                    &whisper_settings,
+                    false,
+                    &log_dir.join(format!("whisper-{chunk_index:04}-{fallback_index:02}.stdout.log")),
+                    &log_dir.join(format!("whisper-{chunk_index:04}-{fallback_index:02}.stderr.log")),
+                );
+                let duration_ms = started.elapsed().as_millis() as u64;
+                match cpu_result {
+                    Ok(result) => {
+                        let unit = &mut checkpoint.whisper_units[state_index];
+                        unit.duration_ms = Some(duration_ms);
+                        unit.cpu_fallback.duration_ms = Some(duration_ms);
+                        unit.cpu_fallback.status = WhisperAttemptStatus::Completed;
+                        unit.cpu_fallback.completed_at = Some(Utc::now().to_rfc3339());
+                        persist_whisper_state(&checkpoint_path, &whisper_budget_path, &checkpoint)?;
+                        update_whisper_runtime(
+                            app,
+                            state,
+                            runtime_status,
+                            chunk_index,
+                            threads,
+                            checkpoint.whisper_units[state_index].gpu_failure_reason.clone(),
+                        )?;
+                        fallback_segments = Some(result);
+                    }
+                    Err(PipelineError::Cancelled) => return Err(PipelineError::Cancelled),
+                    Err(PipelineError::Message(reason)) => {
+                        let gpu_failure_reason = {
+                            let unit = &mut checkpoint.whisper_units[state_index];
+                            unit.duration_ms = Some(duration_ms);
+                            unit.cpu_fallback.duration_ms = Some(duration_ms);
+                            unit.cpu_fallback.status = WhisperAttemptStatus::Failed;
+                            unit.cpu_fallback.completed_at = Some(Utc::now().to_rfc3339());
+                            unit.cpu_fallback.failure_reason =
+                                Some("CPU 음성 인식에 실패했습니다.".into());
+                            unit.gpu_failure_reason.clone()
+                        };
+                        persist_whisper_state(&checkpoint_path, &whisper_budget_path, &checkpoint)?;
+                        update_whisper_runtime(
+                            app,
+                            state,
+                            WhisperRuntimeStatus::Failed,
+                            chunk_index,
+                            threads,
+                            gpu_failure_reason,
+                        )?;
+                        return Err(PipelineError::Message(format!("CPU 음성 인식 실패: {reason}")));
+                    }
+                }
+            }
+            fs::remove_file(&probe_wav).ok();
+            fs::remove_file(probe_prefix.with_extension("srt")).ok();
+            let mut fallback_segments = fallback_segments.expect("Whisper attempt produced no result");
             clip_segments_to_range(&mut fallback_segments, *fallback_start, *fallback_end);
             segments.append(&mut fallback_segments);
             if !uses_full_chunk {
@@ -1304,7 +1535,7 @@ fn run<R: tauri::Runtime>(
         checkpoint.segments = sanitize_transcript_segments(std::mem::take(&mut checkpoint.segments));
         checkpoint.energy.append(&mut energy);
         checkpoint.completed_chunks = chunk_index + 1;
-        save_checkpoint(&checkpoint_path, &checkpoint)?;
+        persist_whisper_state(&checkpoint_path, &whisper_budget_path, &checkpoint)?;
         write_transcript(&job_dir.join("transcript.json"), &checkpoint.segments)?;
         fs::remove_file(&wav).ok();
 
@@ -1326,8 +1557,9 @@ fn run<R: tauri::Runtime>(
     checkpoint.schema_version = MEDIA_CHECKPOINT_SCHEMA;
     checkpoint.language = TRANSCRIPTION_LANGUAGE.into();
     checkpoint.ranker_version = RANKER_VERSION.into();
-    save_checkpoint(&checkpoint_path, &checkpoint)?;
+    persist_whisper_state(&checkpoint_path, &whisper_budget_path, &checkpoint)?;
     write_transcript(&job_dir.join("transcript.json"), &checkpoint.segments)?;
+    write_pipeline_provenance(&job_dir, &source, &checkpoint)?;
 
     progress(
         app,
@@ -1431,10 +1663,189 @@ fn run<R: tauri::Runtime>(
 struct ToolPaths {
     ffmpeg_dir: PathBuf,
     whisper_dir: PathBuf,
+    whisper_gpu_dir: PathBuf,
     ffmpeg: PathBuf,
     ffprobe: PathBuf,
     whisper: PathBuf,
+    whisper_gpu: Option<PathBuf>,
     model: PathBuf,
+}
+
+fn whisper_command_args(
+    settings: &WhisperSettings,
+    model: &Path,
+    wav: &Path,
+    prefix: &Path,
+    threads: usize,
+    gpu: bool,
+) -> Vec<std::ffi::OsString> {
+    let mut args = vec![
+        "-m".into(), model.as_os_str().into(),
+        "-f".into(), wav.as_os_str().into(),
+        "-l".into(), "ko".into(),
+        "-nth".into(), "0.72".into(),
+        "-nf".into(), "-sns".into(), "-sow".into(), "-osrt".into(),
+        "-of".into(), prefix.as_os_str().into(), "-np".into(),
+    ];
+    if !gpu {
+        // CPU mode must explicitly disable CUDA even when a GPU runtime exists.
+        args.push("-ng".into());
+    }
+    for flag in whisper::profile_args(settings.profile) {
+        args.push((*flag).into());
+    }
+    args.extend(["-t".into(), threads.to_string().into()]);
+    args
+}
+
+fn has_gpu_backend_evidence(stdout: &str, stderr: &str) -> bool {
+    let logs = format!("{stdout}\n{stderr}").to_ascii_lowercase();
+    if logs.contains("cuda error")
+        || logs.contains("no cuda")
+        || logs.contains("cuda device count: 0")
+        || logs.contains("failed to")
+    {
+        return false;
+    }
+    let tokens = logs
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>();
+    if tokens
+        .iter()
+        .any(|token| matches!(*token, "error" | "errors" | "failed" | "failure"))
+    {
+        return false;
+    }
+    let found_positive_device = tokens.windows(4).any(|window| {
+        window[0] == "found"
+            && window[1].parse::<u32>().is_ok_and(|count| count > 0)
+            && window[2] == "cuda"
+            && window[3].starts_with("device")
+    });
+    let using_cuda_backend = tokens.windows(3).any(|window| {
+        window[0] == "using"
+            && window[1].strip_prefix("cuda").is_some_and(|suffix| {
+                suffix.is_empty() || suffix.chars().all(|character| character.is_ascii_digit())
+            })
+            && window[2] == "backend"
+    }) || logs.contains("cuda backend in use");
+    found_positive_device && using_cuda_backend
+}
+
+fn sanitize_gpu_failure_reason(reason: &str) -> String {
+    let lower = reason.to_ascii_lowercase();
+    if lower.contains("런타임") || lower.contains("runtime") {
+        "GPU 런타임을 사용할 수 없습니다.".into()
+    } else if lower.contains("백엔드") || lower.contains("backend") {
+        "GPU 백엔드 확인에 실패했습니다.".into()
+    } else if lower.contains("비어") || lower.contains("empty") {
+        "GPU 음성 인식 결과가 비어 있습니다.".into()
+    } else {
+        "GPU 실행에 실패했습니다.".into()
+    }
+}
+
+fn update_whisper_runtime<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    state: &AppState,
+    status: WhisperRuntimeStatus,
+    unit_index: u32,
+    effective_cpu_threads: usize,
+    gpu_failure_reason: Option<String>,
+) -> Result<(), PipelineError> {
+    mutate_job(app, state, |job| {
+        job.whisper_runtime.status = status;
+        job.whisper_runtime.unit_index = Some(unit_index);
+        job.whisper_runtime.effective_cpu_threads = Some(effective_cpu_threads as u16);
+        job.whisper_runtime.gpu_failure_reason = gpu_failure_reason;
+        Ok(())
+    })
+    .map(|_| ())
+    .map_err(PipelineError::Message)
+}
+
+fn run_whisper_attempt(
+    cancel_requested: &AtomicBool,
+    executable: &Path,
+    current_dir: &Path,
+    model: &Path,
+    wav: &Path,
+    prefix: &Path,
+    offset: f64,
+    threads: usize,
+    settings: &WhisperSettings,
+    gpu: bool,
+    stdout_path: &Path,
+    stderr_path: &Path,
+) -> Result<Vec<TranscriptSegment>, PipelineError> {
+    run_command(
+        cancel_requested,
+        executable,
+        current_dir,
+        whisper_command_args(settings, model, wav, prefix, threads, gpu),
+        stdout_path,
+        stderr_path,
+    )?;
+    let stdout = fs::read_to_string(stdout_path).unwrap_or_default();
+    let stderr = fs::read_to_string(stderr_path).unwrap_or_default();
+    if gpu && !has_gpu_backend_evidence(&stdout, &stderr) {
+        return Err(PipelineError::Message("GPU 백엔드 로드 증거를 확인하지 못했습니다.".into()));
+    }
+    let srt = prefix.with_extension("srt");
+    let mut segments = parse_srt(&srt, offset)?;
+    if segments.is_empty() {
+        return Err(PipelineError::Message("Whisper 음성 인식 결과가 비어 있습니다.".into()));
+    }
+    Ok(std::mem::take(&mut segments))
+}
+
+fn run_gpu_probe(
+    cancel_requested: &AtomicBool,
+    ffmpeg: &Path,
+    ffmpeg_dir: &Path,
+    gpu: &Path,
+    gpu_dir: &Path,
+    model: &Path,
+    wav: &Path,
+    probe_wav: &Path,
+    prefix: &Path,
+    threads: usize,
+    settings: &WhisperSettings,
+    stdout_path: &Path,
+    stderr_path: &Path,
+) -> Result<(), PipelineError> {
+    run_command(
+        cancel_requested,
+        ffmpeg,
+        ffmpeg_dir,
+        [
+            "-hide_banner".into(), "-loglevel".into(), "error".into(), "-y".into(),
+            "-t".into(), "3".into(), "-i".into(), wav.as_os_str().into(),
+            "-ac".into(), "1".into(), "-ar".into(), "16000".into(),
+            "-c:a".into(), "pcm_s16le".into(), probe_wav.as_os_str().into(),
+        ],
+        &stdout_path.with_extension("ffmpeg.stdout.log"),
+        &stderr_path.with_extension("ffmpeg.stderr.log"),
+    )?;
+    let probe_segments = run_whisper_attempt(
+        cancel_requested,
+        gpu,
+        gpu_dir,
+        model,
+        probe_wav,
+        prefix,
+        0.0,
+        threads,
+        settings,
+        true,
+        stdout_path,
+        stderr_path,
+    )?;
+    if probe_segments.is_empty() {
+        return Err(PipelineError::Message("GPU 시험 결과가 비어 있습니다.".into()));
+    }
+    Ok(())
 }
 
 fn locate_tools(resource_dir: &Path) -> Result<ToolPaths, PipelineError> {
@@ -1456,13 +1867,17 @@ fn locate_tools(resource_dir: &Path) -> Result<ToolPaths, PipelineError> {
     for root in candidates {
         let ffmpeg_dir = root.join("ffmpeg");
         let whisper_dir = root.join("whisper");
+        let whisper_gpu_dir = root.join("whisper-gpu");
         let paths = ToolPaths {
             ffmpeg: ffmpeg_dir.join("ffmpeg.exe"),
             ffprobe: ffmpeg_dir.join("ffprobe.exe"),
             whisper: whisper_dir.join("whisper-cli.exe"),
+            whisper_gpu: Some(whisper_gpu_dir.join("whisper-cli.exe"))
+                .filter(|path| path.is_file()),
             model: root.join("models").join("ggml-base.bin"),
             ffmpeg_dir,
             whisper_dir,
+            whisper_gpu_dir,
         };
         if paths.ffmpeg.is_file()
             && paths.ffprobe.is_file()
@@ -1491,9 +1906,28 @@ fn write_pipeline_provenance(
         .iter()
         .map(|chunk| chunk.length_seconds)
         .sum::<f64>();
-    let threads = thread::available_parallelism()
-        .map(|count| count.get().saturating_sub(1).clamp(1, 8))
-        .unwrap_or(4);
+    let completed_gpu = checkpoint
+        .whisper_units
+        .iter()
+        .filter(|unit| unit.gpu.status == WhisperAttemptStatus::Completed)
+        .count();
+    let completed_cpu = checkpoint
+        .whisper_units
+        .iter()
+        .filter(|unit| unit.cpu_fallback.status == WhisperAttemptStatus::Completed)
+        .count();
+    let actual_backend = match (completed_gpu > 0, completed_cpu > 0) {
+        (true, true) => "whisper.cpp-gpu-and-cpu-fallback",
+        (true, false) => "whisper.cpp-gpu",
+        (false, true) => {
+            if matches!(checkpoint.whisper_settings.device_mode, WhisperDeviceMode::Cpu) {
+                "whisper.cpp-cpu"
+            } else {
+                "whisper.cpp-cpu-fallback"
+            }
+        }
+        (false, false) => "whisper.cpp-no-units",
+    };
     let provenance = serde_json::json!({
         "schemaVersion": 1,
         "appVersion": env!("CARGO_PKG_VERSION"),
@@ -1511,10 +1945,16 @@ fn write_pipeline_provenance(
         },
         "runtimeSha256": hashes,
         "transcription": {
-            "backend": "whisper.cpp-cpu",
+            "requestedDevice": checkpoint.whisper_settings.device_mode,
+            "backend": actual_backend,
+            "completedGpuUnits": completed_gpu,
+            "completedCpuUnits": completed_cpu,
             "language": "ko",
-            "threads": threads,
-            "noFallback": true
+            "model": MODEL_NAME,
+            "profile": checkpoint.whisper_settings.profile,
+            "cpuThreads": checkpoint.whisper_settings.cpu_threads,
+            "units": checkpoint.whisper_units,
+            "noGpuInCpuMode": matches!(checkpoint.whisper_settings.device_mode, WhisperDeviceMode::Cpu)
         },
         "chatMotion": {
             "roi": "right-38-percent",
@@ -1747,6 +2187,7 @@ fn load_checkpoint(
         expected_input_bytes,
         expected_runtime,
         None,
+        &WhisperSettings::default(),
     )
 }
 
@@ -1760,6 +2201,7 @@ fn load_checkpoint_with_caption(
     expected_input_bytes: u64,
     expected_runtime: &HashMap<String, String>,
     expected_caption: Option<&CaptionProvenance>,
+    expected_whisper: &WhisperSettings,
 ) -> Result<Option<MediaCheckpoint>, PipelineError> {
     let requested_start = requested_start.unwrap_or(0);
     let previous = previous_generation_path(path);
@@ -1779,7 +2221,7 @@ fn load_checkpoint_with_caption(
             Ok(value) => value,
             Err(_) => continue,
         };
-        if checkpoint_is_compatible_with_caption(
+        if checkpoint_is_compatible_with_whisper(
             &checkpoint,
             source_path,
             analysis_mode,
@@ -1789,6 +2231,7 @@ fn load_checkpoint_with_caption(
             expected_input_bytes,
             expected_runtime,
             expected_caption,
+            expected_whisper,
         ) {
             return Ok(Some(checkpoint));
         }
@@ -1833,7 +2276,7 @@ fn checkpoint_is_compatible_with_caption(
     expected_runtime: &HashMap<String, String>,
     expected_caption: Option<&CaptionProvenance>,
 ) -> bool {
-    if checkpoint.schema_version != MEDIA_CHECKPOINT_SCHEMA {
+    if !(4..=MEDIA_CHECKPOINT_SCHEMA).contains(&checkpoint.schema_version) {
         return false;
     }
     let caption_matches = match expected_caption {
@@ -1865,19 +2308,21 @@ fn checkpoint_is_compatible_with_caption(
     {
         return false;
     }
-    if checkpoint.input_fingerprint.is_empty()
-        || checkpoint.input_fingerprint != expected_fingerprint
-        || checkpoint.input_bytes != expected_input_bytes
-    {
-        return false;
+    if checkpoint.schema_version >= 4 {
+        if checkpoint.input_fingerprint.is_empty()
+            || checkpoint.input_fingerprint != expected_fingerprint
+            || checkpoint.input_bytes != expected_input_bytes
+        {
+            return false;
+        }
     }
-    if checkpoint.language != TRANSCRIPTION_LANGUAGE
-        || checkpoint.ranker_version != RANKER_VERSION
-    {
-        return false;
-    }
-    if checkpoint.runtime_sha256 != *expected_runtime {
-        return false;
+    if checkpoint.schema_version >= 4 {
+        if checkpoint.language != TRANSCRIPTION_LANGUAGE
+            || checkpoint.ranker_version != RANKER_VERSION
+            || checkpoint.runtime_sha256 != *expected_runtime
+        {
+            return false;
+        }
     }
     if !checkpoint.duration_seconds.is_finite() || checkpoint.duration_seconds <= 0.0 {
         return false;
@@ -1885,9 +2330,71 @@ fn checkpoint_is_compatible_with_caption(
     true
 }
 
+fn checkpoint_is_compatible_with_whisper(
+    checkpoint: &MediaCheckpoint,
+    source_path: &str,
+    analysis_mode: AnalysisMode,
+    requested_start: u32,
+    requested_end: Option<u32>,
+    expected_fingerprint: &str,
+    expected_input_bytes: u64,
+    expected_runtime: &HashMap<String, String>,
+    expected_caption: Option<&CaptionProvenance>,
+    expected_whisper: &WhisperSettings,
+) -> bool {
+    if !checkpoint_is_compatible_with_caption(
+        checkpoint,
+        source_path,
+        analysis_mode,
+        requested_start,
+        requested_end,
+        expected_fingerprint,
+        expected_input_bytes,
+        expected_runtime,
+        expected_caption,
+    ) {
+        return false;
+    }
+    // Schema 4 has no G2 settings and can resume only for its explicit legacy
+    // CPU/Balanced/auto-threads configuration. Schema 5 is tied to the
+    // selected settings.
+    if checkpoint.schema_version == 4 {
+        return *expected_whisper == legacy_cpu_whisper_settings();
+    }
+    checkpoint.whisper_settings == expected_whisper.clone().normalized()
+}
+
+fn legacy_cpu_whisper_settings() -> WhisperSettings {
+    WhisperSettings {
+        device_mode: WhisperDeviceMode::Cpu,
+        profile: whisper::WhisperProfile::Balanced,
+        cpu_threads: None,
+    }
+}
+
 fn save_checkpoint(path: &Path, checkpoint: &MediaCheckpoint) -> Result<(), PipelineError> {
     replace_file_preserving_previous(path, &serde_json::to_vec_pretty(checkpoint)?)?;
     Ok(())
+}
+
+fn write_whisper_budget(path: &Path, checkpoint: &MediaCheckpoint) -> Result<(), PipelineError> {
+    let budget = serde_json::json!({
+        "schemaVersion": 1,
+        "updatedAt": Utc::now().to_rfc3339(),
+        "requestedDevice": checkpoint.whisper_settings.device_mode,
+        "units": checkpoint.whisper_units,
+    });
+    replace_file_preserving_previous(path, &serde_json::to_vec_pretty(&budget)?)?;
+    Ok(())
+}
+
+fn persist_whisper_state(
+    checkpoint_path: &Path,
+    budget_path: &Path,
+    checkpoint: &MediaCheckpoint,
+) -> Result<(), PipelineError> {
+    save_checkpoint(checkpoint_path, checkpoint)?;
+    write_whisper_budget(budget_path, checkpoint)
 }
 
 fn write_transcript(path: &Path, segments: &[TranscriptSegment]) -> Result<(), PipelineError> {
@@ -3418,11 +3925,11 @@ mod tests {
     }
 
     #[test]
-    fn load_incompatible_schema3_does_not_resume_prev_and_align_restarts() {
+    fn load_legacy_schema4_resumes_completed_cpu_chunks() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("media-checkpoint.json");
         let runtime = HashMap::from([("ffmpeg/ffmpeg.exe".into(), "aaa".into())]);
-        let mut schema3 = MediaCheckpoint::fresh(
+        let mut schema4 = MediaCheckpoint::fresh(
             "source.mp4",
             1200.0,
             AnalysisMode::Full,
@@ -3442,11 +3949,12 @@ mod tests {
             2048,
             runtime.clone(),
         );
-        schema3.schema_version = 3;
-        schema3.completed_chunks = 2;
-        save_checkpoint(&path, &schema3).unwrap();
+        schema4.schema_version = 4;
+        schema4.completed_chunks = 2;
+        save_checkpoint(&path, &schema4).unwrap();
 
-        let loaded = load_checkpoint(
+        let legacy_cpu = legacy_cpu_whisper_settings();
+        let loaded = load_checkpoint_with_caption(
             &path,
             "source.mp4",
             AnalysisMode::Full,
@@ -3455,9 +3963,74 @@ mod tests {
             "fp",
             2048,
             &runtime,
+            None,
+            &legacy_cpu,
         )
         .unwrap();
-        assert!(loaded.is_none(), "schema-3 live must be discarded");
+        let loaded = loaded.expect("schema4 legacy CPU checkpoint remains resumable");
+        assert_eq!(loaded.completed_chunks, 2);
+
+        let auto = WhisperSettings::default();
+        assert!(load_checkpoint_with_caption(
+            &path,
+            "source.mp4",
+            AnalysisMode::Full,
+            None,
+            None,
+            "fp",
+            2048,
+            &runtime,
+            None,
+            &auto,
+        )
+        .unwrap()
+        .is_none());
+        let gpu = WhisperSettings {
+            device_mode: WhisperDeviceMode::Gpu,
+            ..legacy_cpu.clone()
+        };
+        assert!(load_checkpoint_with_caption(
+            &path,
+            "source.mp4",
+            AnalysisMode::Full,
+            None,
+            None,
+            "fp",
+            2048,
+            &runtime,
+            None,
+            &gpu,
+        )
+        .unwrap()
+        .is_none());
+
+        let mut schema5 = schema4.clone();
+        schema5.schema_version = 5;
+        schema5.whisper_settings = auto.clone();
+        assert!(checkpoint_is_compatible_with_whisper(
+            &schema5,
+            "source.mp4",
+            AnalysisMode::Full,
+            0,
+            None,
+            "fp",
+            2048,
+            &runtime,
+            None,
+            &auto,
+        ));
+        assert!(!checkpoint_is_compatible_with_whisper(
+            &schema5,
+            "source.mp4",
+            AnalysisMode::Full,
+            0,
+            None,
+            "fp",
+            2048,
+            &runtime,
+            None,
+            &gpu,
+        ));
 
         // Fresh rebuild + advanced job units must restart media chunks from 0.
         let mut fresh = MediaCheckpoint::fresh(
@@ -3485,6 +4058,50 @@ mod tests {
         assert_eq!(fresh.completed_chunks, 0);
         // Job identity/source fields stay on the job snapshot; media units clamp to probe.
         assert_eq!(job_units_after_media_restart(&fresh), 2);
+    }
+
+    #[test]
+    fn gpu_evidence_requires_backend_marker_and_nonempty_output_is_checked_by_runner() {
+        assert!(has_gpu_backend_evidence(
+            "ggml_cuda_init: found 1 CUDA device(s)",
+            "using CUDA backend"
+        ));
+        assert!(has_gpu_backend_evidence(
+            "ggml_cuda_init: found 2 CUDA devices",
+            "using CUDA0 backend"
+        ));
+        assert!(!has_gpu_backend_evidence(
+            "ggml_cuda_init: found 0 CUDA device(s)",
+            "using CUDA backend"
+        ));
+        assert!(!has_gpu_backend_evidence(
+            "ggml_cuda_init: found 1 CUDA device(s)",
+            "CUDA error: initialization failed"
+        ));
+        assert!(!has_gpu_backend_evidence(
+            "ggml_cuda_init: found 1 CUDA devices",
+            "using CUDA0 backend; CUDA error: initialization failed"
+        ));
+        assert!(!has_gpu_backend_evidence(
+            "ggml_cuda_init: found 1 CUDA devices error",
+            "using CUDA0 backend"
+        ));
+        assert!(!has_gpu_backend_evidence("", "cuBLAS loaded"));
+        assert!(!has_gpu_backend_evidence("NVIDIA GeForce present", ""));
+    }
+
+    #[test]
+    fn cpu_whisper_args_explicitly_disable_gpu() {
+        let settings = WhisperSettings::default();
+        let args = whisper_command_args(
+            &settings,
+            Path::new("model.bin"),
+            Path::new("input.wav"),
+            Path::new("output"),
+            4,
+            false,
+        );
+        assert!(args.iter().any(|arg| arg == "-ng"));
     }
 
     #[test]

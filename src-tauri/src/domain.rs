@@ -1,4 +1,5 @@
 use crate::captions::{CaptionSource, VerificationState};
+use crate::whisper::{WhisperRuntimeState, WhisperSettings};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -251,15 +252,30 @@ pub struct JobSnapshot {
     #[serde(default)]
     pub media_duration_seconds: Option<f64>,
     pub current_stage_label: String,
+    #[serde(default)]
     pub last_heartbeat_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(default)]
     pub error_message: Option<String>,
+    #[serde(default)]
     pub error_detail: Option<String>,
     pub candidates: Vec<Candidate>,
     pub activity: Vec<ActivityEvent>,
     #[serde(default)]
     pub captions: Option<CaptionSummary>,
+    #[serde(default = "legacy_whisper_settings")]
+    pub whisper: WhisperSettings,
+    #[serde(default)]
+    pub whisper_runtime: WhisperRuntimeState,
+}
+
+fn legacy_whisper_settings() -> WhisperSettings {
+    WhisperSettings {
+        device_mode: crate::whisper::WhisperDeviceMode::Cpu,
+        profile: crate::whisper::WhisperProfile::Balanced,
+        cpu_threads: None,
+    }
 }
 
 impl JobSnapshot {
@@ -274,7 +290,7 @@ impl JobSnapshot {
     ) -> Self {
         let now = Utc::now();
         let mut job = Self {
-            schema_version: 4,
+            schema_version: 5,
             id,
             source_kind,
             source_label,
@@ -297,6 +313,8 @@ impl JobSnapshot {
             candidates: Vec::new(),
             activity: Vec::new(),
             captions: None,
+            whisper: WhisperSettings::default(),
+            whisper_runtime: WhisperRuntimeState::default(),
         };
         job.push_activity("job", "새 분석 작업을 만들었습니다.");
         job
@@ -409,6 +427,37 @@ mod tests {
             .apply_progress(3, JobStatus::Probing, "미디어 확인".into(), "건너뜀".into())
             .is_err());
         assert_eq!(job.completed_units, 1);
+    }
+
+    #[test]
+    fn job_snapshot_wire_format_and_legacy_defaults_are_preserved() {
+        let encoded = serde_json::to_value(job()).unwrap();
+        assert!(encoded.get("schemaVersion").is_some());
+        assert!(encoded.get("sourceKind").is_some());
+        assert!(encoded.get("schema_version").is_none());
+
+        let mut legacy = encoded;
+        let object = legacy.as_object_mut().unwrap();
+        for field in [
+            "acquiredMediaPath",
+            "downloadPercent",
+            "analysisMode",
+            "analysisStartSeconds",
+            "analysisEndSeconds",
+            "mediaDurationSeconds",
+            "lastHeartbeatAt",
+            "errorMessage",
+            "errorDetail",
+            "captions",
+            "whisper",
+            "whisperRuntime",
+        ] {
+            object.remove(field);
+        }
+        let loaded: JobSnapshot = serde_json::from_value(legacy).unwrap();
+        assert_eq!(loaded.analysis_mode, AnalysisMode::Full);
+        assert_eq!(loaded.whisper, legacy_whisper_settings());
+        assert_eq!(loaded.whisper_runtime, WhisperRuntimeState::default());
     }
 
     #[test]

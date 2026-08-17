@@ -4,10 +4,12 @@ mod domain;
 mod integrity;
 mod media;
 mod storage;
+mod whisper;
 
 use crate::domain::{
     AnalysisMode, Candidate, CandidateDecision, JobSnapshot, JobStatus, Scenario, SourceKind,
 };
+use crate::whisper::WhisperSettings;
 use crate::storage::JobStore;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -54,6 +56,8 @@ struct CreateJobInput {
     analysis_start_seconds: Option<u32>,
     #[serde(default)]
     analysis_end_seconds: Option<u32>,
+    #[serde(default)]
+    whisper: WhisperSettings,
 }
 
 #[derive(Debug, Serialize)]
@@ -203,16 +207,7 @@ fn resume_media_status(completed_units: u32, total_units: u32) -> JobStatus {
     }
 }
 
-#[tauri::command]
-fn bootstrap(
-    app: tauri::AppHandle,
-    state: State<'_, Arc<AppState>>,
-) -> Result<Option<JobSnapshot>, String> {
-    let mut loaded = match state.store.load_latest() {
-        Ok(job) => job,
-        Err(_) => return Ok(None),
-    };
-
+fn migrate_snapshot(mut loaded: JobSnapshot) -> (JobSnapshot, bool) {
     if loaded.schema_version < 4 {
         loaded.schema_version = 4;
         loaded.analysis_mode = AnalysisMode::Full;
@@ -227,13 +222,36 @@ fn bootstrap(
             loaded.error_detail = Some("v0.3.2 체크포인트 fingerprint 초기화".into());
             loaded.push_activity("migration", "이전 체크포인트를 안전하게 무효화했습니다.");
         }
+        return (loaded, true);
     }
+
+    if loaded.schema_version == 4 {
+        loaded.schema_version = 5;
+        loaded.push_activity("migration", "schema 4 작업을 새 음성 인식 설정으로 복원했습니다.");
+        return (loaded, true);
+    }
+    (loaded, false)
+}
+
+#[tauri::command]
+fn bootstrap(
+    app: tauri::AppHandle,
+    state: State<'_, Arc<AppState>>,
+) -> Result<Option<JobSnapshot>, String> {
+    let loaded = match state.store.load_latest() {
+        Ok(job) => job,
+        Err(_) => return Ok(None),
+    };
+
+    let (mut loaded, migrated) = migrate_snapshot(loaded);
 
     if loaded.status.is_active() {
         loaded.status = JobStatus::Interrupted;
         loaded.error_message = Some("이전 실행이 끝나기 전에 앱이 종료됐습니다.".into());
         loaded.error_detail = Some("마지막 완료 단위 다음부터 재개할 수 있습니다.".into());
         loaded.push_activity("recovery", "중단된 작업을 복원했습니다.");
+    }
+    if migrated || loaded.status == JobStatus::Interrupted {
         state
             .store
             .save(&loaded)
@@ -268,6 +286,8 @@ fn create_job(
         input.analysis_start_seconds,
         input.analysis_end_seconds,
     );
+    let mut job = job;
+    job.whisper = input.whisper.normalized();
     state.store.save(&job).map_err(|error| error.to_string())?;
     if let Some(event) = job.activity.last() {
         state
@@ -1033,6 +1053,73 @@ mod tests {
             elapsed < Duration::from_millis(500),
             "arm_cancel_signal must stay in-memory and return quickly, took {elapsed:?}"
         );
+    }
+
+    #[test]
+    fn bootstrap_migration_invalidates_unfinished_schema3_jobs_like_v04() {
+        let mut job = JobSnapshot::new(
+            Uuid::new_v4().to_string(),
+            SourceKind::Demo,
+            "fixture".into(),
+            Scenario::Normal,
+            AnalysisMode::Range,
+            Some(10),
+            Some(20),
+        );
+        job.schema_version = 3;
+        job.completed_units = 7;
+        job.status = JobStatus::Transcribing;
+
+        let (migrated, changed) = migrate_snapshot(job);
+        assert!(changed);
+        assert_eq!(migrated.schema_version, 4);
+        assert_eq!(migrated.analysis_mode, AnalysisMode::Full);
+        assert_eq!(migrated.analysis_start_seconds, None);
+        assert_eq!(migrated.analysis_end_seconds, None);
+        assert_eq!(migrated.completed_units, 0);
+        assert_eq!(migrated.total_units, 12);
+        assert_eq!(migrated.status, JobStatus::Interrupted);
+    }
+
+    #[test]
+    fn schema4_snapshot_migration_preserves_completed_units_and_uses_legacy_whisper_defaults() {
+        let job = JobSnapshot::new(
+            Uuid::new_v4().to_string(),
+            SourceKind::Demo,
+            "fixture".into(),
+            Scenario::Normal,
+            AnalysisMode::Full,
+            None,
+            None,
+        );
+        let mut json = serde_json::to_value(job).unwrap();
+        json["schemaVersion"] = 4.into();
+        json["completedUnits"] = 5.into();
+        json.as_object_mut().unwrap().remove("whisper");
+        let loaded: JobSnapshot = serde_json::from_value(json).unwrap();
+        assert_eq!(loaded.whisper.device_mode, crate::whisper::WhisperDeviceMode::Cpu);
+        assert_eq!(loaded.whisper.profile, crate::whisper::WhisperProfile::Balanced);
+        assert_eq!(loaded.whisper.cpu_threads, None);
+
+        let (migrated, changed) = migrate_snapshot(loaded);
+        assert!(changed);
+        assert_eq!(migrated.schema_version, 5);
+        assert_eq!(migrated.completed_units, 5);
+    }
+
+    #[test]
+    fn new_jobs_keep_auto_gpu_first_whisper_default() {
+        let job = JobSnapshot::new(
+            Uuid::new_v4().to_string(),
+            SourceKind::Demo,
+            "fixture".into(),
+            Scenario::Normal,
+            AnalysisMode::Full,
+            None,
+            None,
+        );
+        assert_eq!(job.whisper, WhisperSettings::default());
+        assert_eq!(job.whisper.device_mode, crate::whisper::WhisperDeviceMode::Auto);
     }
 }
 

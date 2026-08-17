@@ -1,6 +1,6 @@
 # VOD Scout 인계서
 
-현재 게이트: **v0.4.0 공개 완료 · v0.5.0 G1 구현 로컬 완료 · 실제 YouTube 자막·GPU·자원·UI 검증 HOLD**
+현재 게이트: **v0.4.0 공개 완료 · v0.5.0 G1·G2 코드·자동 테스트·Rust 빌드 PASS · 실제 GPU·실제 Windows UI 검증 HOLD**
 
 ## 현재 정본
 
@@ -11,8 +11,8 @@
 | 최신 공개 Release | `v0.4.0` · https://github.com/hangokudao/vod-scout/releases/tag/v0.4.0 |
 | 현재 제품 버전 | `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` 모두 `0.4.0` |
 | 문서 변경 추적 | PR #18 merged · roadmap correction committed |
-| 현재 구현 | `codex/v050-g1-youtube-captions` 로컬·미 push 구현 |
-| v0.5.0 상태 | G1 코드·자동 테스트 구현, 실제 기준 영상·GPU·자원·UI 검증 `HOLD` |
+| 현재 구현 | `codex/v050-g2-whisper-device` 로컬·미 push 구현 |
+| v0.5.0 상태 | G1·G2 코드·자동 테스트·Rust 빌드 PASS, 실제 GPU·자원·Windows UI 검증 `HOLD` |
 
 v0.4.0의 기능·장시간 입력·설치·공개 자산 검증 근거는 [v0.4.0 릴리스 기록](docs/V0.4.0-RELEASE.md)과 [빌드 명세](BUILD-MANIFEST.md)를 따른다. 이 문서에서 해시와 실행 결과를 중복 관리하지 않는다.
 
@@ -94,6 +94,14 @@ worktree `codex/v050-transcript-quality`는 이미 존재하며 커밋되지 않
 7. 앞 단계가 모두 PASS일 때만 제한적 병렬 처리를 측정한다.
 
 기능별 검증이 끝나기 전에 다음 기능을 미리 구현하지 않는다. 구현·PR·병합·배포 승인은 서로 별개다.
+
+## G2 구현 및 자동 검증
+
+- `JobSnapshot`과 미디어 체크포인트에 Whisper 장치(`자동(GPU 우선)`·GPU·CPU), 프로필(`빠르게`·`균형`·`정확하게`), CPU 스레드 자동·1~32개를 저장·복원한다.
+- CPU 명령에는 `-ng`를 명시하고, GPU는 백엔드 로그와 비어 있지 않은 음성 인식 결과를 함께 확인한 실제 실행만 성공으로 기록한다. GPU 실패는 같은 구간에서 CPU 한 번으로만 대체하며, 시도 전·후 상태와 실패 이유를 체크포인트에 저장한다.
+- 기존 v0.4 체크포인트는 schema 4의 호환 필드를 확인하고 CPU 기본값으로 완료 청크를 보존해 재개한다. CUDA 11.8 Windows x64 런타임은 현재 다운로드하지 않았으며, 준비 스크립트가 고정 URL·SHA-256을 확인하고 `whisper-gpu` 실행 파일·DLL을 manifest schema 6에 생성한다.
+- 자동 검증 PASS: `cmd.exe /c npm.cmd test` 36개, `cmd.exe /c npm.cmd run build`, `cargo.exe test --manifest-path src-tauri/Cargo.toml` 87 passed·1 ignored, `cargo.exe test --manifest-path src-tauri/fixture-worker/Cargo.toml` 5 passed, `node --test scripts/archive-safety.test.mjs scripts/prepare-media-tools.test.mjs` 8 passed, `git diff --check`.
+- 검증 HOLD: 실제 GPU 장치 실행·실제 Windows UI·실제 미디어 장시간 검증은 실행하지 않았다. 설치 파일 생성·배포도 이 작업 범위가 아니다.
 
 ## G1 이후 HOLD
 

@@ -21,6 +21,23 @@ export type JobStatus =
 export type CandidateDecision = "PENDING" | "ACCEPTED" | "REJECTED";
 export type CaptionSource = "creator" | "automatic";
 export type CaptionVerificationState = "UNVERIFIED" | "VERIFIED" | "FAILED";
+export type WhisperDeviceMode = "auto" | "gpu" | "cpu";
+export type WhisperProfile = "fast" | "balanced" | "accurate";
+
+export interface WhisperSettings {
+  deviceMode: WhisperDeviceMode;
+  profile: WhisperProfile;
+  cpuThreads: number | null;
+}
+
+export type WhisperRuntimeStatus = "untested" | "testing" | "gpu" | "cpu" | "cpuFallback" | "failed";
+
+export interface WhisperRuntimeState {
+  status: WhisperRuntimeStatus;
+  unitIndex: number | null;
+  effectiveCpuThreads: number | null;
+  gpuFailureReason: string | null;
+}
 
 export interface CaptionProvenanceSummary {
   originalFile: string;
@@ -108,6 +125,8 @@ export interface JobSnapshot {
   candidates: Candidate[];
   activity: ActivityEvent[];
   captions: CaptionSummary | null;
+  whisper: WhisperSettings;
+  whisperRuntime: WhisperRuntimeState;
 }
 
 export interface RuntimeInfo {
@@ -141,4 +160,5 @@ export interface CreateJobInput {
   analysisMode: AnalysisMode;
   analysisStartSeconds: number | null;
   analysisEndSeconds: number | null;
+  whisper: WhisperSettings;
 }

@@ -12,6 +12,7 @@ import App, {
   selectionStorageKey,
   sortCandidates,
   writeUiSettings,
+  normalizeWhisperSettings,
   type CandidateSortKey
 } from "./App";
 import type { Candidate } from "./types";
@@ -268,5 +269,25 @@ describe("settings entry visibility", () => {
     fireEvent.click(settings);
     expect(await screen.findByRole("dialog", { name: "설정·업데이트" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "설정·업데이트" })).toBeVisible();
+  });
+
+  it("shows GPU device, profile, and bounded CPU controls before starting", async () => {
+    render(<App />);
+    expect(await screen.findByRole("button", { name: /자동\(GPU 우선\)/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /빠르게/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /정확하게/ })).toBeVisible();
+    expect(screen.getByRole("combobox")).toHaveValue("auto");
+  });
+});
+
+describe("Whisper settings payload", () => {
+  it("uses auto CPU control and clamps explicit threads to the safe range", () => {
+    expect(normalizeWhisperSettings("gpu", "accurate", "auto")).toEqual({
+      deviceMode: "gpu",
+      profile: "accurate",
+      cpuThreads: null
+    });
+    expect(normalizeWhisperSettings("cpu", "fast", "99").cpuThreads).toBe(32);
+    expect(normalizeWhisperSettings("cpu", "fast", "0").cpuThreads).toBe(1);
   });
 });
