@@ -49,6 +49,7 @@ import {
   prepareCandidateContextPreview,
   previewMediaUrl,
   rerunCandidateTranscription,
+  setCandidateCount,
   saveCandidatesCsv,
   setCandidateDecision,
   startJob,
@@ -56,6 +57,7 @@ import {
 } from "./api";
 import type {
   Candidate,
+  CandidateCount,
   CandidateDecision,
   CandidateRecognitionRun,
   CaptionSummary,
@@ -270,6 +272,8 @@ export const CANDIDATE_SORTS: Array<{ value: CandidateSortKey; label: string }> 
   { value: "chatScore", label: "채팅 움직임 높은 순" },
   { value: "decision", label: "채택·보류·제외 상태" }
 ];
+
+export const CANDIDATE_COUNTS: CandidateCount[] = [8, 20, 30];
 
 const DECISION_SORT_RANK: Record<CandidateDecision, number> = { ACCEPTED: 0, PENDING: 1, REJECTED: 2 };
 
@@ -489,7 +493,7 @@ function SignalRail({ candidate }: { candidate: Candidate }) {
           <div className="signal-track" aria-hidden="true">
             <div className={`signal-fill ${signal.className}`} style={{ width: `${signal.score ?? 0}%` }} />
           </div>
-          <strong>{signal.score ?? "—"}</strong>
+          <strong>{signal.score ?? (signal.label === "채팅" ? "확인 가능한 채팅 영역 움직임 없음" : "—")}</strong>
         </div>
       ))}
     </div>
@@ -518,6 +522,7 @@ function App() {
   const [whisperDevice, setWhisperDevice] = useState<WhisperDeviceMode>("auto");
   const [whisperProfile, setWhisperProfile] = useState<WhisperProfile>("balanced");
   const [cpuThreads, setCpuThreads] = useState("auto");
+  const [candidateCount, setCandidateCountValue] = useState<CandidateCount>(20);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [settings, setSettings] = useState<UiSettings>(() => readUiSettings());
   const [systemPrefersDark, setSystemPrefersDark] = useState(
@@ -563,6 +568,7 @@ function App() {
             setWhisperDevice(restored.whisper?.deviceMode ?? "auto");
             setWhisperProfile(restored.whisper?.profile ?? "balanced");
             setCpuThreads(restored.whisper?.cpuThreads == null ? "auto" : String(restored.whisper.cpuThreads));
+            setCandidateCountValue(restored.candidateCount ?? 20);
             setNewJobMode(false);
           }
         }
@@ -728,7 +734,8 @@ function App() {
           analysisMode,
           analysisStartSeconds: start,
           analysisEndSeconds: end,
-          whisper: normalizeWhisperSettings(whisperDevice, whisperProfile, cpuThreads)
+          whisper: normalizeWhisperSettings(whisperDevice, whisperProfile, cpuThreads),
+          candidateCount
         });
         setJob(target);
         setNewJobMode(false);
@@ -773,6 +780,22 @@ function App() {
     setUiError(null);
     try {
       setJob(await rerunCandidateTranscription(job.id, selected.id));
+    } catch (error) {
+      setUiError(messageFrom(error));
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function changeCandidateCount(next: CandidateCount) {
+    if (!job || job.status !== "REVIEW_READY" || actionBusy) return;
+    setActionBusy(true);
+    setUiError(null);
+    try {
+      const updated = await setCandidateCount(job.id, next);
+      setCandidateCountValue(updated.candidateCount);
+      setJob(updated);
+      setNotice(`후보 ${next}개 설정을 새 개정으로 저장했습니다. 부족한 후보는 채우지 않았습니다.`);
     } catch (error) {
       setUiError(messageFrom(error));
     } finally {
@@ -1178,6 +1201,17 @@ function App() {
               </label>
             </section>
 
+            <section className="analysis-mode-panel" aria-label="후보 수 설정">
+              <div className="panel-heading"><span><ListChecks size={17} /> 후보 수</span><strong>{candidateCount}개</strong></div>
+              <div className="analysis-mode-options">
+                {CANDIDATE_COUNTS.map((count) => (
+                  <button key={count} type="button" className={candidateCount === count ? "selected" : ""} onClick={() => setCandidateCountValue(count)}>
+                    <strong>{count}개</strong><small>후보가 부족하면 그대로 표시</small>
+                  </button>
+                ))}
+              </div>
+            </section>
+
             {sourceKind === "demo" ? <details className="scenario-panel">
               <summary><TerminalSquare size={16} /> 복구 시나리오 선택 <span>{SCENARIOS.find((item) => item.value === scenario)?.label}</span></summary>
               <div className="scenario-options">
@@ -1246,6 +1280,13 @@ function App() {
                   <div className="panel-heading">
                     <span><ListChecks size={17} /> 후보 큐</span>
                     <strong>{job.candidates.length}</strong>
+                  </div>
+                  <div className="candidate-count-control">
+                    <label htmlFor="candidate-count">후보 수 개정</label>
+                    <select id="candidate-count" value={job.candidateCount} onChange={(event) => void changeCandidateCount(Number(event.target.value) as CandidateCount)} disabled={actionBusy}>
+                      {CANDIDATE_COUNTS.map((count) => <option key={count} value={count}>{count}개</option>)}
+                    </select>
+                    <small>현재 {job.candidates.length}개 · 부족한 후보는 채우지 않음 · 개정 {job.candidateRevision}</small>
                   </div>
                   <div className="candidate-sort">
                     <label htmlFor="candidate-sort">정렬</label>
@@ -1333,6 +1374,11 @@ function App() {
                         {selectedRun.failureReason ? ` · ${selectedRun.failureReason}` : ""}
                       </p>
                     ) : null}
+                    <section className="quality-evidence" aria-label="후보 품질과 선택 근거">
+                      <strong>내용 품질: {selected.qualityStatus === "WARNING" ? "경고" : selected.qualityStatus === "INVALID" ? "무효" : "확인 가능한 근거 있음"}</strong>
+                      <p>왜 선택됨: {(selected.selectionReasons?.length ? selected.selectionReasons : ["점수 계산에 사용 가능한 근거"]).join(" · ")}</p>
+                      <p>무엇이 불확실함: {(selected.uncertaintyReasons?.length || selected.qualityWarnings?.length) ? Array.from(new Set([...(selected.uncertaintyReasons ?? []), ...(selected.qualityWarnings ?? [])])).join(" · ") : "확인된 품질 경고 없음"}</p>
+                    </section>
                     <SignalRail candidate={selected} />
                     {context ? (
                       <section className="context-panel" aria-labelledby="context-title">

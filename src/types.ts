@@ -19,6 +19,8 @@ export type JobStatus =
   | "REVIEW_READY";
 
 export type CandidateDecision = "PENDING" | "ACCEPTED" | "REJECTED";
+export type CandidateCount = 8 | 20 | 30;
+export type CandidateQualityStatus = "VALID" | "WARNING" | "INVALID";
 export type TranscriptQualityStatus = "CERTAIN" | "UNCERTAIN";
 export type RecognitionRunStatus = "STARTED" | "COMPLETED" | "FAILED";
 export type CaptionSource = "creator" | "automatic";
@@ -87,6 +89,11 @@ export interface Candidate {
   chatScore: number | null;
   totalScore: number;
   decision: CandidateDecision;
+  /** 점수와 별도로 계산한 내용 품질 상태와 근거. */
+  qualityStatus?: CandidateQualityStatus;
+  qualityWarnings?: string[];
+  selectionReasons?: string[];
+  uncertaintyReasons?: string[];
   /** 음성 인식 결과의 진단 상태. v0.4 후보에는 없을 수 있다. */
   transcriptQualityStatus?: TranscriptQualityStatus;
   transcriptQualityReasons?: string[];
@@ -97,6 +104,14 @@ export interface Candidate {
   contextStartSeconds?: number | null;
   contextEndSeconds?: number | null;
   contextTranscript?: ContextLine[] | null;
+}
+
+export interface CandidateRevision {
+  revision: number;
+  candidateCount: CandidateCount;
+  reason: string;
+  createdAt: string;
+  candidates: Candidate[];
 }
 
 export interface CandidateRecognitionRun {
@@ -174,6 +189,10 @@ export interface JobSnapshot {
   errorMessage: string | null;
   errorDetail: string | null;
   candidates: Candidate[];
+  candidatePool?: Candidate[];
+  candidateCount: CandidateCount;
+  candidateRevision: number;
+  candidateRevisions: CandidateRevision[];
   activity: ActivityEvent[];
   captions: CaptionSummary | null;
   whisper: WhisperSettings;
@@ -217,4 +236,5 @@ export interface CreateJobInput {
   analysisStartSeconds: number | null;
   analysisEndSeconds: number | null;
   whisper: WhisperSettings;
+  candidateCount: CandidateCount;
 }

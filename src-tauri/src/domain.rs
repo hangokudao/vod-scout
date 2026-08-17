@@ -153,6 +153,13 @@ pub enum CandidateDecision {
     Rejected,
 }
 
+pub fn normalize_candidate_count(value: u8) -> u8 {
+    match value {
+        8 | 20 | 30 => value,
+        _ => 20,
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContextTranscriptEntry {
@@ -183,6 +190,14 @@ pub struct Candidate {
     pub chat_score: Option<u8>,
     pub total_score: u8,
     pub decision: CandidateDecision,
+    #[serde(default = "default_quality_status")]
+    pub quality_status: String,
+    #[serde(default)]
+    pub quality_warnings: Vec<String>,
+    #[serde(default)]
+    pub selection_reasons: Vec<String>,
+    #[serde(default)]
+    pub uncertainty_reasons: Vec<String>,
     #[serde(default)]
     pub transcript_quality_status: TranscriptQualityStatus,
     #[serde(default)]
@@ -193,6 +208,18 @@ pub struct Candidate {
     pub context_end_seconds: f64,
     #[serde(default)]
     pub context_transcript: Vec<ContextTranscriptEntry>,
+}
+
+fn default_quality_status() -> String { "VALID".into() }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CandidateRevision {
+    pub revision: u32,
+    pub candidate_count: u8,
+    pub reason: String,
+    pub created_at: DateTime<Utc>,
+    pub candidates: Vec<Candidate>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -328,6 +355,14 @@ pub struct JobSnapshot {
     #[serde(default)]
     pub error_detail: Option<String>,
     pub candidates: Vec<Candidate>,
+    #[serde(default)]
+    pub candidate_pool: Vec<Candidate>,
+    #[serde(default = "default_candidate_count")]
+    pub candidate_count: u8,
+    #[serde(default)]
+    pub candidate_revision: u32,
+    #[serde(default)]
+    pub candidate_revisions: Vec<CandidateRevision>,
     pub activity: Vec<ActivityEvent>,
     #[serde(default)]
     pub captions: Option<CaptionSummary>,
@@ -347,6 +382,8 @@ pub struct JobSnapshot {
     /// Number of currently owned external-tool processes, not a planned or inferred count.
     pub owned_child_processes: u32,
 }
+
+fn default_candidate_count() -> u8 { 20 }
 
 fn legacy_whisper_settings() -> WhisperSettings {
     WhisperSettings {
@@ -389,6 +426,10 @@ impl JobSnapshot {
             error_message: None,
             error_detail: None,
             candidates: Vec::new(),
+            candidate_pool: Vec::new(),
+            candidate_count: 20,
+            candidate_revision: 0,
+            candidate_revisions: Vec::new(),
             activity: Vec::new(),
             captions: None,
             whisper: WhisperSettings::default(),
@@ -470,6 +511,14 @@ impl JobSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn candidate_count_accepts_only_supported_values_and_defaults_to_twenty() {
+        assert_eq!(normalize_candidate_count(8), 8);
+        assert_eq!(normalize_candidate_count(20), 20);
+        assert_eq!(normalize_candidate_count(30), 30);
+        assert_eq!(normalize_candidate_count(9), 20);
+    }
 
     fn job() -> JobSnapshot {
         JobSnapshot::new(
@@ -567,6 +616,10 @@ mod tests {
             chat_score: None,
             total_score: 75,
             decision: CandidateDecision::Pending,
+            quality_status: "VALID".into(),
+            quality_warnings: Vec::new(),
+            selection_reasons: Vec::new(),
+            uncertainty_reasons: Vec::new(),
             transcript_quality_status: TranscriptQualityStatus::Certain,
             transcript_quality_reasons: Vec::new(),
             context_start_seconds: 5.0,
