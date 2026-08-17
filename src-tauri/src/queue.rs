@@ -75,6 +75,25 @@ impl QueueIndex {
         Ok(())
     }
 
+    /// Remove references to missing jobs and append newly stored jobs in a
+    /// stable order. Existing queue order is preserved.
+    pub fn reconcile(&mut self, ids: impl IntoIterator<Item = String>) -> Result<bool, String> {
+        self.validate()?;
+        let mut stored_ids = ids.into_iter().collect::<Vec<_>>();
+        for id in &stored_ids {
+            validate_job_id(id)?;
+        }
+        stored_ids.sort();
+        stored_ids.dedup();
+
+        let before = self.ordered_job_ids.clone();
+        self.ordered_job_ids.retain(|id| stored_ids.binary_search(id).is_ok());
+        for id in stored_ids {
+            self.add(id)?;
+        }
+        Ok(self.ordered_job_ids != before)
+    }
+
     pub fn move_job(&mut self, id: &str, new_index: usize) -> Result<(), String> {
         validate_job_id(id)?;
         let Some(old_index) = self.ordered_job_ids.iter().position(|item| item == id) else {
@@ -140,12 +159,23 @@ impl QueueStore {
         Ok(())
     }
 
-    pub fn load_or_create(&self, ids: impl IntoIterator<Item = String>) -> Result<QueueIndex, String> {
-        if let Some(queue) = self.load()? { return Ok(queue); }
+    pub fn load_or_reconcile(&self, ids: impl IntoIterator<Item = String>) -> Result<QueueIndex, String> {
+        let ids = ids.into_iter().collect::<Vec<_>>();
+        if let Some(mut queue) = self.load()? {
+            if queue.reconcile(ids)? {
+                self.save(&queue)?;
+            }
+            return Ok(queue);
+        }
         let mut queue = QueueIndex::default();
         for id in ids { queue.add(id)?; }
+        queue.ordered_job_ids.sort();
         self.save(&queue)?;
         Ok(queue)
+    }
+
+    pub fn load_or_create(&self, ids: impl IntoIterator<Item = String>) -> Result<QueueIndex, String> {
+        self.load_or_reconcile(ids)
     }
 }
 
@@ -243,6 +273,31 @@ mod tests {
         assert_eq!(queue.ordered_job_ids[0], second);
         queue.remove(&first).unwrap();
         assert!(queue.remove("../outside").is_err());
+    }
+
+    #[test]
+    fn reconciliation_removes_missing_references_and_appends_untracked_jobs() {
+        let missing = id();
+        let first = id();
+        let untracked = id();
+        let mut queue = QueueIndex::default();
+        queue.ordered_job_ids = vec![first.clone(), missing];
+
+        assert!(queue.reconcile(vec![untracked.clone(), first.clone()]).unwrap());
+        assert_eq!(queue.ordered_job_ids, vec![first, untracked]);
+    }
+
+    #[test]
+    fn reconciliation_preserves_queue_order_and_rejects_duplicate_references() {
+        let first = id();
+        let second = id();
+        let mut queue = QueueIndex::default();
+        queue.ordered_job_ids = vec![second.clone(), first.clone()];
+        assert!(queue.reconcile(vec![first.clone(), second.clone()]).is_ok());
+        assert_eq!(queue.ordered_job_ids, vec![second, first.clone()]);
+
+        queue.ordered_job_ids.push(first);
+        assert!(queue.reconcile(Vec::<String>::new()).is_err());
     }
 
     #[test]

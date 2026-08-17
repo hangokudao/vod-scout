@@ -49,7 +49,7 @@ impl AppState {
         let queue_store = QueueStore::new(data_dir.clone()).map_err(|error| error.to_string())?;
         let _instance_lease = InstanceLease::acquire(&data_dir)?;
         let ids = store.list_jobs().map_err(|error| error.to_string())?.into_iter().map(|job| job.id);
-        let queue = queue_store.load_or_create(ids)?;
+        let queue = queue_store.load_or_reconcile(ids)?;
         Ok(Self {
             store,
             queue_store,
@@ -181,15 +181,22 @@ where
     Ok(next)
 }
 
+fn mutate_locked_queue<F, S>(queue: &Mutex<QueueIndex>, mutation: F, save: S) -> Result<QueueIndex, String>
+where
+    F: FnOnce(&mut QueueIndex) -> Result<(), String>,
+    S: FnOnce(&QueueIndex) -> Result<(), String>,
+{
+    let mut guard = queue.lock().map_err(|_| "작업 대기열 잠금이 손상됐습니다.".to_string())?;
+    let next = clone_mutate_save_commit(&guard, mutation, save)?;
+    *guard = next.clone();
+    Ok(next)
+}
+
 fn mutate_queue<F>(state: &AppState, mutation: F) -> Result<QueueIndex, String>
 where
     F: FnOnce(&mut QueueIndex) -> Result<(), String>,
 {
-    let current = queue_snapshot(state)?;
-    let next = clone_mutate_save_commit(&current, mutation, |queue| save_queue(state, queue))?;
-    let mut guard = state.queue.lock().map_err(|_| "작업 대기열 잠금이 손상됐습니다.".to_string())?;
-    *guard = next.clone();
-    Ok(next)
+    mutate_locked_queue(&state.queue, mutation, |queue| save_queue(state, queue))
 }
 
 fn set_queue_state(state: &AppState, transition_state: QueueTransitionState) -> Result<QueueIndex, String> {
@@ -219,6 +226,13 @@ fn next_automatic_job(queue: &QueueIndex, jobs: &[JobSnapshot]) -> Option<JobSna
     (queue.transition_state == QueueTransitionState::Running)
         .then(|| next_created_job(queue, jobs))
         .flatten()
+}
+
+fn claim_queue_execution(state: &AppState) -> bool {
+    state
+        .running
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
 }
 
 fn is_terminal_for_deletion(status: JobStatus) -> bool {
@@ -496,16 +510,18 @@ fn candidates_for_count(job: &JobSnapshot, count: u8) -> Vec<Candidate> {
 }
 
 pub(crate) fn continue_queue<R: tauri::Runtime>(app: tauri::AppHandle<R>, state: Arc<AppState>) {
+    if !claim_queue_execution(&state) {
+        return;
+    }
     let result = (|| -> Result<(), String> {
         let queue = queue_snapshot(&state)?;
         if queue.transition_state != QueueTransitionState::Running {
-            return Ok(());
-        }
-        if state.running.load(Ordering::SeqCst) {
+            state.running.store(false, Ordering::SeqCst);
             return Ok(());
         }
         let jobs = state.store.list_jobs().map_err(|error| error.to_string())?;
         let Some(mut next) = next_automatic_job(&queue, &jobs) else {
+            state.running.store(false, Ordering::SeqCst);
             set_queue_state(&state, QueueTransitionState::Idle)?;
             return Ok(());
         };
@@ -514,7 +530,6 @@ pub(crate) fn continue_queue<R: tauri::Runtime>(app: tauri::AppHandle<R>, state:
         next.transition(JobStatus::Acquiring)?;
         state.store.save(&next).map_err(|error| error.to_string())?;
         *state.job.lock().map_err(|_| "작업 상태 잠금이 손상됐습니다.".to_string())? = Some(next.clone());
-        state.running.store(true, Ordering::SeqCst);
         let next_id = next.id.clone();
         let state_arc = Arc::clone(&state);
         match next.source_kind {
@@ -1390,6 +1405,9 @@ fn delete_stored_job(
     ensure_deletable(&snapshot)?;
     let active_id = state.job.lock().map_err(|_| "작업 상태 잠금이 손상됐습니다.".to_string())?.as_ref().filter(|job| job.id == job_id && (state.running.load(Ordering::SeqCst) || job.status.is_active())).map(|job| job.id.clone());
     if active_id.as_deref() == Some(job_id.as_str()) { return Err("실행 중인 작업은 안전하게 종료한 뒤 삭제해 주세요.".into()); }
+    if queue_snapshot(&state)?.transition_state == QueueTransitionState::Running {
+        set_queue_state(&state, QueueTransitionState::Interrupted)?;
+    }
     if let Err(error) = state.store.delete_job(&job_id) {
         let reason = error.to_string();
         record_delete_failure(&state, &job_id, &reason);
@@ -1422,6 +1440,9 @@ fn delete_all_jobs(app: tauri::AppHandle, state: State<'_, Arc<AppState>>) -> Re
     }
     for snapshot in state.store.list_jobs().map_err(|error| error.to_string())? {
         ensure_deletable(&snapshot)?;
+    }
+    if queue_snapshot(&state)?.transition_state == QueueTransitionState::Running {
+        set_queue_state(&state, QueueTransitionState::Interrupted)?;
     }
     state
         .store
@@ -1640,6 +1661,14 @@ mod tests {
     }
 
     #[test]
+    fn queue_execution_claim_is_exclusive() {
+        let state = test_state_with_running_job(&Uuid::new_v4().to_string());
+        state.running.store(false, Ordering::SeqCst);
+        assert!(claim_queue_execution(&state));
+        assert!(!claim_queue_execution(&state));
+    }
+
+    #[test]
     fn queue_save_failure_does_not_commit_mutation_in_memory() {
         let id = Uuid::new_v4().to_string();
         let added = Uuid::new_v4().to_string();
@@ -1654,6 +1683,26 @@ mod tests {
 
         assert!(result.is_err());
         assert_eq!(queue, before);
+    }
+
+    #[test]
+    fn queue_mutation_serializes_save_and_does_not_commit_on_failure() {
+        let id = Uuid::new_v4().to_string();
+        let added = Uuid::new_v4().to_string();
+        let queue = Mutex::new(QueueIndex::default());
+        queue.lock().unwrap().add(id.clone()).unwrap();
+        let before = queue.lock().unwrap().clone();
+        let result = mutate_locked_queue(
+            &queue,
+            |queue| queue.add(added),
+            |_| {
+                assert!(matches!(queue.try_lock(), Err(std::sync::TryLockError::WouldBlock)));
+                Err("의도적인 저장 실패".into())
+            },
+        );
+
+        assert!(result.is_err());
+        assert_eq!(*queue.lock().unwrap(), before);
     }
 
     #[test]
