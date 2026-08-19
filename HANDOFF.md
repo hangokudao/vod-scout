@@ -78,7 +78,7 @@ G1~G8은 이 작업 트리(worktree)에 로컬 통합되어 있다. 이 통합�
 ## 패키지·진입점 결과
 
 - `npm run tauri:build`의 Windows PowerShell 패키지 증거에서 새 FFmpeg 자산 다운로드·SHA-256·media-tools 준비와 release/NSIS 생성은 성공했다. updater 개인키가 없어 서명은 HOLD이며, fresh 격리 앱은 8초 생존 확인 직후 테스트 프로세스를 의도적으로 중단했으므로 정상 종료로 기록하지 않는다.
-- `vod-scout.exe`: 16,270,848 bytes, SHA-256 `d29cbf3f2d55e993ef896ecddcc202b6586e0a335f8cc6692fc51dcca1ac2d2f`, PE ProductVersion/FileVersion `0.5.0`.
+- `vod-scout.exe`: 16,274,944 bytes, SHA-256 `8754dc944d8f685195425bb4d3698c8992225888b2b95e9ed484283b7868cced`, PE ProductVersion/FileVersion `0.5.0`.
 - `VOD Scout_0.5.0_x64-setup.exe`: 595,736,201 bytes, SHA-256 `cd024e2d4523c34f4795c0e3d5bca1f72edca82b89d294033194fa465624ca36`, PE ProductVersion/FileVersion `0.5.0`.
 - fresh `VOD_SCOUT_E2E_DATA_DIR`에서 빌드 앱이 8초 생존했고 `instance.lock`·`queue.json`만 생성됐다. 생존 확인 직후 테스트 프로세스를 의도적으로 중단했으며 정상 종료가 아니다. 실제 설치 파일 설치·설치 후 실행·Windows 화면은 확인하지 않았고, 기존 설치 앱·사용자 데이터는 건드리지 않았다.
 - 고정 FFmpeg asset: `https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-17-13-05/ffmpeg-n8.1.2-44-g7c533d0f86-win64-lgpl-shared-8.1.zip`, archive size 70,837,934 bytes, SHA-256 `681b9ca6d8f9be1e01d8873ad16f8a632f8a22b9653f1044837de6d5979b0fd6`.
