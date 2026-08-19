@@ -5,7 +5,7 @@
 - 현재 브랜치 `codex/v050-validation-fixes`, 시작 HEAD `377937e1e5bbf58eb8420416ed9a29803e9fb57b`; 버전은 `0.5.0`으로 유지했다.
 - 자막 선택 순서·트랙 식별자 보존 Rust 테스트 15개, `npm run build`, `git diff --check`: `PASS`.
 - 고정 yt-dlp `2026.07.04` Windows x64 SHA-256 `52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8`, Deno `2.9.4` Windows x64 SHA-256 `4a2757fe99afc2c62c46500c8221cfa0189ac4bfb7064141875ad9c0f04b60ef`를 task TEMP에서 확인했다. 기존 tracked manifest의 URL·버전·라이선스·SHA-256 값은 변경하지 않았다.
-- 승인 URL `JKYmw9-xMIo`의 no-cancel 앱 E2E는 acquisition 전에 CDP/Tauri IPC 평가에서 실패했다. 기존 HTTP 403 원본 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-evidence-full-225324\e2e-failure-2026-08-19T13-53-48-401Z-21572.json` 및 같은 basename의 `.log`다. 재검증 상한에 따라 E2E를 재시도하지 않았고, 전체 앱 흐름은 외부 YouTube 접근 제한 `BLOCKED`다.
+- 승인 URL `JKYmw9-xMIo`의 no-cancel 제품 E2E는 acquisition 전에 로컬 CDP/Tauri IPC 평가에서 실패했다. 기존 HTTP 403 원본 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-evidence-full-225324\e2e-failure-2026-08-19T13-53-48-401Z-21572.json` 및 같은 basename의 `.log`다. 고정 yt-dlp/Deno control은 HTTP `206`과 한국어 자동 자막 저장에 성공했지만 기존 앱 403은 재현하지 못했으므로 원인은 미확정이며, 제품 경로 403 수정은 검증되지 않았다. 재검증 상한에 따라 E2E를 재시도하지 않았고 앱 흐름 검증은 로컬 E2E 진입 실패로 `BLOCKED`다.
 
 ## v0.5.0 로컬 후보 통합 빌드
 

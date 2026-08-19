@@ -33,7 +33,7 @@
 ### Known issues
 
 - 실제 YouTube/reference-video, GPU, Windows UI, resource/long-run, parallel measurement는 실행하지 않아 `HOLD`다.
-- 승인 URL의 기존 재개 흐름에서 YouTube HTTP 403이 발생했고, 이번 재검증 상한에 따라 같은 E2E는 재시도하지 않았다. 고정 yt-dlp/Deno의 signed URL 범위 요청과 자동 자막 저장 control은 성공했지만 앱 전체 흐름의 403 원인은 외부 YouTube 접근 제한으로 `BLOCKED` 격리한다. 제작자 자막 부재는 `HOLD`나 릴리스 차단 사유가 아니다. G8 GPU 패키지는 `cublas64_11.dll`이 없어 실제 GPU 백엔드 검증이 `BLOCKED`다.
+- 승인 URL의 기존 재개 흐름에서 YouTube HTTP 403이 발생했고, 이번 재검증 상한에 따라 같은 E2E는 재시도하지 않았다. 고정 yt-dlp/Deno의 signed URL 범위 요청과 자동 자막 저장 control은 HTTP `206`으로 성공했지만 기존 앱 403은 재현하지 못했으므로 원인은 미확정이며 제품 경로 403 수정은 검증되지 않았다. 새 ordinary no-cancel 제품 E2E는 acquisition 전 로컬 CDP/Tauri IPC 평가에서 실패해 앱 흐름 검증이 `BLOCKED`다. 제작자 자막 부재는 `HOLD`나 릴리스 차단 사유가 아니다. G8 GPU 패키지는 `cublas64_11.dll`이 없어 실제 GPU 백엔드 검증이 `BLOCKED`다.
 - 로컬 NSIS installer와 핵심 EXE의 크기·SHA-256·PE 버전, fresh 격리 데이터 경로 앱 실행은 `PASS`다. updater 개인키 부재로 `.sig`와 공개 v0.5.0 자산은 `HOLD`다.
 - 자동 검증: npm 49, Rust 127 passed·1 ignored, fixture 6, security 6, archive/media-tool 11 passed. `npm audit`의 개발 의존성 high 1건은 제품 경로 취약점으로 단정하지 않는다.
 
