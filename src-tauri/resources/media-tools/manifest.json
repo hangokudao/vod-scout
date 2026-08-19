@@ -42,9 +42,20 @@
       "archive": "OpenAI-Whisper-LICENSE.txt"
     },
     "ytDlp": {
-      "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.07.04/yt-dlp.exe",
-      "sha256": "52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8",
-      "archive": "yt-dlp-2026.07.04.exe"
+      "url": "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/download/2026.08.18.122307/yt-dlp.exe",
+      "sha256": "652e154bce7170070d0f26415c9a3c35c121f5a7903cb8cde6d31c4577517fb9",
+      "archive": "yt-dlp-nightly-2026.08.18.122307.exe",
+      "repo": "yt-dlp/yt-dlp-nightly-builds",
+      "channel": "nightly",
+      "sourceRepo": "yt-dlp/yt-dlp",
+      "sourceCommit": "5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c",
+      "sourceCommitUrl": "https://github.com/yt-dlp/yt-dlp/commit/5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c",
+      "checksumUrl": "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/download/2026.08.18.122307/SHA2-256SUMS",
+      "checksumSha256": "e53fefb8bcec1b7bdbeaa77f662955528d530d76127ea42037c9fd1e6893c990",
+      "license": "Unlicense",
+      "executableLicenseNotice": "yt-dlp.exe is a GPL-3.0-or-later PyInstaller combined work; yt-dlp source is Unlicense and bundled components are listed in THIRD_PARTY_LICENSES.txt.",
+      "licenseUrl": "https://raw.githubusercontent.com/yt-dlp/yt-dlp/5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c/LICENSE",
+      "licenseSha256": "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c"
     },
     "deno": {
       "url": "https://github.com/denoland/deno/releases/download/v2.9.4/deno-x86_64-pc-windows-msvc.zip",
@@ -52,15 +63,24 @@
       "archive": "deno-x86_64-pc-windows-msvc-v2.9.4.zip"
     },
     "ytDlpLicense": {
-      "url": "https://raw.githubusercontent.com/yt-dlp/yt-dlp/2026.07.04/LICENSE",
+      "url": "https://raw.githubusercontent.com/yt-dlp/yt-dlp/5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c/LICENSE",
       "sha256": "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c",
       "archive": "yt-dlp-LICENSE.txt"
+    },
+    "ytDlpThirdPartyLicenses": {
+      "url": "https://raw.githubusercontent.com/yt-dlp/yt-dlp/5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c/THIRD_PARTY_LICENSES.txt",
+      "sha256": "472aefe951c7db35e1657c1d13fd337140511ed6f2b329205105ad441c5a02b7",
+      "sourceCommit": "5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c",
+      "archive": "yt-dlp-THIRD_PARTY_LICENSES.txt"
     },
     "denoLicense": {
       "url": "https://raw.githubusercontent.com/denoland/deno/v2.9.4/LICENSE.md",
       "sha256": "f62497fffecc0852960c8d3e6934b9db86d16396e9b604072e923892cae3a588",
       "archive": "Deno-LICENSE.md"
     }
+  },
+  "licenseHashes": {
+    "licenses/yt-dlp-THIRD_PARTY_LICENSES.txt": "472aefe951c7db35e1657c1d13fd337140511ed6f2b329205105ad441c5a02b7"
   },
   "runtimeHashes": {
     "deno/deno.exe": "4a2757fe99afc2c62c46500c8221cfa0189ac4bfb7064141875ad9c0f04b60ef",
@@ -113,6 +133,6 @@
     "whisper/parakeet.dll": "6b95a072bdba1bdf1ad252f658c0fce6d21250951a99ef1898fbc737131f76d3",
     "whisper/whisper-cli.exe": "58245314fb73b30fbd0cf0542c5c172e23f02b6eb7cad7b51e792439cf5e1755",
     "whisper/whisper.dll": "b31690c12461517fe9774e61318ab63a69972b948151feed98b913be35f708b6",
-    "yt-dlp/yt-dlp.exe": "52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8"
+    "yt-dlp/yt-dlp.exe": "652e154bce7170070d0f26415c9a3c35c121f5a7903cb8cde6d31c4577517fb9"
   }
 }

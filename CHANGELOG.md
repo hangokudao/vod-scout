@@ -2,6 +2,21 @@
 
 이 문서는 사용자에게 영향을 주는 업데이트를 기록한다. 각 릴리스는 기능 추가뿐 아니라 버그 수정, 보안 수정, 알려진 문제를 함께 적는다.
 
+## Wave 5 official yt-dlp nightly provenance validation - 2026-08-20
+
+### Changed
+
+- `yt-dlp nightly 2026.08.18.122307`을 공식 `yt-dlp/yt-dlp-nightly-builds` release asset으로 고정했다. Windows asset SHA-256은 `652e154bce7170070d0f26415c9a3c35c121f5a7903cb8cde6d31c4577517fb9`이며, source commit `yt-dlp/yt-dlp@5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c`, SHA2-256SUMS, Unlicense와 exact `THIRD_PARTY_LICENSES.txt` URL·SHA-256 provenance를 manifest와 준비 스크립트에 기록했다. Official README 기준 Windows PyInstaller 실행 파일은 `GPL-3.0-or-later` combined work이고 yt-dlp source는 Unlicense이며, 전체 third-party 고지를 동봉한다.
+
+### Validation
+
+- 같은 restricted env·cookies 없음·`youtube:skip=translated_subs`로 nightly 제품 metadata probe를 1회 실행해 exact `298+251`을 확인했다. 이어 같은 transfer argv에 `--test`만 추가한 first-byte control을 1회 실행해 `source.f298.mp4`와 `source.f251.webm` 각 10,241 bytes, Korean automatic caption VTT 10,241 bytes 저장까지 도달했다. `--test`의 잘린 입력을 FFmpeg가 처리하지 못해 전체 rc `1`이 되었지만 first-byte 도달은 `PASS`로 분리했다.
+- `npm.cmd run check:yt-dlp`는 pinned/latest `2026.08.18.122307`, `latestNightlyVerified=true`, binary/checksum/LICENSE/THIRD_PARTY_LICENSES 해시와 source commit을 모두 `PASS`로 보고했다.
+
+### Known issues
+
+- stable `2026.07.04`의 `298+251`은 `ANDR-V` client로 선택되어 첫 media transfer에서 HTTP 403을 냈고, nightly `2026.08.18.122307`은 `android_vr` 제거 후 `visionos` client를 선택해 동일 restricted first-byte control에서 HTTP 403 없이 두 media stream과 Korean automatic-caption bytes에 도달했다. 이 stable ANDR-V → nightly visionos 차이는 first transfer의 확인된 원인·수정이며, 전체 product transfer 완료나 full ordinary YouTube E2E 성공을 뜻하지 않는다. full ordinary YouTube E2E는 `HOLD`다.
+
 ## Wave 4 resource/package validation - 2026-08-20
 
 ### Changed

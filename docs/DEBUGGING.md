@@ -4,6 +4,14 @@
 
 현재 자막 선택 계약은 일반 YouTube VOD의 한국어 자동 자막 우선, 자동 자막이 없거나 사용할 수 없을 때만 제작자 한국어 자막, 두 경로가 없거나 검증할 수 없는 구간은 로컬 Whisper 순서다. 자동 번역·다른 언어·`live_chat`은 제외한다.
 
+## 2026-08-20 · Wave 5 · official yt-dlp nightly provenance와 first-byte control
+
+- 준비·검증: 공식 `yt-dlp/yt-dlp-nightly-builds`의 `2026.08.18.122307` Windows asset, `SHA2-256SUMS`, source commit `yt-dlp/yt-dlp@5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c`, Unlicense와 exact `THIRD_PARTY_LICENSES.txt`를 task TEMP에 보존했다. asset SHA-256 `652e154bce7170070d0f26415c9a3c35c121f5a7903cb8cde6d31c4577517fb9`, checksum file SHA-256 `e53fefb8bcec1b7bdbeaa77f662955528d530d76127ea42037c9fd1e6893c990`, LICENSE SHA-256 `7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c`, THIRD_PARTY_LICENSES SHA-256 `472aefe951c7db35e1657c1d13fd337140511ed6f2b329205105ad441c5a02b7`가 모두 manifest와 일치한다. Official README 기준 Windows PyInstaller 실행 파일은 `GPL-3.0-or-later` combined work이고 yt-dlp source는 Unlicense이며, exact third-party 고지를 동봉한다. `scripts/check-yt-dlp.mjs`는 release/channel/repo/source commit/checksum/LICENSE/THIRD_PARTY_LICENSES, current nightly latest와 번들 파일 해시·버전을 함께 검증한다.
+- nightly metadata probe: 같은 restricted env와 cookies 없음, `youtube:skip=translated_subs`, Deno `2.9.4`로 제품 format probe를 1회 실행해 exact selected IDs `298+251`을 얻었다. 로그에는 `PO Token Providers: none`, `Downloading visionos player API JSON`, web-client의 HTTPS URL 누락과 SABR 강제가 기록됐고 `android_vr`는 nightly default clients에서 제거되어 나타나지 않았다.
+- first-byte control: 동일 transfer argv에 `--test`만 추가해 정확히 1회 실행했다. `source.f298.mp4`와 `source.f251.webm` 각 10,241 bytes 및 Korean automatic caption VTT 10,241 bytes가 저장되어 media first-byte 도달은 `PASS`다. 전체 명령은 `--test`의 잘린 입력을 FFmpeg가 처리하지 못해 `ERROR: Postprocessing: Error opening input files: End of file`, rc `1`로 끝났으므로 overall control은 `HOLD`이며 완성 미디어 성공으로 해석하지 않는다.
+- `npm.cmd run check:yt-dlp` 결과 pinned/latest `2026.08.18.122307`, `latestNightlyVerified=true`, binary/checksum/LICENSE/THIRD_PARTY_LICENSES 해시와 source commit 검증은 `PASS`다.
+- 403 분류: stable `2026.07.04`의 exact `298+251` metadata가 `ANDR-V` client를 선택했고 첫 media transfer에서 HTTP 403이 발생했다. nightly `2026.08.18.122307`은 `android_vr` 제거 후 `visionos` player API를 사용했으며 같은 restricted first-byte control에서 HTTP 403 없이 두 media stream과 Korean automatic-caption bytes에 도달했다. 따라서 stable ANDR-V → nightly visionos가 first transfer의 확인된 원인·수정이다. 이는 전체 product transfer 완료를 증명하지 않으며 full ordinary YouTube E2E는 `HOLD`다. 전체 redacted command·stdout·stderr와 package provenance는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-task-90e0d9d99b07\analysis-report.md` 및 같은 폴더 `logs`에 있다.
+
 ## 2026-08-20 · Wave 4 · 자원·패키지 검증
 
 - 증상: 첫 Linux Node `node scripts/prepare-media-tools.mjs`가 공식 cache를 찾았지만 Windows `tar.exe`가 Linux `/tmp` 경로를 열지 못했다. 전체 오류는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-wave4-20260820\logs\prepare-media-tools-linux-failure.log`다.

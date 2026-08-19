@@ -53,9 +53,20 @@ const artifacts = {
     archive: "OpenAI-Whisper-LICENSE.txt"
   },
   ytDlp: {
-    url: "https://github.com/yt-dlp/yt-dlp/releases/download/2026.07.04/yt-dlp.exe",
-    sha256: "52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8",
-    archive: "yt-dlp-2026.07.04.exe"
+    url: "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/download/2026.08.18.122307/yt-dlp.exe",
+    sha256: "652e154bce7170070d0f26415c9a3c35c121f5a7903cb8cde6d31c4577517fb9",
+    archive: "yt-dlp-nightly-2026.08.18.122307.exe",
+    repo: "yt-dlp/yt-dlp-nightly-builds",
+    channel: "nightly",
+    sourceRepo: "yt-dlp/yt-dlp",
+    sourceCommit: "5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c",
+    sourceCommitUrl: "https://github.com/yt-dlp/yt-dlp/commit/5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c",
+    checksumUrl: "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/download/2026.08.18.122307/SHA2-256SUMS",
+    checksumSha256: "e53fefb8bcec1b7bdbeaa77f662955528d530d76127ea42037c9fd1e6893c990",
+    license: "Unlicense",
+    executableLicenseNotice: "yt-dlp.exe is a GPL-3.0-or-later PyInstaller combined work; yt-dlp source is Unlicense and bundled components are listed in THIRD_PARTY_LICENSES.txt.",
+    licenseUrl: "https://raw.githubusercontent.com/yt-dlp/yt-dlp/5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c/LICENSE",
+    licenseSha256: "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c"
   },
   deno: {
     url: "https://github.com/denoland/deno/releases/download/v2.9.4/deno-x86_64-pc-windows-msvc.zip",
@@ -63,9 +74,15 @@ const artifacts = {
     archive: "deno-x86_64-pc-windows-msvc-v2.9.4.zip"
   },
   ytDlpLicense: {
-    url: "https://raw.githubusercontent.com/yt-dlp/yt-dlp/2026.07.04/LICENSE",
+    url: "https://raw.githubusercontent.com/yt-dlp/yt-dlp/5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c/LICENSE",
     sha256: "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c",
     archive: "yt-dlp-LICENSE.txt"
+  },
+  ytDlpThirdPartyLicenses: {
+    url: "https://raw.githubusercontent.com/yt-dlp/yt-dlp/5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c/THIRD_PARTY_LICENSES.txt",
+    sha256: "472aefe951c7db35e1657c1d13fd337140511ed6f2b329205105ad441c5a02b7",
+    sourceCommit: "5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c",
+    archive: "yt-dlp-THIRD_PARTY_LICENSES.txt"
   },
   denoLicense: {
     url: "https://raw.githubusercontent.com/denoland/deno/v2.9.4/LICENSE.md",
@@ -170,6 +187,7 @@ async function ready() {
       join(resourceRoot, "licenses", "NVIDIA-CUDA-Toolkit.txt"),
       join(resourceRoot, "licenses", "OpenAI-Whisper-MIT.txt"),
       join(resourceRoot, "licenses", "yt-dlp-Unlicense.txt"),
+      join(resourceRoot, "licenses", "yt-dlp-THIRD_PARTY_LICENSES.txt"),
       join(resourceRoot, "licenses", "Deno-MIT.md")
     ];
     const runtimeFiles = await collectRuntimeFiles();
@@ -190,10 +208,28 @@ async function ready() {
       && manifest.artifacts.model.sha256 === artifacts.model.sha256
       && manifest.artifacts.whisperLicense.sha256 === artifacts.whisperLicense.sha256
       && manifest.artifacts.modelLicense.sha256 === artifacts.modelLicense.sha256
+      && manifest.artifacts.ytDlp.url === artifacts.ytDlp.url
+      && manifest.artifacts.ytDlp.repo === artifacts.ytDlp.repo
+      && manifest.artifacts.ytDlp.channel === artifacts.ytDlp.channel
+      && manifest.artifacts.ytDlp.sourceRepo === artifacts.ytDlp.sourceRepo
+      && manifest.artifacts.ytDlp.sourceCommit === artifacts.ytDlp.sourceCommit
+      && manifest.artifacts.ytDlp.sourceCommitUrl === artifacts.ytDlp.sourceCommitUrl
+      && manifest.artifacts.ytDlp.checksumUrl === artifacts.ytDlp.checksumUrl
+      && manifest.artifacts.ytDlp.checksumSha256 === artifacts.ytDlp.checksumSha256
+      && manifest.artifacts.ytDlp.license === artifacts.ytDlp.license
+      && manifest.artifacts.ytDlp.executableLicenseNotice === artifacts.ytDlp.executableLicenseNotice
+      && manifest.artifacts.ytDlp.licenseUrl === artifacts.ytDlp.licenseUrl
+      && manifest.artifacts.ytDlp.licenseSha256 === artifacts.ytDlp.licenseSha256
       && manifest.artifacts.ytDlp.sha256 === artifacts.ytDlp.sha256
       && manifest.artifacts.deno.sha256 === artifacts.deno.sha256
       && manifest.artifacts.ytDlpLicense.sha256 === artifacts.ytDlpLicense.sha256
+      && manifest.artifacts.ytDlpLicense.url === artifacts.ytDlpLicense.url
+      && manifest.artifacts.ytDlpThirdPartyLicenses.url === artifacts.ytDlpThirdPartyLicenses.url
+      && manifest.artifacts.ytDlpThirdPartyLicenses.sha256 === artifacts.ytDlpThirdPartyLicenses.sha256
+      && manifest.artifacts.ytDlpThirdPartyLicenses.sourceCommit === artifacts.ytDlpThirdPartyLicenses.sourceCommit
       && manifest.artifacts.denoLicense.sha256 === artifacts.denoLicense.sha256
+      && manifest.licenseHashes?.["licenses/yt-dlp-THIRD_PARTY_LICENSES.txt"] === artifacts.ytDlpThirdPartyLicenses.sha256
+      && (await sha256(join(resourceRoot, "licenses", "yt-dlp-THIRD_PARTY_LICENSES.txt"))) === artifacts.ytDlpThirdPartyLicenses.sha256
       && runtimeHashesMatch
       && (await Promise.all(required.map(async (path) => (await stat(path)).isFile()))).every(Boolean);
   } catch {
@@ -207,7 +243,7 @@ if (await ready()) {
 }
 
 await mkdir(cacheRoot, { recursive: true });
-const [ffmpegArchive, whisperArchive, whisperGpuArchive, whisperGpuCublasArchive, modelFile, whisperLicense, modelLicense, ytDlpExe, denoArchive, ytDlpLicense, denoLicense] = await Promise.all([
+const [ffmpegArchive, whisperArchive, whisperGpuArchive, whisperGpuCublasArchive, modelFile, whisperLicense, modelLicense, ytDlpExe, denoArchive, ytDlpLicense, ytDlpThirdPartyLicenses, denoLicense] = await Promise.all([
   download(artifacts.ffmpeg),
   download(artifacts.whisper),
   download(artifacts.whisperGpu),
@@ -218,6 +254,7 @@ const [ffmpegArchive, whisperArchive, whisperGpuArchive, whisperGpuCublasArchive
   download(artifacts.ytDlp),
   download(artifacts.deno),
   download(artifacts.ytDlpLicense),
+  download(artifacts.ytDlpThirdPartyLicenses),
   download(artifacts.denoLicense)
 ]);
 
@@ -279,6 +316,7 @@ const normalizedCublasLicense = (await readFile(cublasLicense, "utf8"))
 await writeFile(join(resourceRoot, "licenses", "NVIDIA-CUDA-Toolkit.txt"), normalizedCublasLicense);
 await copyFile(modelLicense, join(resourceRoot, "licenses", "OpenAI-Whisper-MIT.txt"));
 await copyFile(ytDlpLicense, join(resourceRoot, "licenses", "yt-dlp-Unlicense.txt"));
+await copyFile(ytDlpThirdPartyLicenses, join(resourceRoot, "licenses", "yt-dlp-THIRD_PARTY_LICENSES.txt"));
 await copyFile(denoLicense, join(resourceRoot, "licenses", "Deno-MIT.md"));
 
 const runtimeFiles = await collectRuntimeFiles();
@@ -290,6 +328,9 @@ await writeFile(join(resourceRoot, "manifest.json"), JSON.stringify({
   schemaVersion: 6,
   preparedAt: new Date().toISOString(),
   artifacts,
+  licenseHashes: {
+    "licenses/yt-dlp-THIRD_PARTY_LICENSES.txt": await sha256(join(resourceRoot, "licenses", "yt-dlp-THIRD_PARTY_LICENSES.txt"))
+  },
   runtimeHashes
 }, null, 2));
 

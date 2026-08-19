@@ -3,6 +3,7 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 
 const source = await readFile(new URL("./prepare-media-tools.mjs", import.meta.url), "utf8");
+const manifest = JSON.parse(await readFile(new URL("../src-tauri/resources/media-tools/manifest.json", import.meta.url), "utf8"));
 
 test("media preparation pins and prepares the CUDA 11.8 runtime", () => {
   assert.match(source, /autobuild-2026-08-17-13-05\/ffmpeg-n8\.1\.2-44-g7c533d0f86-win64-lgpl-shared-8\.1\.zip/);
@@ -24,4 +25,26 @@ test("GPU executable is required before a runtime manifest is generated", () => 
   assert.match(source, /NVIDIA-CUDA-Toolkit\.txt/);
   assert.match(source, /normalizedCublasLicense/);
   assert.match(source, /schemaVersion: 6/);
+});
+
+test("yt-dlp nightly provenance and checksum remain pinned", () => {
+  const ytDlp = manifest.artifacts.ytDlp;
+  assert.equal(ytDlp.channel, "nightly");
+  assert.equal(ytDlp.repo, "yt-dlp/yt-dlp-nightly-builds");
+  assert.equal(ytDlp.sourceRepo, "yt-dlp/yt-dlp");
+  assert.equal(ytDlp.sourceCommit, "5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c");
+  assert.equal(ytDlp.sha256, "652e154bce7170070d0f26415c9a3c35c121f5a7903cb8cde6d31c4577517fb9");
+  assert.equal(ytDlp.checksumSha256, "e53fefb8bcec1b7bdbeaa77f662955528d530d76127ea42037c9fd1e6893c990");
+  assert.equal(ytDlp.license, "Unlicense");
+  assert.match(ytDlp.executableLicenseNotice, /GPL-3\.0-or-later PyInstaller combined work/);
+  assert.equal(ytDlp.licenseSha256, "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c");
+  assert.equal(manifest.artifacts.ytDlpThirdPartyLicenses.sourceCommit, ytDlp.sourceCommit);
+  assert.equal(manifest.artifacts.ytDlpThirdPartyLicenses.sha256, "472aefe951c7db35e1657c1d13fd337140511ed6f2b329205105ad441c5a02b7");
+  assert.equal(manifest.licenseHashes["licenses/yt-dlp-THIRD_PARTY_LICENSES.txt"], manifest.artifacts.ytDlpThirdPartyLicenses.sha256);
+  assert.equal(manifest.runtimeHashes["yt-dlp/yt-dlp.exe"], ytDlp.sha256);
+  assert.match(source, /yt-dlp-nightly-2026\.08\.18\.122307\.exe/);
+  assert.match(source, /sourceCommit: "5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c"/);
+  assert.match(source, /checksumUrl: "https:\/\/github\.com\/yt-dlp\/yt-dlp-nightly-builds/);
+  assert.match(source, /ytDlpThirdPartyLicenses:[\s\S]*THIRD_PARTY_LICENSES\.txt/);
+  assert.match(source, /licenseHashes/);
 });

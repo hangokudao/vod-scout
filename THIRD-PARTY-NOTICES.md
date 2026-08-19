@@ -4,10 +4,12 @@ VOD Scout 0.3.0은 아래 구성 요소를 YouTube 다운로드와 로컬 분석
 
 ## yt-dlp
 
-- Version: `2026.07.04`, official Windows x64 executable
-- Upstream: https://github.com/yt-dlp/yt-dlp
-- License: Unlicense; 공식 실행 파일에 포함된 제3자 구성 요소는 해당 배포물의 고지를 따름
-- License copy: `media-tools/licenses/yt-dlp-Unlicense.txt`
+- Version: `2026.08.18.122307`, official Windows x64 nightly executable
+- Upstream release: https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/tag/2026.08.18.122307
+- Source commit: https://github.com/yt-dlp/yt-dlp/commit/5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c
+- License: yt-dlp source 자체는 Unlicense다. Official README는 PyInstaller 실행 파일의 combined work를 `GPL-3.0-or-later`로 분류하며, upstream `THIRD_PARTY_LICENSES.txt`에 열거된 구성 요소 고지도 함께 제공해야 한다.
+- GPL notice: Windows `yt-dlp.exe`는 GPL-3.0-or-later combined work로 고지한다. exact upstream 고지에는 `GNU Readline | GPL-3.0-or-later`가 Linux builds only라고 적혀 있고 `mutagen | GPL-2.0-or-later` 등도 포함되므로, 실행 파일을 Unlicense-only라고 부르지 않는다.
+- License copies: `media-tools/licenses/yt-dlp-Unlicense.txt`, `media-tools/licenses/yt-dlp-THIRD_PARTY_LICENSES.txt`
 
 ## Deno
 
