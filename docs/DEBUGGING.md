@@ -2,6 +2,16 @@
 
 실제로 재현하거나 로그로 확인한 문제만 기록한다. 원인이 확정되지 않은 항목은 `HOLD`로 표시한다.
 
+## 2026-08-19 · v0.5.0 validation-fixes · E2E 취소 판정·GPU 패키지
+
+- 증상: 음성 중심 후보의 `chatScore: null`이 검증 도구에서 실패했고, 취소 확인이 화면 문구에 의존했다. 반복 `bootstrap` 조회를 수행하면 제품 복구 경로가 `CANCELLING` 작업을 `INTERRUPTED`로 바꾸어 도구가 취소 완료를 놓쳤다.
+- 재현: 승인된 G8 빌드 앱과 `https://www.youtube.com/watch?v=ZJMpYThMksM&t=2017s`로 실행했다. 수정 전 증거(`C:\Users\myhan\AppData\Local\Temp\vod-scout-evidence-full-225054`)에서 `CANCELLING` 뒤 `INTERRUPTED`와 `recovery`가 확인됐고, 수정 후에는 저장된 `snapshot.json`을 읽어 약 4.8초 뒤 `CANCELLED`를 확인했다.
+- 원인과 수정: 검증 도구가 채팅 점수의 선택 신호를 필수 신호로 취급하고, 상태 확인을 제품의 복구를 유발하는 `bootstrap` 호출로 반복했다. 기본은 숫자형 채팅 점수를 요구하지 않도록 바꾸고 `--require-chat-score`에서만 요구하며, 취소는 작업 폴더의 저장된 스냅샷을 최대 10초 폴링하고 마지막 스냅샷·예외·전체 구조화 로그를 오류 증거로 보존한다. PowerShell 실행기는 `-AppPath`, 스크린샷·증거 경로와 확인된 자식 프로세스 정리를 지원한다.
+- 회귀 테스트: E2E 도구 단위 6개, 관련 Node 스크립트 17개, 프런트 49개, Rust 본체 126 passed·1 ignored, fixture-worker 6개, 보안 6개, 빌드 `PASS`; `git diff --check`도 `PASS`다.
+- 실제 YouTube: 세 URL 모두 제작자 한국어 자막은 없고 한국어 자동 자막은 제공됐다. 자막 시간 범위·중복·공백을 기록했으며, 실제 앱의 시작 단계는 `PASS`다. 전체 취소·재개는 취소 확인까지 `PASS`했지만 재개 뒤 YouTube HTTP 403으로 내려받기가 중단되어 후보·검토·삭제 흐름은 `HOLD`다.
+- GPU: 승인된 G8 패키지의 `ggml-cuda.dll`이 `cublas64_11.dll`을 요구하지만 패키지에 해당 DLL이 없다. 격리된 TEMP 합성 WAV 시험은 CPU fallback과 `no GPU found`를 기록했고 `nvidia-smi`는 GTX 1060 3GB·driver 560.94를 확인했다. 새 외부 GPU 바이너리를 추가하지 않았으므로 패키지 보완과 실제 GPU 검증은 `BLOCKED`다.
+- 증거 보존: WSL checkout 아래에 Windows 경로 문자열로 잘못 생성된 폴더는 커밋하지 않고 실제 TEMP의 `C:\Users\myhan\AppData\Local\Temp\vod-scout-evidence-20260819-initial`로 이동했다. `e2e-failure-2026-08-19T13-48-07-276Z-1176453.json`(1,235 bytes, SHA-256 `cda5188415832671db4c3977907c156206e8bbe2b21e3f0f1a5e7557ad88366f`)과 `.log`(325 bytes, SHA-256 `fdde1c5405025c7e6d6671a0f74b51dfe0597cfa7770196b52521c7306ff797a`)을 보존했다.
+
 ## 2026-08-18 · v0.5.0 G5/G6/G7 통합 회귀
 
 - 증상: 후보 수 변경·정렬·수동 재음성 인식과 여러 영상 대기열을 G1~G7 브랜치 통합 후 한 번에 검증할 필요가 있었다.

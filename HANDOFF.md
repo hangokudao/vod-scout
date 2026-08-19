@@ -1,6 +1,6 @@
 # VOD Scout 인계서
 
-현재 게이트: **v0.5.0 로컬 통합 후보 · G1~G8 로컬 통합 · G8 로컬 NSIS/PE/해시(hash)/빌드 앱 격리 8초 생존 PASS · 실제 설치 파일 설치/Windows 화면/updater 서명/공개 Release HOLD**
+현재 게이트: **v0.5.0 validation-fixes · E2E 도구·자동 검증·G8 앱 취소 확인 PASS · GPU 패키지 보완 BLOCKED · YouTube 전체 흐름/설치 파일 설치/Windows 화면/updater 서명/공개 Release HOLD**
 
 ## 현재 정본
 
@@ -9,10 +9,18 @@
 | origin/main 기준 | `eee71e04776a6179c289167596e9d82d52e94e13` (PR #18 반영) |
 | G8 패키지 증거 원본 | `6ecbd49` |
 | 로컬 통합 병합 | `7c8b336` |
-| 작업 브랜치 | `codex/v050-integration` |
+| 작업 브랜치 | `codex/v050-validation-fixes` |
 | 공개 정본 | v0.4.0 다운로드와 Release 링크는 README에 유지 |
 | 로컬 후보 버전 | `0.5.0` (`package.json`, `package-lock.json`, Cargo manifest/lock, `tauri.conf.json`, release notes) |
 | G7 상태 | 순차 처리 고정, 병렬 옵션 사용 불가. 실제 동일 입력·자원 측정 전까지 노출하지 않음 |
+
+## validation-fixes 결과 (2026-08-19)
+
+- E2E 검증 도구는 `chatScore: null`을 기본 허용하고, 저장된 작업 스냅샷을 최대 10초 확인해 `CANCELLED`를 판정한다. 오류 시 마지막 스냅샷·예외·구조화 로그를 보존하며 PowerShell 실행기는 앱 경로·스크린샷·자식 프로세스 정리를 지원한다.
+- `npm test` 49개, `npm run build`, Rust 본체 126 passed·1 ignored, fixture-worker 6개, 관련 Node 17개, 보안 6개, `git diff --check`는 `PASS`다. 실제 G8 앱은 승인 URL의 시작 단계와 취소 완료를 확인했다.
+- 세 승인 URL은 제작자 자막 없이 한국어 자동 자막을 제공했고 자막 시간 범위 검사는 통과했다. 재개 뒤 YouTube HTTP 403으로 전체 후보·검토·삭제 흐름은 `HOLD`다.
+- G8 GPU 패키지의 `cublas64_11.dll` 누락을 확인했고, 격리 TEMP 합성 WAV에서 GPU가 발견되지 않고 CPU로 대체된 로그를 보존했다. 외부 GPU 바이너리 추가 없이는 패키지 보완과 실제 GPU 검증을 끝낼 수 없어 `BLOCKED`다.
+- 이번 변경은 G8 패키지·설치 파일·모델을 수정하지 않았다.
 
 G1~G8은 이 작업 트리(worktree)에 로컬 통합되어 있다. 이 통합에서 push, PR 생성, remote merge(원격 병합), tag, Release, deploy(배포)는 발생하지 않았고 `main`은 수정하지 않았다.
 
@@ -27,7 +35,7 @@ G1~G8은 이 작업 트리(worktree)에 로컬 통합되어 있다. 이 통합�
 - G7: 측정되지 않은 병렬 실행을 fail-closed하고 순차 전환 이유를 영속화. 구현·자동 테스트는 PASS이나 실제 병렬 안전성·총시간·자원 측정 전에는 기능을 제공하지 않음.
 - G8: `6ecbd49`의 FFmpeg 패키지 증거와 NSIS/PE/해시(hash)/빌드 앱 진입점 결과를 `7c8b336`으로 로컬 통합했다. 로컬 NSIS 생성, PE 버전·크기·SHA-256, fresh 격리 경로의 빌드 앱 8초 생존 확인은 PASS이고 실제 설치 파일 설치·Windows 화면·updater 서명·공개 Release는 HOLD다.
 
-## 자동 검증 (2026-08-18)
+## 자동 검증 (2026-08-18 기준선)
 
 - `npm ci`: PASS.
 - `npm test`: PASS — 49 tests, 3 files.
@@ -62,5 +70,7 @@ G1~G8은 이 작업 트리(worktree)에 로컬 통합되어 있다. 이 통합�
 
 ## 다음 정확한 작업
 
-1. updater 서명 개인키가 승인된 환경에 있을 때만 `.sig` 생성과 release 자산 검증을 진행한다.
-2. 실제 기준 영상·GPU·Windows UI·resource/long-run·parallel 측정이 끝날 때까지 v0.5.0 공개 링크·Release를 만들지 않는다.
+1. 외부 GPU 바이너리 추가가 승인되고 출처·SHA-256·라이선스가 고정될 때만 G8 패키지를 보완한 뒤 실제 GPU 시험을 진행한다.
+2. YouTube HTTP 403이 해소된 승인 입력에서만 전체 후보·검토·삭제 흐름을 재시도한다. 같은 입력에 대한 추가 재시도는 계약 제한으로 하지 않는다.
+3. updater 서명 개인키가 승인된 환경에 있을 때만 `.sig` 생성과 Release 자산 검증을 진행한다.
+4. 실제 기준 영상·Windows UI·resource/long-run·parallel 측정과 위 HOLD/BLOCKED가 끝날 때까지 v0.5.0 공개 링크·Release를 만들지 않는다.

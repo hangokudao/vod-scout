@@ -22,6 +22,7 @@
 - 후보 pool과 화면 목록의 동기화가 후보 수 변경·정렬·수동 재음성 인식 뒤에도 기존 판정을 잃지 않도록 했다.
 - 대기열 저장 실패·복구·실행권·실패 작업의 다음 작업 진행·실행 중 삭제 순서를 닫아 두었다.
 - 404가 된 FFmpeg autobuild 핀을 공식 `autobuild-2026-08-17-13-05` 자산 URL·archive·SHA-256으로 교정했다.
+- 검증 스크립트가 음성 중심 후보의 `chatScore: null`을 실패시키고 화면 문구와 반복 `bootstrap` 조회를 취소 완료로 오인하던 문제를 고쳤다. 저장된 작업 스냅샷 기반 취소 폴링, 선택적 `--require-chat-score`, 오류 증거 보존, 앱 경로·스크린샷·자식 프로세스 정리를 추가했다.
 
 ### Security
 
@@ -31,6 +32,7 @@
 ### Known issues
 
 - 실제 YouTube/reference-video, GPU, Windows UI, resource/long-run, parallel measurement는 실행하지 않아 `HOLD`다.
+- 이번 승인 URL의 실제 앱 전체 흐름은 취소 완료까지 확인했으나 재개 뒤 YouTube HTTP 403으로 내려받기가 중단되어 후보·검토·삭제 흐름은 `HOLD`다. G8 GPU 패키지는 `cublas64_11.dll`이 없어 실제 GPU 백엔드 검증이 `BLOCKED`다.
 - 로컬 NSIS installer와 핵심 EXE의 크기·SHA-256·PE 버전, fresh 격리 데이터 경로 앱 실행은 `PASS`다. updater 개인키 부재로 `.sig`와 공개 v0.5.0 자산은 `HOLD`다.
 - 자동 검증: npm 49, Rust 126 passed·1 ignored, fixture 6, security 6, archive/media-tool 11 passed. `npm audit`의 개발 의존성 high 1건은 제품 경로 취약점으로 단정하지 않는다.
 
