@@ -1,5 +1,12 @@
 # 테스트와 완료 기준
 
+## 2026-08-20 Wave 3 측정 결과
+
+- Production-protocol release no-cancel YouTube E2E: `JKYmw9-xMIo&t=8463s`는 metadata probe와 acquisition 진입 뒤 HTTP 403으로 `BLOCKED`; full command/stderr는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-e0b0c58-20260820\product-yt-dlp-command.txt` 및 `...\data-release-real\jobs\bfb8c79b-181a-4533-b4fd-ef5a0da29b75\tool-logs\yt-dlp.stderr.log`다. Pinned yt-dlp+Deno control의 HTTP 206/자동 한국어 자막 저장과 비교해 원인은 미확정이며 같은 실패를 반복하지 않는다.
+- Release-app product GPU E2E는 `probe-motion-30s.mp4`(30.0 sec, SHA-256 `c20156488327d68e435120a599970ac03bc716aa55d163b57079f1a2dc5b54fc`)에서 GPU checkpoint completion과 non-empty Korean SRT를 확인했다. player-ready 단계 실패로 screenshot/전체 UI 검증은 `HOLD`다.
+- Task-local `cublas64_11.dll` 제거 주입은 strict runtime manifest guard에서 중단되어 CPU fallback에 도달하지 않았다. Automatic GPU→CPU fallback gate는 `HOLD`; evidence는 `...\data-gpu-fault\jobs\d715e4c6-f9da-46a8-afd5-30ae635e69d0\snapshot.json` 및 `...\evidence-gpu-fault\`다.
+- One independent intact-resource attempt with process-only `CUDA_VISIBLE_DEVICES=-1` was run; the app child environment allowlist stripped it, so checkpoint records GPU completion, `cpuFallback.status=PENDING`, and valid non-empty `띄웅` output. Evidence is `...\data-gpu-fallback-env\jobs\996ef279-3c47-4415-8feb-2d3de24b4bce\media-checkpoint.json` and `...\gpu-fallback-env.log`; automatic fallback remains `HOLD` and was not retried.
+
 v0.5.0 G1~G8은 `codex/v050-integration` 작업 트리(worktree)에 로컬 통합되어 있고 구현·자동 검증은 **PASS**다. origin/main 기준은 `eee71e04776a6179c289167596e9d82d52e94e13`(PR #18 반영), G8 패키지 증거 원본은 `6ecbd49`, 로컬 통합 병합은 `7c8b336`이다. 직접 GPU·CPU CLI 음성 인식은 **PASS**이며, 실제 설치 파일 설치·Windows 화면·updater 서명·공개 Release, 자동 GPU→CPU 제품 전환, 실제 YouTube/기준 영상, 자원·장시간·병렬 측정은 **HOLD**다. G7 병렬 옵션은 실제 측정 전까지 사용할 수 없다.
 
 G8 로컬 패키지 증거는 NSIS 생성, PE 버전·크기·SHA-256, fresh 격리 경로의 빌드 앱 8초 생존 확인까지 **PASS**다. 8초 생존 확인 직후 테스트 프로세스를 의도적으로 중단했으며 정상 종료가 아니다. 실제 설치 파일 설치·설치 후 실행·Windows 화면과 updater 서명·공개 Release는 확인하지 않았고, 이 통합에서 push·PR·remote merge(원격 병합)·tag·Release·deploy(배포)는 발생하지 않았으며 `main`은 수정하지 않았다. README의 공개 v0.4.0 다운로드·Release 상태는 유지한다.

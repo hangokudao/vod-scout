@@ -2,6 +2,19 @@
 
 이 문서는 사용자에게 영향을 주는 업데이트를 기록한다. 각 릴리스는 기능 추가뿐 아니라 버그 수정, 보안 수정, 알려진 문제를 함께 적는다.
 
+## Wave 3 validation correction - 2026-08-20
+
+### Fixed
+
+- Production-protocol release build에 `custom-protocol` feature를 명시해 실제 앱 프로토콜로 검증할 수 있게 했다.
+- 실제 whisper.cpp GPU 로그의 `loaded CUDA backend`를 positive CUDA backend evidence로 인정하고 회귀 테스트를 추가했다.
+
+### Known issues
+
+- 첫 valid production-app no-cancel YouTube flow는 metadata probe 성공 뒤 transfer HTTP 403으로 중단됐다. pinned yt-dlp/Deno control은 HTTP 206과 Korean automatic-caption save에 성공했으므로 product 403 원인은 미확정 상태로 유지한다. full command/stderr evidence는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-e0b0c58-20260820\product-yt-dlp-command.txt`와 `...\data-release-real\jobs\bfb8c79b-181a-4533-b4fd-ef5a0da29b75\tool-logs\yt-dlp.stderr.log`다.
+- Release-app GPU checkpoint success는 확인했지만 player-ready 검사 실패로 screenshot과 전체 화면 흐름은 `HOLD`다. task-local missing-cuBLAS injection은 integrity guard에서 중단되어 자동 GPU→CPU fallback 성공은 확인하지 못했다.
+- Intact-resource process-only `CUDA_VISIBLE_DEVICES=-1` fallback 시도는 child command environment allowlist로 변수가 제거되어 GPU 성공으로 끝났다(`cpuFallback=PENDING`). 추가 fallback 시도는 하지 않았고 자동 전환은 `HOLD`다.
+
 ## 0.5.0 local candidate - 2026-08-18
 
 상태: **G1~G7 구현·자동 검증 PASS · G8 NSIS/PE/hash/격리 앱 실행 PASS · 실제 입력/장치/UI/자원·장시간·서명/공개 패키지 HOLD**

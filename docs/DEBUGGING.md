@@ -2,6 +2,15 @@
 
 실제로 재현하거나 로그로 확인한 문제만 기록한다. 원인이 확정되지 않은 항목은 `HOLD`로 표시한다.
 
+## 2026-08-20 · Wave 3 · production-app HTTP 403와 GPU backend evidence
+
+- 재현: production-protocol release unpacked app에서 `JKYmw9-xMIo&t=8463s` no-cancel flow를 한 번 실행해 CDP/Tauri IPC와 acquisition을 통과시켰다. metadata probe는 `ok=true`, exact `298+251`, duration 9590초와 Korean auto-caption을 기록했지만 transfer는 0.5%에서 HTTP 403으로 실패했다. full command reconstruction은 `C:\Users\myhan\AppData\Local\Temp\vod-scout-e0b0c58-20260820\product-yt-dlp-command.txt`, stderr는 `...\data-release-real\jobs\bfb8c79b-181a-4533-b4fd-ef5a0da29b75\tool-logs\yt-dlp.stderr.log`다.
+- 비교: product와 successful pinned yt-dlp `2026.07.04` + Deno `2.9.4` control은 같은 `298+251`, Deno runtime, `skip=translated_subs`, Korean auto-caption selection을 사용했다. control은 signed media range HTTP 206과 auto-caption save에 성공했다. 따라서 product argument/path defect를 확정할 수 없으며 원인은 미확정이다. 추가 YouTube retry나 product 403 fix는 하지 않았다.
+- 수정·회귀: production build feature `custom-protocol = ["tauri/custom-protocol"]`을 추가했고, `loaded CUDA backend`를 실제 backend positive marker로 인정하는 `media.rs` 최소 수정과 회귀 테스트를 적용했다. focused GPU evidence test는 `PASS`다.
+- 제품 GPU: release app checkpoint `C:\Users\myhan\AppData\Local\Temp\vod-scout-e0b0c58-20260820\data-gpu-success-retest\jobs\cc87929e-8980-4c20-a0ee-c3c8016d8dc8\media-checkpoint.json`은 `device=gpu`, `gpu.status=COMPLETED`, `completedGpuUnits=1`, non-empty Korean SRT를 기록했다. E2E 마지막 player-ready에서 실패해 screenshot은 생성되지 않았다.
+- fallback 주입: task-local app copy에서 `whisper-gpu/cublas64_11.dll`만 제거했을 때 strict runtime manifest가 파일 목록 불일치로 분석을 중단했다. `C:\Users\myhan\AppData\Local\Temp\vod-scout-e0b0c58-20260820\data-gpu-fault\jobs\d715e4c6-f9da-46a8-afd5-30ae635e69d0\snapshot.json` 및 `...\evidence-gpu-fault\`가 증거이며, GPU 시도·CPU fallback까지 도달하지 못해 해당 acceptance는 `HOLD`다.
+- 독립 시도: intact verified resources와 process-only `CUDA_VISIBLE_DEVICES=-1`로 한 번 실행했다. 제품 child-process environment allowlist가 해당 변수를 제거해 `whisper-gpu`가 GTX 1060에서 정상 실행됐고 checkpoint는 `gpu.status=COMPLETED`, `cpuFallback.status=PENDING`, non-empty `띄웅` SRT를 기록했다. 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-e0b0c58-20260820\gpu-fallback-env.log`, `...\data-gpu-fallback-env\jobs\996ef279-3c47-4415-8feb-2d3de24b4bce\media-checkpoint.json`, `...\tool-logs\whisper-gpu-0000-00.stderr.log`이며 추가 시도는 하지 않았다.
+
 ## 2026-08-20 · Wave 2 · CUDA cuBLAS 의존성·직접 GPU/CPU 검증
 
 - 재현·원인: whisper.cpp `v1.9.1` 공식 GPU archive SHA-256 `aecdce0e4d4bb758a7c72a31f3f9f19a7b6d861405fd2da743cd86398633c963`의 `ggml-cuda.dll` import에 `cublas64_11.dll`이 있었지만 archive에는 없었다. `cublas64_11.dll`은 `cublasLt64_11.dll`을 import한다. 전체 layout/import는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-wave2-gpu-20260820\dependency-inspection.log`에 보존했다.
@@ -71,7 +80,7 @@
 ## 2026-08-08 · YouTube 후속 재시도의 봇 확인
 
 - 증상: 앞선 성공 뒤 측정 보완을 위한 후속 요청에서 `Sign in to confirm you're not a bot`가 반환됐다.
-- 확인 결과: 당시 응답에 `Sign in to confirm you're not a bot`가 포함됐지만, 이 기록만으로 YouTube의 외부 접근 제한이나 제품 경로의 원인을 확정할 수 없다. exact HEAD의 앞선 전체 성공은 별도로 존재한다.
+- 확인 결과: 당시 응답에 `Sign in to confirm you're not a bot`가 포함됐지만, 이 기록만으로 특정 원인이나 제품 경로의 원인을 확정할 수 없다. exact HEAD의 앞선 전체 성공은 별도로 존재한다.
 - 조치: 로그인 자동화, 쿠키 수집, CAPTCHA 우회 없이 중단했다. 이 응답만을 이유로 장시간 영상을 다시 처리하지 않는다.
 - 상태: 해당 재시도는 중단했으며 원인 미확정 `HOLD`; 제품 경로와 출시 차단 여부는 별도 검증이 필요하다.
 

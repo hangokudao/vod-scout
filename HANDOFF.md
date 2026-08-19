@@ -1,6 +1,15 @@
 # VOD Scout 인계서
 
-현재 게이트: **v0.5.0 validation-fixes · 자막 선택 순서·E2E 도구·자동 검증 PASS · 직접 GPU·CPU 음성 인식 PASS · 자동 GPU→CPU 제품 전환·Windows 화면·설치·updater 서명/공개 Release HOLD · 일반 YouTube 무취소 흐름은 기존 HTTP 403 원인 미확정·제품 경로 수정 미검증·새 E2E 로컬 CDP/Tauri IPC 진입 실패로 BLOCKED**
+현재 게이트: **v0.5.0 validation-fixes · 자막 선택 순서·E2E 도구·자동 검증 PASS · release-app GPU checkpoint PASS · 자동 GPU→CPU 제품 전환·player-ready/screenshot·설치·updater 서명/공개 Release HOLD · 일반 YouTube 무취소 흐름은 product-path HTTP 403 원인 미확정·수정 미검증**
+
+## Wave 3 실제 release-app 검증 (2026-08-20)
+
+- 시작 HEAD는 `1d23c46b844e9d8fb71dd604052a24f2e62242d1`이고 시작·종료 상태를 확인했다. `src-tauri/Cargo.toml`에 `custom-protocol = ["tauri/custom-protocol"]`을 추가해 production-protocol unpacked binary를 만들 수 있게 했고, `src-tauri/src/media.rs`는 실제 `load_backend: loaded CUDA backend` 로그를 GPU 성공 증거로 인정하도록 최소 수정했다.
+- 첫 유효한 production-protocol 무취소 YouTube E2E는 `JKYmw9-xMIo&t=8463s`에서 CDP/Tauri IPC·acquisition까지 도달했지만 HTTP 403으로 실패했다. 원본 snapshot/job/evidence는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-e0b0c58-20260820\data-release-real`, `...\evidence-release-real\e2e-failure-2026-08-19T16-12-41-115Z-23048.json`, 같은 basename `.log`, product command reconstruction은 `...\product-yt-dlp-command.txt`다.
+- 제품 transfer는 고정 yt-dlp `2026.07.04`, Deno `2.9.4`, `298+251`, `skip=translated_subs`, 한국어 자동 자막 옵션을 사용했고 metadata probe는 성공했으나 transfer가 0.5%에서 403으로 실패했다. 같은 핀과 signed-range control은 HTTP 206 및 자동 한국어 자막 저장에 성공했으므로 결정적 제품 인자·경로 결함을 확정할 수 없다. 403 원인은 미확정, 제품 경로 수정·재검증은 `HOLD`다.
+- release-app local GPU E2E 재검증은 `probe-motion-30s.mp4`(30.0초, SHA-256 `c20156488327d68e435120a599970ac03bc716aa55d163b57079f1a2dc5b54fc`)로 checkpoint `device=gpu`, `gpu.status=COMPLETED`, `completedGpuUnits=1`, `whisper.cpp-gpu`, non-empty Korean SRT와 `chatMotion`을 남겼다. 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-e0b0c58-20260820\data-gpu-success-retest\jobs\cc87929e-8980-4c20-a0ee-c3c8016d8dc8`다. 마지막 player-ready 검사 실패로 screenshot은 생성되지 않았고 전체 UI 흐름은 `HOLD`다.
+- task-local `cublas64_11.dll` 장애 주입 package는 무결성 검사에서 파일 목록 불일치로 `FAILED`되어 GPU 시도나 CPU fallback에 도달하지 않았다. 증거는 `...\gpu-fault.log`, `...\evidence-gpu-fault\e2e-failure-2026-08-19T16-24-56-910Z-12060.json`, `...\data-gpu-fault\jobs\d715e4c6-f9da-46a8-afd5-30ae635e69d0\snapshot.json`이다. 따라서 자동 GPU→CPU fallback의 의도된 dependency-failure 조건은 `HOLD`이며 fallback 성공을 주장하지 않는다.
+- intact verified resources에서 process-only `CUDA_VISIBLE_DEVICES=-1`을 한 번 시도했지만 child command environment allowlist가 이를 제거해 GPU가 실제로 실행됐다. checkpoint `...\data-gpu-fallback-env\jobs\996ef279-3c47-4415-8feb-2d3de24b4bce\media-checkpoint.json`은 `gpu.status=COMPLETED`, `cpuFallback.status=PENDING`, non-empty `띄웅` SRT를 남겼고 fallback은 발생하지 않았다. 증거 `...\gpu-fallback-env.log`와 `...\data-gpu-fallback-env\jobs\996ef279-3c47-4415-8feb-2d3de24b4bce\tool-logs\whisper-gpu-0000-00.stderr.log`를 보존했으며 추가 시도는 하지 않는다.
 
 ## 현재 정본
 

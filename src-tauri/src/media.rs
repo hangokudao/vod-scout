@@ -2008,7 +2008,8 @@ fn has_gpu_backend_evidence(stdout: &str, stderr: &str) -> bool {
                 suffix.is_empty() || suffix.chars().all(|character| character.is_ascii_digit())
             })
             && window[2] == "backend"
-    }) || logs.contains("cuda backend in use");
+    }) || logs.contains("cuda backend in use")
+        || logs.contains("loaded cuda backend");
     found_positive_device && using_cuda_backend
 }
 
@@ -4661,6 +4662,10 @@ mod tests {
         assert!(has_gpu_backend_evidence(
             "ggml_cuda_init: found 2 CUDA devices",
             "using CUDA0 backend"
+        ));
+        assert!(has_gpu_backend_evidence(
+            "ggml_cuda_init: found 1 CUDA devices",
+            "load_backend: loaded CUDA backend"
         ));
         assert!(!has_gpu_backend_evidence(
             "ggml_cuda_init: found 0 CUDA device(s)",
