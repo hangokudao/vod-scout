@@ -838,7 +838,7 @@ fn recognition_failure(error: PipelineError, evidence: &str) -> CandidateRecogni
 }
 
 fn recognize_candidate(state: &Arc<AppState>, job_id: &str, candidate_id: &str, run_id: &str) -> Result<CandidateRecognitionOutput, CandidateRecognitionFailure> {
-    let (source_path, candidate, settings) = {
+    let (source_path, candidate, settings, media_duration_seconds) = {
         let guard = state.job.lock().map_err(|_| CandidateRecognitionFailure { reason: "작업 상태 잠금이 손상됐습니다.".into(), evidence: "후보 음성 인식 시작 전 상태 잠금 확인 실패".into() })?;
         let job = guard.as_ref().ok_or_else(|| CandidateRecognitionFailure { reason: "현재 작업이 없습니다.".into(), evidence: "후보 음성 인식 시작 전 현재 작업 확인 실패".into() })?;
         if job.id != job_id || job.status != JobStatus::ReviewReady {
@@ -847,7 +847,7 @@ fn recognize_candidate(state: &Arc<AppState>, job_id: &str, candidate_id: &str, 
         let candidate = job.candidates.iter().find(|candidate| candidate.id == candidate_id).cloned()
             .ok_or_else(|| CandidateRecognitionFailure { reason: "선택한 후보를 찾을 수 없습니다.".into(), evidence: "후보 음성 인식 시작 전 후보 확인 실패".into() })?;
         let source_path = job.acquired_media_path.clone().unwrap_or_else(|| job.source_label.clone());
-        (source_path, candidate, job.whisper.clone())
+        (source_path, candidate, job.whisper.clone(), job.media_duration_seconds)
     };
     let threads = whisper::effective_cpu_threads(&settings, thread::available_parallelism().map(|count| count.get()).unwrap_or(4));
     let mut evidence = format!("요청 장치={:?}; 프로필={:?}; CPU 스레드={threads}; 모델={MODEL_NAME}", settings.device_mode, settings.profile);
@@ -895,7 +895,7 @@ fn recognize_candidate(state: &Arc<AppState>, job_id: &str, candidate_id: &str, 
         evidence.push_str("; 실제 백엔드=whisper.cpp-cpu");
         segments = Some(value);
     }
-    let segments = sanitize_transcript_segments(segments.unwrap_or_default());
+    let segments = sanitize_transcript_segments_with_duration(segments.unwrap_or_default(), media_duration_seconds);
     let raw_result = segments.iter().map(|segment| segment.text.as_str()).collect::<Vec<_>>().join(" ");
     if raw_result.is_empty() {
         evidence.push_str("; 실제 백엔드 결과가 비어 있음");
@@ -1804,9 +1804,9 @@ fn run<R: tauri::Runtime>(
                 .total_cmp(&right.start_seconds)
                 .then_with(|| left.end_seconds.total_cmp(&right.end_seconds))
         });
-        let mut segments = sanitize_transcript_segments(segments);
+        let mut segments = sanitize_transcript_segments_with_duration(segments, Some(checkpoint.duration_seconds));
         checkpoint.segments.append(&mut segments);
-        checkpoint.segments = sanitize_transcript_segments(std::mem::take(&mut checkpoint.segments));
+        checkpoint.segments = sanitize_transcript_segments_with_duration(std::mem::take(&mut checkpoint.segments), Some(checkpoint.duration_seconds));
         checkpoint.energy.append(&mut energy);
         checkpoint.completed_chunks = chunk_index + 1;
         persist_whisper_state(&checkpoint_path, &whisper_budget_path, &checkpoint)?;
@@ -1827,7 +1827,7 @@ fn run<R: tauri::Runtime>(
         )?;
     }
 
-    checkpoint.segments = sanitize_transcript_segments(std::mem::take(&mut checkpoint.segments));
+    checkpoint.segments = sanitize_transcript_segments_with_duration(std::mem::take(&mut checkpoint.segments), Some(checkpoint.duration_seconds));
     checkpoint.schema_version = MEDIA_CHECKPOINT_SCHEMA;
     checkpoint.language = TRANSCRIPTION_LANGUAGE.into();
     checkpoint.ranker_version = RANKER_VERSION.into();
@@ -2778,11 +2778,37 @@ fn transcript_quality_reasons(value: &str) -> Vec<String> {
 }
 
 fn sanitize_transcript_segments(segments: Vec<TranscriptSegment>) -> Vec<TranscriptSegment> {
+    sanitize_transcript_segments_with_duration(segments, None)
+}
+
+fn sanitize_transcript_segments_with_duration(
+    segments: Vec<TranscriptSegment>,
+    media_duration_seconds: Option<f64>,
+) -> Vec<TranscriptSegment> {
     let mut annotated = segments.into_iter().filter(|segment| segment.start_seconds.is_finite() && segment.end_seconds.is_finite() && segment.start_seconds < segment.end_seconds).map(|mut segment| {
         segment.quality_reasons = transcript_quality_reasons(&segment.text);
         segment.quality_status = if segment.quality_reasons.is_empty() { TranscriptQualityStatus::Certain } else { TranscriptQualityStatus::Uncertain };
         segment
     }).collect::<Vec<_>>();
+    if annotated.len() == 1 {
+        let segment = &mut annotated[0];
+        let normalized = normalize_transcript(&segment.text);
+        let compact_char_count = normalized.chars().filter(|character| !character.is_whitespace()).count();
+        let has_hangul = normalized.chars().any(|character| ('가'..='힣').contains(&character));
+        let speech_duration = segment.end_seconds - segment.start_seconds;
+        let speech_coverage = media_duration_seconds
+            .filter(|duration| duration.is_finite() && *duration > 0.0)
+            .map(|duration| speech_duration / duration);
+        let is_sparse_very_short_result = speech_duration <= 2.5
+            && normalized.split_whitespace().count() == 1
+            && compact_char_count <= 2
+            && has_hangul
+            && speech_coverage.is_some_and(|coverage| coverage <= 0.2);
+        if is_sparse_very_short_result {
+            segment.quality_reasons.push("짧고 정보가 적은 음성 인식 결과".into());
+            segment.quality_status = TranscriptQualityStatus::Uncertain;
+        }
+    }
     for index in 0..annotated.len() {
         let normalized = normalize_transcript(&annotated[index].text);
         if normalized.is_empty() || normalized.chars().count() > 12 { continue; }
@@ -2981,7 +3007,7 @@ fn build_candidates(
     energy: &[EnergyPoint],
     chat_motion: &[ChatMotionPoint],
 ) -> Vec<Candidate> {
-    let segments = sanitize_transcript_segments(segments.to_vec());
+    let segments = sanitize_transcript_segments_with_duration(segments.to_vec(), Some(duration));
     let segments = segments.as_slice();
     let range_start = range_start_seconds.clamp(0.0, duration.max(0.0));
     let range_end = range_end_seconds
@@ -4015,6 +4041,61 @@ mod tests {
         for (text, uncertain) in [("아 아 아", true), ("가 가 가 가", true), ("라라라라", true), ("오늘은 정말 재미있는 방송입니다", false)] {
             let segment = sanitize_transcript_segments(vec![TranscriptSegment { start_seconds: 0.0, end_seconds: 2.0, text: text.into(), quality_status: TranscriptQualityStatus::Certain, quality_reasons: Vec::new() }]);
             assert_eq!(segment[0].quality_status == TranscriptQualityStatus::Uncertain, uncertain, "{text}");
+        }
+    }
+
+    #[test]
+    fn masks_sparse_very_short_low_information_results_but_keeps_short_speech() {
+        let hallucination = sanitize_transcript_segments_with_duration(vec![TranscriptSegment {
+            start_seconds: 0.0,
+            end_seconds: 2.0,
+            text: "띄웅".into(),
+            quality_status: TranscriptQualityStatus::Certain,
+            quality_reasons: Vec::new(),
+        }], Some(30.0));
+        assert_eq!(hallucination[0].quality_status, TranscriptQualityStatus::Uncertain);
+        assert!(hallucination[0].quality_reasons.iter().any(|reason| reason.contains("정보가 적은")));
+        assert_eq!(safe_transcript_text(&hallucination[0]), UNCERTAIN_TRANSCRIPT_PLACEHOLDER);
+        assert_eq!(hallucination[0].text, "띄웅");
+        let long_candidate = build_candidates(
+            30.0,
+            0.0,
+            30.0,
+            &hallucination,
+            &[EnergyPoint { start_seconds: 0.0, rms: 0.5 }],
+            &[],
+        );
+        assert_eq!(long_candidate[0].transcript_excerpt, UNCERTAIN_TRANSCRIPT_PLACEHOLDER);
+
+        let short_speech = sanitize_transcript_segments_with_duration(vec![TranscriptSegment {
+            start_seconds: 0.0,
+            end_seconds: 2.0,
+            text: "네, 알겠습니다".into(),
+            quality_status: TranscriptQualityStatus::Certain,
+            quality_reasons: Vec::new(),
+        }], Some(2.0));
+        assert_eq!(short_speech[0].quality_status, TranscriptQualityStatus::Certain);
+        assert_eq!(safe_transcript_text(&short_speech[0]), "네, 알겠습니다");
+        let short_candidate = build_candidates(
+            2.0,
+            0.0,
+            2.0,
+            &short_speech,
+            &[EnergyPoint { start_seconds: 0.0, rms: 0.5 }],
+            &[],
+        );
+        assert_eq!(short_candidate[0].transcript_excerpt, "네, 알겠습니다");
+
+        for text in ["네", "왜", "안녕"] {
+            let one_word_speech = sanitize_transcript_segments_with_duration(vec![TranscriptSegment {
+                start_seconds: 0.0,
+                end_seconds: 2.0,
+                text: text.into(),
+                quality_status: TranscriptQualityStatus::Certain,
+                quality_reasons: Vec::new(),
+            }], Some(2.0));
+            assert_eq!(one_word_speech[0].quality_status, TranscriptQualityStatus::Certain, "{text}");
+            assert_eq!(safe_transcript_text(&one_word_speech[0]), text, "{text}");
         }
     }
 
