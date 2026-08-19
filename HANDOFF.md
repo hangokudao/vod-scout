@@ -2,6 +2,14 @@
 
 현재 게이트: **v0.5.0 validation-fixes · 자막 선택 순서·E2E 도구·자동 검증 PASS · release-app GPU checkpoint PASS · 자동 GPU→CPU 제품 전환·player-ready/screenshot·설치·updater 서명/공개 Release HOLD · 일반 YouTube 무취소 흐름은 product-path HTTP 403 원인 미확정·수정 미검증**
 
+## Wave 4 자원·로컬 패키지 검증 (2026-08-20)
+
+- 기존 YouTube/플레이어/E2E/fallback은 재실행하지 않고 task TEMP `C:\Users\myhan\AppData\Local\Temp\vod-scout-wave4-20260820`에서 승인된 보존 `probe-motion-30s.mp4`(30.0초·3,427,504 bytes·SHA-256 `c20156488327d68e435120a599970ac03bc716aa55d163b57079f1a2dc5b54fc`)만 사용했다.
+- 직접 GPU/CPU는 모두 non-empty SRT를 생성했다. FFmpeg는 elapsed `29.755s`, CPU `0.094s`, peak working set `22,716,416`, peak private `20,803,584`, temp-scope peak `4,393,690`, final job `960,590`, wrapper rc `0`이다. GPU Whisper는 elapsed `2.710s`, CPU `2.438s`, peak working set `273,334,272`, peak private `1,148,428,288`, temp-scope peak `4,395,267`, final job `48`, wrapper rc `0`이며 48-byte SRT SHA-256 `71aca4471d2f8b60f8fee3665378f93851650831ab0334cc05bd516ffac89b64`를 남겼다. CPU Whisper는 elapsed `8.110s`, CPU `14.953s`, peak working set `324,505,600`, peak private `837,447,680`, temp-scope peak `4,396,535`, final job `69`, wrapper rc `0`이며 69-byte SRT SHA-256 `346f8c5f7783d976fce352249764fbbd3a002b1a66dda35746b1e804d1de7bb0`를 남겼다. 세 metric JSON의 `exitCode`는 `null`이고 wrapper 결과 로그가 rc `0`을 증명한다. GPU metric의 `peakGpuBytesObserved=0`은 per-process sample 없음이므로 GPU memory는 `UNAVAILABLE`/`HOLD`; 별도 `nvidia-smi` 1442 MiB는 whole-GPU snapshot이며 app peak이 아니다. 모든 수치는 `MEASURED_NO_THRESHOLD`다.
+- Windows Node의 공식 manifest 핀 재준비와 release runtime manifest schema 6의 51/51 파일·해시 검증은 `PASS`다. Linux Node의 `tar.exe` 경로 실패는 `...\logs\prepare-media-tools-linux-failure.log`에 보존했다.
+- lockfile v3 기준 `npm.cmd ci`(rc 0) 뒤 단일 Windows `npm.cmd run tauri:build`는 NSIS 생성까지 진행했고 전체 rc `1`로 종료했다. NSIS 본문 생성은 `PASS`; updater private key 부재로 signing만 `HOLD`다. `vod-scout.exe`는 16,274,944 bytes/SHA-256 `8754dc944d8f685195425bb4d3698c8992225888b2b95e9ed484283b7868cced`, PE `0.5.0`; NSIS는 595,736,201 bytes/SHA-256 `cd024e2d4523c34f4795c0e3d5bca1f72edca82b89d294033194fa465624ca36`, PE `0.5.0`이다.
+- fresh 격리 데이터 경로 앱은 8초 생존했고 `instance.lock`·`queue.json` 2개를 생성한 뒤 테스트 프로세스를 중단했다(정상 종료 검증 아님). 1~8시간 입력은 승인된 안전한 로컬 증거가 없어 `HOLD`; G7 병렬은 disabled/`HOLD`다. 자동 GPU→CPU fallback은 재실행하지 않았다.
+
 ## Wave 3 실제 release-app 검증 (2026-08-20)
 
 - 시작 HEAD는 `1d23c46b844e9d8fb71dd604052a24f2e62242d1`이고 시작·종료 상태를 확인했다. `src-tauri/Cargo.toml`에 `custom-protocol = ["tauri/custom-protocol"]`을 추가해 production-protocol unpacked binary를 만들 수 있게 했고, `src-tauri/src/media.rs`는 실제 `load_backend: loaded CUDA backend` 로그를 GPU 성공 증거로 인정하도록 최소 수정했다.

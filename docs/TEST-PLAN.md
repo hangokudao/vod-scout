@@ -1,5 +1,11 @@
 # 테스트와 완료 기준
 
+## 2026-08-20 Wave 4 자원·패키지 측정
+
+- 승인된 보존 30초 프로브(`probe-motion-30s.mp4`, SHA-256 `c20156488327d68e435120a599970ac03bc716aa55d163b57079f1a2dc5b54fc`)에서 직접 GPU/CPU를 측정했다. FFmpeg는 elapsed `29.755s`, CPU `0.094s`, WS `22,716,416`, private `20,803,584`, temp peak `4,393,690`, final `960,590`; GPU Whisper는 `2.710s`, `2.438s`, `273,334,272`, `1,148,428,288`, `4,395,267`, `48`; CPU Whisper는 `8.110s`, `14.953s`, `324,505,600`, `837,447,680`, `4,396,535`, `69`(순서: elapsed/CPU/WS/private/temp/final)이며 세 wrapper rc는 `0`이다. 세 JSON exitCode는 `null`; GPU `peakGpuBytesObserved=0`은 per-process sample 없음이므로 GPU memory는 `UNAVAILABLE`/`HOLD`이고, 1442 MiB는 whole-GPU snapshot이다. 모든 수치는 `MEASURED_NO_THRESHOLD`이며 JSON/SRT/log는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-wave4-20260820`에 있다.
+- 공식 manifest 핀 재준비와 release runtime manifest 51/51 파일·해시 검증은 `PASS`다. lockfile v3 `npm.cmd ci` 후 Windows `npm.cmd run tauri:build`는 NSIS 생성까지 성공했지만 signing key 부재로 전체 rc `1`로 종료했으며 NSIS 생성·hash는 `PASS`, signing은 `HOLD`다. fresh 격리 data-dir 앱은 8초 생존 후 의도적으로 종료했다(`PASS`, 정상 종료 아님).
+- 1~8시간 실입력은 승인된 안전한 로컬 증거를 사용할 수 없어 `HOLD`다. G7 병렬은 disabled/`HOLD`다. 기존 YouTube 403·player-ready·screenshot·자동 fallback은 재검증하지 않았다.
+
 ## 2026-08-20 Wave 3 측정 결과
 
 - Production-protocol release no-cancel YouTube E2E: `JKYmw9-xMIo&t=8463s`는 metadata probe와 acquisition 진입 뒤 HTTP 403으로 `BLOCKED`; full command/stderr는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-e0b0c58-20260820\product-yt-dlp-command.txt` 및 `...\data-release-real\jobs\bfb8c79b-181a-4533-b4fd-ef5a0da29b75\tool-logs\yt-dlp.stderr.log`다. Pinned yt-dlp+Deno control의 HTTP 206/자동 한국어 자막 저장과 비교해 원인은 미확정이며 같은 실패를 반복하지 않는다.

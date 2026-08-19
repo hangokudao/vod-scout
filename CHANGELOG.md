@@ -2,6 +2,18 @@
 
 이 문서는 사용자에게 영향을 주는 업데이트를 기록한다. 각 릴리스는 기능 추가뿐 아니라 버그 수정, 보안 수정, 알려진 문제를 함께 적는다.
 
+## Wave 4 resource/package validation - 2026-08-20
+
+### Changed
+
+- 승인된 30초 보존 프로브에서 FFmpeg `29.755s/0.094s/22,716,416/20,803,584/4,393,690/960,590`, GPU Whisper `2.710s/2.438s/273,334,272/1,148,428,288/4,395,267/48`, CPU Whisper `8.110s/14.953s/324,505,600/837,447,680/4,396,535/69`(elapsed/CPU/peak WS/peak private/temp peak/final job), wrapper rc `0`을 수집했다. 임계값은 만들지 않고 `MEASURED_NO_THRESHOLD`로 기록했으며 두 경로 모두 non-empty SRT와 backend 로그를 남겼다. GPU per-process memory는 sample 없음으로 `UNAVAILABLE`/`HOLD`다.
+- 공식 manifest 핀 도구를 Windows Node에서 재준비하고 release runtime manifest의 51개 파일·해시를 재검증했다. Linux Node의 `tar.exe` 경로 실패와 Windows 재준비 성공 로그를 task TEMP에 보존했다.
+- 불완전한 `node_modules`의 `tauri.cmd`를 lockfile v3 기준 `npm.cmd ci`로 task worktree 안에서만 복원했다. 이후 단일 Windows `npm.cmd run tauri:build`가 release·NSIS 생성까지 도달했다.
+
+### Known issues
+
+- NSIS 본문 생성은 `PASS`지만 updater private key가 없어 signing은 `HOLD`다. 1~8시간 실입력은 승인된 안전한 로컬 증거가 없어 `HOLD`이며 G7 병렬은 disabled/`HOLD`다.
+
 ## Wave 3 validation correction - 2026-08-20
 
 ### Fixed

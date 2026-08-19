@@ -2,6 +2,14 @@
 
 실제로 재현하거나 로그로 확인한 문제만 기록한다. 원인이 확정되지 않은 항목은 `HOLD`로 표시한다.
 
+## 2026-08-20 · Wave 4 · 자원·패키지 검증
+
+- 증상: 첫 Linux Node `node scripts/prepare-media-tools.mjs`가 공식 cache를 찾았지만 Windows `tar.exe`가 Linux `/tmp` 경로를 열지 못했다. 전체 오류는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-wave4-20260820\logs\prepare-media-tools-linux-failure.log`다.
+- 원인·조치: 소스/도구 결함이 아닌 실행 환경 경로 차이로 판정했다. Windows Node에서 같은 공식 cache를 사용해 media-tools를 재준비했고 release runtime manifest schema 6의 51개 파일과 해시를 모두 확인했다. tracked 코드·도구 핀은 변경하지 않았다.
+- 증상: lockfile 기준 `node_modules`에 `tauri.js`는 있었지만 Windows `tauri.cmd`가 없어 첫 Windows build가 NSIS 전에 `tauri` 미발견으로 중단됐다. `npm.cmd ci`(rc 0) 후 단일 Windows build retest가 NSIS 본문 생성까지 완료했지만 signing key 부재로 전체 rc `1` 종료했다. NSIS 생성·hash는 `PASS`, signing은 `HOLD`다. 로그는 `...\logs\tauri-build-windows-retest.log`, `...\logs\tauri-build-after-ci.log`다.
+- 패키지 결과: `vod-scout.exe` 16,274,944 bytes/SHA-256 `8754dc944d8f685195425bb4d3698c8992225888b2b95e9ed484283b7868cced`, app/installer PE version `0.5.0`; `VOD Scout_0.5.0_x64-setup.exe` 595,736,201 bytes/SHA-256 `cd024e2d4523c34f4795c0e3d5bca1f72edca82b89d294033194fa465624ca36`다.
+- 자원 결과: FFmpeg `29.755s/0.094s/22,716,416/20,803,584/4,393,690/960,590`, GPU Whisper `2.710s/2.438s/273,334,272/1,148,428,288/4,395,267/48`, CPU Whisper `8.110s/14.953s/324,505,600/837,447,680/4,396,535/69`(elapsed/CPU/peak WS/peak private/temp peak/final job), 세 wrapper rc `0`이다. 세 JSON exitCode는 `null`이고 GPU `peakGpuBytesObserved=0`은 per-process sample 없음이므로 GPU memory는 `UNAVAILABLE`/`HOLD`; 1442 MiB는 whole-GPU snapshot이지 app peak이 아니다. 모든 수치는 `MEASURED_NO_THRESHOLD`이며 측정 JSON·backend log·SRT는 `...wave4-20260820\logs`, `...\job-gpu`, `...\job-cpu`다. 1~8시간 입력은 승인된 안전한 증거가 없어 `HOLD`; G7 병렬은 disabled/`HOLD`다.
+
 ## 2026-08-20 · Wave 3 · production-app HTTP 403와 GPU backend evidence
 
 - 재현: production-protocol release unpacked app에서 `JKYmw9-xMIo&t=8463s` no-cancel flow를 한 번 실행해 CDP/Tauri IPC와 acquisition을 통과시켰다. metadata probe는 `ok=true`, exact `298+251`, duration 9590초와 Korean auto-caption을 기록했지만 transfer는 0.5%에서 HTTP 403으로 실패했다. full command reconstruction은 `C:\Users\myhan\AppData\Local\Temp\vod-scout-e0b0c58-20260820\product-yt-dlp-command.txt`, stderr는 `...\data-release-real\jobs\bfb8c79b-181a-4533-b4fd-ef5a0da29b75\tool-logs\yt-dlp.stderr.log`다.
