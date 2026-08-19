@@ -1,5 +1,13 @@
 # VOD Scout 빌드 명세
 
+## 2026-08-20 Wave 5 release-app validation gates
+
+- stable `yt-dlp 2026.07.04`의 `android_vr`/`ANDR-V` client는 exact `298+251` 선택 후 HTTP `403`을 반환했다. official nightly `2026.08.18.122307`은 source commit `yt-dlp/yt-dlp@5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c`, Windows asset SHA-256 `652e154bce7170070d0f26415c9a3c35c121f5a7903cb8cde6d31c4577517fb9`로 고정됐고 `visionos` 경로 first-byte control에서 403 없이 도달했으며 release-app full transfer는 두 job 모두 100%였다. 기술 수정 커밋은 `6aa2bc83c48835082b5f08ee14fab0f9570eb691`이다.
+- ZJ job `6251521b-6749-4415-9bf1-7eac826bae0f` (`ZJMpYThMksM&t=2017s`): download `100%`, `REVIEW_READY`, candidates `20`, `18/18` units, GPU `12/12` completed. Automatic Korean caption provenance: `trackId=Korean`, SHA-256 `d74a0bab2029be6b1d33c27e66031838076b2fe658e13b910c3327e0a3f71562`, `quality=unverified`; unverified intervals used local Whisper.
+- JKY job `c8f80e03-33d7-4c3b-af5f-6f498be31f72` (`JKYmw9-xMIo&t=8463s`): download `100%`, `REVIEW_READY`, candidates `20`, `22/22` units, GPU `16/16` completed. Automatic Korean caption provenance: `trackId=Korean`, SHA-256 `81dff33650b150069a03cd73db2aaf8d8e29682cdf4a80c9366e1b4e64cdb6cc`, `quality=unverified`; unverified intervals used local Whisper.
+- Both release-app attempts then failed the same player-ready check at `scripts/e2e-local-cdp.mjs:279`; screenshots, preview, candidate re-recognition, and complete UI remain `HOLD`/`BLOCKED`. Automatic GPU→CPU fallback was not safely inducible and remains `HOLD`. Evidence: `C:\Users\myhan\AppData\Local\Temp\vod-scout-v050-public-gate-20260820\evidence-zjmp-retry\e2e-failure-2026-08-19T19-24-56-054Z-17056.json`/`.log` and `...\evidence-jky\e2e-failure-2026-08-19T19-39-18-521Z-24076.json`/`.log`.
+- Release build, Rust release, and NSIS body succeeded; the overall `tauri:build` rc `1` is signing-only because `TAURI_SIGNING_PRIVATE_KEY` is absent. Current `vod-scout.exe`: `16,279,040` bytes, SHA-256 `a26e472265e52bd48d02bab6fbee357efa99764dcc56d16f82aa705626fd9fba`, PE `0.5.0`; current NSIS: `595,405,262` bytes, SHA-256 `75d46c747eca1969c46f85160caf4cfb315b6e2485f9d62f54cbde38be1593ff`, PE `0.5.0`. Runtime manifest schema 6 `51/51` runtime + `1/1` license hash, security `6/6`, and `npm audit --omit=dev` 0 vulnerabilities are `PASS`; `cargo-audit` is unavailable/not a project gate. signing/install/public Release are `HOLD`/`BLOCKED`. Windows Sandbox is unavailable; long-run, human content quality, and GPU memory remain `HOLD`; G7 is disabled.
+
 ## 2026-08-20 Wave 4 자원·패키지 검증
 
 - 자막 선택 계약은 일반 YouTube VOD에서 한국어 자동 자막 우선, 자동 자막이 없거나 사용할 수 없을 때만 제작자 한국어 자막, 두 경로가 없거나 검증할 수 없는 구간은 로컬 Whisper 순서다. 자동 번역·다른 언어·`live_chat`은 제외한다.

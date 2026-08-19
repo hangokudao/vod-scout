@@ -2,6 +2,23 @@
 
 이 문서는 사용자에게 영향을 주는 업데이트를 기록한다. 각 릴리스는 기능 추가뿐 아니라 버그 수정, 보안 수정, 알려진 문제를 함께 적는다.
 
+## Wave 5 release-app product validation - 2026-08-20
+
+### Validation
+
+- stable `yt-dlp 2026.07.04`의 `android_vr`/`ANDR-V` client는 exact `298+251`을 선택한 뒤 media transfer에서 HTTP `403`을 반환했다. official nightly `2026.08.18.122307`(source commit `yt-dlp/yt-dlp@5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c`, Windows asset SHA-256 `652e154bce7170070d0f26415c9a3c35c121f5a7903cb8cde6d31c4577517fb9`)은 `android_vr`를 제거하고 `visionos` 경로에서 first-byte control에 403 없이 도달했으며, release-app full transfer는 두 job 모두 100%에 도달했다. 이 first-transfer 원인·수정은 기술 수정 커밋 `6aa2bc83c48835082b5f08ee14fab0f9570eb691`에 고정했다.
+- release-app 실제 ZJ job `6251521b-6749-4415-9bf1-7eac826bae0f`(`ZJMpYThMksM&t=2017s`)는 download `100%`, `REVIEW_READY`, 후보 `20`개, `18/18` units, GPU `12/12` completed를 기록했다. snapshot의 자막 provenance는 `source=automatic`, `language=ko`, `trackId=Korean`, SHA-256 `d74a0bab2029be6b1d33c27e66031838076b2fe658e13b910c3327e0a3f71562`, `quality=unverified`였고 검증할 수 없는 구간에는 local Whisper가 사용됐다.
+- release-app 실제 JKY job `c8f80e03-33d7-4c3b-af5f-6f498be31f72`(`JKYmw9-xMIo&t=8463s`)도 download `100%`, `REVIEW_READY`, 후보 `20`개, `22/22` units, GPU `16/16` completed를 기록했다. snapshot의 자막 provenance는 `source=automatic`, `language=ko`, `trackId=Korean`, SHA-256 `81dff33650b150069a03cd73db2aaf8d8e29682cdf4a80c9366e1b4e64cdb6cc`, `quality=unverified`였고 검증할 수 없는 구간에는 local Whisper가 사용됐다.
+- 두 기존 E2E 시도는 이후 모두 `scripts/e2e-local-cdp.mjs:279`의 같은 player-ready 검사에서 실패했다. 따라서 screenshot·preview·후보 재인식·전체 UI 흐름은 `HOLD`/`BLOCKED`이며, 자동 GPU→CPU 제품 fallback은 안전하게 유발하지 못해 `HOLD`다. 원본 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-v050-public-gate-20260820\evidence-zjmp-retry\e2e-failure-2026-08-19T19-24-56-054Z-17056.json` 및 `.log`, `...\evidence-jky\e2e-failure-2026-08-19T19-39-18-521Z-24076.json` 및 `.log`다.
+
+### Package gate
+
+- release build·Rust release·NSIS 본문 생성은 성공했지만 전체 `tauri:build` rc `1`은 `TAURI_SIGNING_PRIVATE_KEY` 부재로 signing 단계에서 발생했다. `vod-scout.exe`는 `16,279,040` bytes, SHA-256 `a26e472265e52bd48d02bab6fbee357efa99764dcc56d16f82aa705626fd9fba`, PE `0.5.0`; NSIS는 `595,405,262` bytes, SHA-256 `75d46c747eca1969c46f85160caf4cfb315b6e2485f9d62f54cbde38be1593ff`, PE `0.5.0`이다. Runtime manifest schema 6의 `51/51` runtime 및 `1/1` license hash, security `6/6`, `npm audit --omit=dev` 0 vulnerabilities는 `PASS`이며 `cargo-audit`는 unavailable/not project gate다.
+
+### Known issues
+
+- local signing environment와 Windows Sandbox가 없어 설치·updater signature·공개 Release는 `HOLD`/`BLOCKED`다. 1~8시간·사람 기준 내용 품질·GPU memory는 `HOLD`이고 G7 병렬은 disabled다.
+
 ## Wave 5 official yt-dlp nightly provenance validation - 2026-08-20
 
 ### Changed

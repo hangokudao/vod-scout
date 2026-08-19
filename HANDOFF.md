@@ -1,6 +1,14 @@
 # VOD Scout 인계서
 
-현재 게이트: **v0.5.0 validation-fixes · 자막 선택 순서·E2E 도구·자동 검증 PASS · release-app GPU checkpoint PASS · 자동 GPU→CPU 제품 전환·player-ready/screenshot·설치·updater 서명/공개 Release HOLD · 일반 YouTube 무취소 흐름은 product-path HTTP 403 원인 미확정·수정 미검증**
+현재 게이트: **v0.5.0 Wave 5 · stable ANDR-V 403→nightly visionos first-transfer 수정·release-app full transfer/acquisition/analysis PASS · player-ready/screenshot/preview/후보 재인식·자동 GPU→CPU 제품 전환·설치·updater 서명/공개 Release HOLD 또는 BLOCKED · 1~8시간/사람 품질/GPU memory HOLD · G7 disabled**
+
+## Wave 5 release-app 검증 게이트 (2026-08-20)
+
+- stable `yt-dlp 2026.07.04`의 `android_vr`/`ANDR-V` client는 exact `298+251` 선택 후 HTTP `403`을 반환했다. official nightly `2026.08.18.122307`(source commit `yt-dlp/yt-dlp@5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c`, Windows asset SHA-256 `652e154bce7170070d0f26415c9a3c35c121f5a7903cb8cde6d31c4577517fb9`)은 `visionos` 경로 first-byte control에서 403 없이 도달했고 release-app full transfer는 두 job 모두 100%였으며 기술 수정 커밋은 `6aa2bc83c48835082b5f08ee14fab0f9570eb691`이다.
+- ZJ `6251521b-6749-4415-9bf1-7eac826bae0f` (`ZJMpYThMksM&t=2017s`)는 download `100%`, `REVIEW_READY`, 후보 `20`개, `18/18` units, GPU `12/12` completed다. 자동 한국어 caption provenance는 `trackId=Korean`, SHA-256 `d74a0bab2029be6b1d33c27e66031838076b2fe658e13b910c3327e0a3f71562`, `quality=unverified`이며 검증 불가 구간은 local Whisper로 대체됐다.
+- JKY `c8f80e03-33d7-4c3b-af5f-6f498be31f72` (`JKYmw9-xMIo&t=8463s`)도 download `100%`, `REVIEW_READY`, 후보 `20`개, `22/22` units, GPU `16/16` completed다. 자동 한국어 caption provenance는 `trackId=Korean`, SHA-256 `81dff33650b150069a03cd73db2aaf8d8e29682cdf4a80c9366e1b4e64cdb6cc`, `quality=unverified`이며 검증 불가 구간은 local Whisper로 대체됐다.
+- 두 실행은 `scripts/e2e-local-cdp.mjs:279`의 같은 player-ready 검사에서 실패했다. screenshot·preview·후보 재인식·전체 UI는 `HOLD`/`BLOCKED`; 자동 GPU→CPU fallback은 안전하게 유발하지 못해 `HOLD`이며 성공을 주장하지 않는다. 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-v050-public-gate-20260820\evidence-zjmp-retry\e2e-failure-2026-08-19T19-24-56-054Z-17056.json` 및 `.log`, `...\evidence-jky\e2e-failure-2026-08-19T19-39-18-521Z-24076.json` 및 `.log`다.
+- release build/Rust release/NSIS body는 성공했지만 전체 `tauri:build` rc `1`은 `TAURI_SIGNING_PRIVATE_KEY` 부재 때문이다. 현재 EXE는 `16,279,040` bytes / SHA-256 `a26e472265e52bd48d02bab6fbee357efa99764dcc56d16f82aa705626fd9fba`, NSIS는 `595,405,262` bytes / SHA-256 `75d46c747eca1969c46f85160caf4cfb315b6e2485f9d62f54cbde38be1593ff`, PE `0.5.0`; runtime manifest schema 6 `51/51` + license `1/1`, security `6/6`, `npm audit --omit=dev` 0 vulnerabilities이며 `cargo-audit`는 unavailable/not project gate다. signing·설치·공개 Release는 `HOLD`/`BLOCKED`다.
 
 ## Wave 4 자원·로컬 패키지 검증 (2026-08-20)
 
