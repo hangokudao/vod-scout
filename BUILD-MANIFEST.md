@@ -2,6 +2,7 @@
 
 ## 2026-08-20 Wave 4 자원·패키지 검증
 
+- 자막 선택 계약은 일반 YouTube VOD에서 한국어 자동 자막 우선, 자동 자막이 없거나 사용할 수 없을 때만 제작자 한국어 자막, 두 경로가 없거나 검증할 수 없는 구간은 로컬 Whisper 순서다. 자동 번역·다른 언어·`live_chat`은 제외한다.
 - 승인된 보존 `probe-motion-30s.mp4`(30.0초·3,427,504 bytes·SHA-256 `c20156488327d68e435120a599970ac03bc716aa55d163b57079f1a2dc5b54fc`)로 직접 GPU/CPU만 측정했다. FFmpeg: elapsed `29.755s`, CPU `0.094s`, peak WS `22,716,416`, peak private `20,803,584`, temp peak `4,393,690`, final job `960,590`, wrapper rc `0`. GPU Whisper: elapsed `2.710s`, CPU `2.438s`, WS `273,334,272`, private `1,148,428,288`, temp peak `4,395,267`, final `48`, wrapper rc `0`, non-empty SRT SHA-256 `71aca4471d2f8b60f8fee3665378f93851650831ab0334cc05bd516ffac89b64`. CPU Whisper: elapsed `8.110s`, CPU `14.953s`, WS `324,505,600`, private `837,447,680`, temp peak `4,396,535`, final `69`, wrapper rc `0`, non-empty SRT SHA-256 `346f8c5f7783d976fce352249764fbbd3a002b1a66dda35746b1e804d1de7bb0`. 세 JSON의 exitCode는 `null`이며 wrapper 결과 로그가 rc `0`을 증명한다. GPU `peakGpuBytesObserved=0`은 per-process sample 없음이므로 GPU memory는 `UNAVAILABLE`/`HOLD`; `nvidia-smi` 1442 MiB는 whole-GPU snapshot일 뿐 app peak이 아니다. 모든 수치는 `MEASURED_NO_THRESHOLD`다.
 - Windows Node에서 공식 manifest 핀 재준비와 release runtime manifest schema 6의 51/51 파일·해시 검증은 `PASS`다. Linux Node의 Windows `tar.exe` 경로 실패는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-wave4-20260820\logs\prepare-media-tools-linux-failure.log`에 보존했다.
 - lockfile v3 `npm.cmd ci`(rc 0) 뒤 단일 Windows `npm.cmd run tauri:build`는 NSIS 본문 생성까지 성공했지만 signing key 부재로 전체 rc `1`로 종료했다. NSIS 생성·hash는 `PASS`, signing은 `HOLD`다. `vod-scout.exe`: 16,274,944 bytes/SHA-256 `8754dc944d8f685195425bb4d3698c8992225888b2b95e9ed484283b7868cced`, PE ProductVersion/FileVersion `0.5.0`; `VOD Scout_0.5.0_x64-setup.exe`: 595,736,201 bytes/SHA-256 `cd024e2d4523c34f4795c0e3d5bca1f72edca82b89d294033194fa465624ca36`, PE `0.5.0`이다.
@@ -36,7 +37,7 @@
 - G1~G8은 이 작업 트리(worktree)에 로컬 통합되어 있다. 이 통합에서 push, PR 생성, remote merge(원격 병합), tag, Release, deploy(배포)는 발생하지 않았고 `main`은 수정하지 않았다.
 - 버전 정본: `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, `src/releaseNotes.ts`, workflow/helper가 `0.5.0`.
 - `npm ci`: PASS. `npm test`: 49 passed. `npm run build`: PASS (1,793 modules).
-- `cargo.exe test --manifest-path src-tauri/Cargo.toml`: 127 passed, 1 ignored. Fixture worker: 6 passed.
+- `cargo.exe test --manifest-path src-tauri/Cargo.toml`: 128 passed, 1 ignored. Fixture worker: 6 passed.
 - `npm run test:security`: 6 passed. Archive/media-tool/sample-disk tests: 11 passed.
 - `npm run tauri:build` (PowerShell): **NSIS 생성까지 PASS, 서명은 HOLD** — 새 FFmpeg 고정 자산과 media-tools를 준비하고 NSIS를 생성했으며 updater 개인키가 없다. fresh 격리 앱은 8초 생존 확인 직후 테스트 프로세스를 의도적으로 중단했으므로 정상 종료로 기록하지 않는다.
 - `node scripts/generate-release-assets.mjs`: **HOLD** — 공개 Release 자산은 서명 키 부재로 생성하지 않았다.

@@ -35,7 +35,7 @@
 ## validation-fixes 결과 (2026-08-19)
 
 - E2E 검증 도구는 `chatScore: null`을 기본 허용하고, 저장된 작업 스냅샷을 최대 10초 확인해 `CANCELLED`를 판정한다. 오류 시 마지막 스냅샷·예외·구조화 로그를 보존하며 PowerShell 실행기는 앱 경로·스크린샷·자식 프로세스 정리를 지원한다.
-- `npm test` 49개, `npm run build`, Rust 본체 127 passed·1 ignored, fixture-worker 6개, 관련 Node 17개, 보안 6개, `git diff --check`는 `PASS`다. 실제 G8 앱은 승인 URL의 시작 단계와 취소 완료를 확인했다.
+- `npm test` 49개, `npm run build`, Rust 본체 128 passed·1 ignored, fixture-worker 6개, 관련 Node 17개, 보안 6개, `git diff --check`는 `PASS`다. 실제 G8 앱은 승인 URL의 시작 단계와 취소 완료를 확인했다.
 - 세 승인 URL은 일반 VOD의 자동 한국어 자막 우선 대표 입력이며 `language=ko`, 자동 생성 한국어 SRT, 파일 무결성·기본 시간 범위를 확인했다. 제작자 자막 부재는 `HOLD`나 릴리스 차단 사유가 아니며, 제품 snapshot provenance와 Whisper 대체는 별도 `HOLD`다. 겹침·공백 수치는 품질 `PASS`가 아니며 일정한 시간 오프셋과 내용 품질도 `HOLD`다.
 - 자막 증거는 다음과 같다: `JKYmw9-xMIo` — 133570 bytes, SHA-256 `af6aa5d008bbdd36e60f8c07d556da52686cb52be99b660e8e555783b4f510ef`, 2121 cues, start>=end 0, out-of-range 0, reverse 0, adjacent overlaps 1346, exact duplicate groups 0, max positive gap 47.080 sec; `LVZ6hFhlF2k` — 399263 bytes, SHA-256 `24857fa9aee1fd459e040d5939159ca3c0ea45bb69fa0f7ed7925bf5dfcf1efa`, 5832 cues, start>=end 0, out-of-range 0, reverse 0, adjacent overlaps 5364, exact duplicate groups 0, max positive gap 207.361 sec; `ZJMpYThMksM` — 88141 bytes, SHA-256 `64d876c1ff3813bfc2309d1302af60a12618a55ace924843d7a536a4136c6c55`, 1472 cues, start>=end 0, out-of-range 0, reverse 0, adjacent overlaps 880, exact duplicate groups 0, max positive gap 147.040 sec.
 - 실제 앱은 취소 요청 뒤 4779 ms에 `CANCELLED`를 확인했지만 HTTP 403이 검토 화면 전에 발생했다. 기존 앱 403의 원인은 미확정이며 제품 경로 수정은 검증되지 않았고, 화면 캡처와 전체 후보·검토·삭제 흐름은 후속 검증 `HOLD`다. 최종 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-evidence-full-225324\e2e-failure-2026-08-19T13-53-48-401Z-21572.json`과 같은 basename의 `.log`다.
@@ -69,7 +69,7 @@ G1~G8은 이 작업 트리(worktree)에 로컬 통합되어 있다. 이 통합�
 - `npm ci`: PASS.
 - `npm test`: PASS — 49 tests, 3 files.
 - `npm run build`: PASS — TypeScript + Vite, 1,793 modules.
-- `cargo.exe test --manifest-path src-tauri/Cargo.toml`: PASS — 127 passed, 1 ignored.
+- `cargo.exe test --manifest-path src-tauri/Cargo.toml`: PASS — 128 passed, 1 ignored.
 - `cargo.exe test --manifest-path src-tauri/fixture-worker/Cargo.toml`: PASS — 6 passed.
 - `npm run test:security`: PASS — 6 passed.
 - `node --test scripts/archive-safety.test.mjs scripts/prepare-media-tools.test.mjs scripts/sample-disk-usage.test.mjs`: PASS — 11 passed.

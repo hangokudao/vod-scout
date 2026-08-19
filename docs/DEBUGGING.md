@@ -2,6 +2,8 @@
 
 실제로 재현하거나 로그로 확인한 문제만 기록한다. 원인이 확정되지 않은 항목은 `HOLD`로 표시한다.
 
+현재 자막 선택 계약은 일반 YouTube VOD의 한국어 자동 자막 우선, 자동 자막이 없거나 사용할 수 없을 때만 제작자 한국어 자막, 두 경로가 없거나 검증할 수 없는 구간은 로컬 Whisper 순서다. 자동 번역·다른 언어·`live_chat`은 제외한다.
+
 ## 2026-08-20 · Wave 4 · 자원·패키지 검증
 
 - 증상: 첫 Linux Node `node scripts/prepare-media-tools.mjs`가 공식 cache를 찾았지만 Windows `tar.exe`가 Linux `/tmp` 경로를 열지 못했다. 전체 오류는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-wave4-20260820\logs\prepare-media-tools-linux-failure.log`다.
