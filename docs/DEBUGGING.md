@@ -2,6 +2,14 @@
 
 실제로 재현하거나 로그로 확인한 문제만 기록한다. 원인이 확정되지 않은 항목은 `HOLD`로 표시한다.
 
+## 2026-08-20 · Wave 2 · CUDA cuBLAS 의존성·직접 GPU/CPU 검증
+
+- 재현·원인: whisper.cpp `v1.9.1` 공식 GPU archive SHA-256 `aecdce0e4d4bb758a7c72a31f3f9f19a7b6d861405fd2da743cd86398633c963`의 `ggml-cuda.dll` import에 `cublas64_11.dll`이 있었지만 archive에는 없었다. `cublas64_11.dll`은 `cublasLt64_11.dll`을 import한다. 전체 layout/import는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-wave2-gpu-20260820\dependency-inspection.log`에 보존했다.
+- 수정: NVIDIA 공식 CUDA cuBLAS redistributable `11.11.3.6` (`https://developer.download.nvidia.com/compute/cuda/redist/libcublas/windows-x86_64/libcublas-windows-x86_64-11.11.3.6-archive.zip`, archive SHA-256 `67b0934a6359e4ee26fff823c356021589d392c4fd49ca12624f570edc08e2b9`, `CUDA Toolkit`, EULA `https://docs.nvidia.com/cuda/archive/11.8.0/eula/index.html`)에서 두 DLL만 복사하고 archive의 `LICENSE`를 `NVIDIA-CUDA-Toolkit.txt`로 패키징했다. 설치 SHA-256은 `cublas64_11.dll` `8ca516b96b29c2fba2344909a896bc1cd7951f6cd11fe595a8a3929c02cccbed`, `cublasLt64_11.dll` `3d06ca4e4893adb7a153ecd23a540e92817c967312b44646d8c3f91b089196e6`, license notice `17a280713a9cf1930d0f3a946935ca968d9726a64f1a41c9a589a959a673784f`다.
+- 하드웨어·입력: fresh `nvidia-smi`는 NVIDIA GeForce GTX 1060 3GB, driver `560.94`, `3072 MiB`를 보고했다. 입력은 보존 probe `probe.wav`, 2.0 sec, 64078 bytes, SHA-256 `7695bcad887367c33cf9f9bce6bf0d98b4fd1547d1b2f9b392c4d426ef7a33c1`이며 `C:\Users\myhan\AppData\Local\Temp\vod-scout-wave2-gpu-20260820\probe.wav`다.
+- 결과·증거: GPU direct CLI (`threads=4`)는 `found 1 CUDA devices`, GTX 1060, `loaded CUDA backend`, `using CUDA0 backend`, `use gpu = 1`, exit `0`과 non-empty valid SRT를 기록했다. CPU direct CLI (`--no-gpu`, `threads=2`)는 `use gpu = 0`, `no GPU found`, exit `0`과 non-empty valid SRT를 기록했다. 두 SRT는 47 bytes, SHA-256 `74e9f3ff2da6c73ad7d9bb45ee7f1a5be4a7a8cb29c1c2a33920af9be4ed882c`; full logs are `C:\Users\myhan\AppData\Local\Temp\vod-scout-wave2-gpu-20260820\gpu-direct.log` and `cpu-direct.log`.
+- 회귀 테스트: media-tools preparation 2 passed, Whisper settings/profile/retry-gate 5 passed, GPU evidence 1 passed, CPU args 1 passed. 직접 GPU·CPU는 `PASS`; 기존 제품 pipeline 자동 GPU→CPU 전환과 Windows 화면은 진입점 범위 밖이라 `HOLD`다.
+
 ## 2026-08-20 · v0.5.0 validation-fixes · 자막 선택 순서·YouTube HTTP 403
 
 - 증상: 기존 정본은 제작자 한국어 자막을 자동 한국어 자막보다 먼저 선택했고, 승인된 일반 VOD 흐름은 재개 뒤 YouTube HTTP 403으로 검토 화면에 도달하지 못했다.
@@ -63,9 +71,9 @@
 ## 2026-08-08 · YouTube 후속 재시도의 봇 확인
 
 - 증상: 앞선 성공 뒤 측정 보완을 위한 후속 요청에서 `Sign in to confirm you're not a bot`가 반환됐다.
-- 원인: YouTube 측의 일시적 접근 제한이다. 제품 자동·로컬 경로는 정상이고 exact HEAD의 앞선 전체 성공이 별도로 존재한다.
-- 조치: 로그인 자동화, 쿠키 수집, CAPTCHA 우회 없이 중단했다. 이 외부 제한만을 이유로 장시간 영상을 다시 처리하지 않는다.
-- 상태: 알려진 외부 제한. 제품 결함 및 출시 차단으로 분류하지 않음.
+- 확인 결과: 당시 응답에 `Sign in to confirm you're not a bot`가 포함됐지만, 이 기록만으로 YouTube의 외부 접근 제한이나 제품 경로의 원인을 확정할 수 없다. exact HEAD의 앞선 전체 성공은 별도로 존재한다.
+- 조치: 로그인 자동화, 쿠키 수집, CAPTCHA 우회 없이 중단했다. 이 응답만을 이유로 장시간 영상을 다시 처리하지 않는다.
+- 상태: 해당 재시도는 중단했으며 원인 미확정 `HOLD`; 제품 경로와 출시 차단 여부는 별도 검증이 필요하다.
 
 ## 2026-08-06 · v0.4.0 P0 · 비호환 체크포인트 폐기 후 재개 실패
 

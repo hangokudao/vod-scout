@@ -1,6 +1,6 @@
 # VOD Scout 인계서
 
-현재 게이트: **v0.5.0 validation-fixes · 자막 선택 순서·E2E 도구·자동 검증 PASS · GPU 패키지 BLOCKED · 일반 YouTube 무취소 흐름은 기존 HTTP 403 원인 미확정·제품 경로 수정 미검증·새 E2E 로컬 CDP/Tauri IPC 진입 실패로 BLOCKED · 제품 provenance/Whisper 대체/전체 앱 흐름/화면·설치·updater 서명/공개 Release HOLD**
+현재 게이트: **v0.5.0 validation-fixes · 자막 선택 순서·E2E 도구·자동 검증 PASS · 직접 GPU·CPU 음성 인식 PASS · 자동 GPU→CPU 제품 전환·Windows 화면·설치·updater 서명/공개 Release HOLD · 일반 YouTube 무취소 흐름은 기존 HTTP 403 원인 미확정·제품 경로 수정 미검증·새 E2E 로컬 CDP/Tauri IPC 진입 실패로 BLOCKED**
 
 ## 현재 정본
 
@@ -25,12 +25,20 @@
 - G8 GPU 패키지는 `whisper-cli.exe` 489984 bytes/SHA-256 `4bf174113843613cbec146e73e6820a767e54b0e1c736f2c6d7ab16aac4c245d`, `ggml-cuda.dll` 562600960 bytes/SHA-256 `24af2cd89090175beffdf77cd25c176d76f09c4018644915f302d2de64d67631`, `cudart32_110.dll` 467456 bytes/SHA-256 `b8bfc244dd0916ddf7b45e39c101f165a0d9f4846616eaf34336a2c374409408`, `cudart64_110.dll` 526848 bytes/SHA-256 `ba5c2fb526c4ee4bb218ceb3fa5e8bfde89ce474f38711fdcce802549bf9fc6f`이며 `cublas64_11.dll`이 없다. CPU backend 로그는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-evidence-full-225324\gpu-probe\whisper-gpu.log`, valid `probe.srt`는 47 bytes/SHA-256 `5845cd37d6a0bbae0ce13a136d7652d6b5688938ceaf32a6974a20a57a24a97d`다. 외부 GPU 바이너리 추가 없이는 패키지 보완과 실제 GPU 검증을 끝낼 수 없어 `BLOCKED`다.
 - 이번 변경은 G8 패키지·설치 파일·모델을 수정하지 않았다.
 
+## Wave 2 GPU 패키지·실제 음성 인식 결과 (2026-08-20)
+
+- 원인: whisper.cpp v1.9.1 공식 GPU archive에는 `ggml-cuda.dll`이 `cublas64_11.dll`을 import하지만 해당 DLL이 없었다. `cublas64_11.dll`은 `cublasLt64_11.dll`도 import한다. archive layout/import 전체 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-wave2-gpu-20260820\dependency-inspection.log`다.
+- 수정: 공식 NVIDIA CUDA cuBLAS redistributable `11.11.3.6` URL `https://developer.download.nvidia.com/compute/cuda/redist/libcublas/windows-x86_64/libcublas-windows-x86_64-11.11.3.6-archive.zip`, archive SHA-256 `67b0934a6359e4ee26fff823c356021589d392c4fd49ca12624f570edc08e2b9`, license `CUDA Toolkit`, EULA `https://docs.nvidia.com/cuda/archive/11.8.0/eula/index.html`을 고정하고 `cublas64_11.dll`·`cublasLt64_11.dll`만 private `whisper-gpu`에 복사했다. 설치 SHA-256은 각각 `8ca516b96b29c2fba2344909a896bc1cd7951f6cd11fe595a8a3929c02cccbed`, `3d06ca4e4893adb7a153ecd23a540e92817c967312b44646d8c3f91b089196e6`이고 `NVIDIA-CUDA-Toolkit.txt` SHA-256은 `17a280713a9cf1930d0f3a946935ca968d9726a64f1a41c9a589a959a673784f`다.
+- 하드웨어: fresh `nvidia-smi`는 NVIDIA GeForce GTX 1060 3GB, driver `560.94`, `3072 MiB`를 보고했다. 입력은 보존된 2.0초 `probe.wav`, 64078 bytes, SHA-256 `7695bcad887367c33cf9f9bce6bf0d98b4fd1547d1b2f9b392c4d426ef7a33c1`이며 task TEMP `C:\Users\myhan\AppData\Local\Temp\vod-scout-wave2-gpu-20260820\probe.wav`에 복사했다.
+- 결과: GPU direct CLI는 CUDA device/backend marker(`found 1 CUDA devices`, GTX 1060, `using CUDA0 backend`, `use gpu = 1`)와 non-empty valid 2.0초 SRT를 기록해 `PASS`했다. CPU direct CLI는 `--no-gpu`, `use gpu = 0`, `no GPU found`와 non-empty valid SRT를 기록해 `PASS`했다. SRT는 47 bytes, SHA-256 `74e9f3ff2da6c73ad7d9bb45ee7f1a5be4a7a8cb29c1c2a33920af9be4ed882c`이며 GPU/CPU 전체 로그는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-wave2-gpu-20260820\gpu-direct.log`, `cpu-direct.log`다.
+- 설정·회귀: GPU는 threads `4`, CPU는 `--no-gpu`와 threads `2`; Whisper profiles/retry gate 5 tests, GPU evidence 1 test, CPU args 1 test, media-tools preparation 2 tests가 `PASS`다. 기존 제품 pipeline의 GPU 실패를 안전하게 주입해 자동 CPU 전환하는 진입점은 직접 CLI 검증 범위 밖이므로 `HOLD`이며 자동 전환을 주장하지 않는다.
+
 G1~G8은 이 작업 트리(worktree)에 로컬 통합되어 있다. 이 통합에서 push, PR 생성, remote merge(원격 병합), tag, Release, deploy(배포)는 발생하지 않았고 `main`은 수정하지 않았다.
 
 ## G1~G8 구현 결과
 
 - G1: 한국어 자동 자막 우선, 없거나 사용할 수 없을 때 제작자 한국어 자막 대체, 자동 번역·다른 언어·`live_chat` 제외, 원본 시간 검증과 검증 불가 구간의 로컬 Whisper 대체, 자막 provenance 저장. 선택 순서·제외 트랙 테스트와 세 대표 자동 자막 입력은 `PASS`이며 제품 snapshot provenance·Whisper 대체는 `HOLD`.
-- G2: `자동(GPU 우선)`·GPU·CPU 모드와 프로필, GPU 근거 게이트, 실패 청크의 CPU 1회 대체, 재실행 시 상태 보존. G8 GPU 패키지는 `cublas64_11.dll` 누락으로 `BLOCKED`.
+- G2: `자동(GPU 우선)`·GPU·CPU 모드와 프로필, GPU 근거 게이트, 실패 청크의 CPU 1회 대체, 재실행 시 상태 보존. 공식 CUDA cuBLAS 의존성 보강과 직접 GPU·CPU 결과는 `PASS`; 제품 자동 전환·화면은 `HOLD`.
 - G3: 반복·깨진 음성 인식 결과를 품질 경고로 보존하고 표시 결과에서 가리며, 선택 후보만 실행 ID·개정과 함께 다시 음성 인식.
 - G4: FFmpeg·Whisper·채팅·미리보기·UI 단계를 분리한 자원 기록, 경고와 강제 중단 분리, 체크포인트·실패 이유 보존과 자식 종료.
 - G5: 후보 `8/20/30`개와 기본 `20`개, 후보 pool과 화면 목록 동기화, evidence 품질 경고·점수 분리, 개정·기존 판정 보존.
@@ -60,9 +68,9 @@ G1~G8은 이 작업 트리(worktree)에 로컬 통합되어 있다. 이 통합�
 
 ## 문서 상태와 남은 HOLD
 
-- 계획·릴리스·아키텍처·UI·테스트 계약은 현재 G1~G8 로컬 통합과 자동 검증 결과를 가리킨다. 제작자 자막 부재는 릴리스 차단 사유가 아니며, 제품 snapshot provenance, Whisper 대체, GPU, 설치·Windows 화면, 자원·장시간·병렬 측정은 `HOLD` 또는 `BLOCKED`다.
+- 계획·릴리스·아키텍처·UI·테스트 계약은 현재 G1~G8 로컬 통합과 자동 검증 결과를 가리킨다. 제작자 자막 부재는 릴리스 차단 사유가 아니며, 제품 snapshot provenance, Whisper 대체, 자동 GPU→CPU 제품 전환, 설치·Windows 화면, 자원·장시간·병렬 측정은 `HOLD` 또는 `BLOCKED`다. 직접 GPU·CPU CLI는 `PASS`다.
 - 세 SRT의 start/end 범위·역순·중복 그룹·겹침·공백을 기록했지만 겹침·공백을 품질 `PASS`로 판정하지 않았고, 일정한 시간 오프셋·내용 품질·사람 판정은 `HOLD`다.
-- 실제 GPU 백엔드 시험은 패키지의 `cublas64_11.dll` 누락으로 `BLOCKED`이며, CPU fallback probe 로그만 보존했다. HTTP 403 원인과 제품 경로 수정이 미확정이고 새 E2E가 acquisition 전에 실패해 Windows 사용자 화면 흐름과 screen capture도 `HOLD`다.
+- 직접 GPU 백엔드 시험과 CPU 시험은 `PASS`이며, HTTP 403 원인과 제품 경로 수정이 미확정이고 새 E2E가 acquisition 전에 실패해 자동 GPU→CPU 제품 전환·Windows 사용자 화면 흐름과 screen capture도 `HOLD`다.
 - 1~8시간 resource/long-run 및 기존 v0.4.0과의 동일 입력 비교는 실행하지 않았다.
 - G7 병렬 옵션은 사용할 수 없다.
 - 실제 설치 파일 설치·Windows 화면, updater `.sig`, 공개 v0.5.0 URL/Release는 HOLD다. README에는 공개 v0.4.0 다운로드·Release 링크만 남긴다.
@@ -73,7 +81,7 @@ G1~G8은 이 작업 트리(worktree)에 로컬 통합되어 있다. 이 통합�
 
 ## 다음 정확한 작업
 
-1. 외부 GPU 바이너리 추가가 승인되고 출처·SHA-256·라이선스가 고정될 때만 G8 패키지를 보완한 뒤 실제 GPU 시험을 진행한다.
+1. 제품 pipeline에서 GPU 실패 1회 뒤 CPU fallback 1회와 checkpoint 상태를 직접 확인하고, Windows 화면 검증을 마친다.
 2. HTTP 403 원인이 확인되고 E2E 진입이 정상화된 승인 입력에서만 전체 후보·검토·삭제 흐름을 재시도한다. 같은 입력에 대한 추가 재시도는 계약 제한으로 하지 않는다.
 3. updater 서명 개인키가 승인된 환경에 있을 때만 `.sig` 생성과 Release 자산 검증을 진행한다.
 4. 실제 기준 영상·Windows UI·resource/long-run·parallel 측정과 위 HOLD/BLOCKED가 끝날 때까지 v0.5.0 공개 링크·Release를 만들지 않는다.

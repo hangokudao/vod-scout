@@ -1,6 +1,6 @@
 # 테스트와 완료 기준
 
-v0.5.0 G1~G8은 `codex/v050-integration` 작업 트리(worktree)에 로컬 통합되어 있고 구현·자동 검증은 **PASS**다. origin/main 기준은 `eee71e04776a6179c289167596e9d82d52e94e13`(PR #18 반영), G8 패키지 증거 원본은 `6ecbd49`, 로컬 통합 병합은 `7c8b336`이다. 실제 설치 파일 설치·Windows 화면·updater 서명·공개 Release, 실제 YouTube/기준 영상, GPU, 자원·장시간·병렬 측정은 **HOLD**다. G7 병렬 옵션은 실제 측정 전까지 사용할 수 없다.
+v0.5.0 G1~G8은 `codex/v050-integration` 작업 트리(worktree)에 로컬 통합되어 있고 구현·자동 검증은 **PASS**다. origin/main 기준은 `eee71e04776a6179c289167596e9d82d52e94e13`(PR #18 반영), G8 패키지 증거 원본은 `6ecbd49`, 로컬 통합 병합은 `7c8b336`이다. 직접 GPU·CPU CLI 음성 인식은 **PASS**이며, 실제 설치 파일 설치·Windows 화면·updater 서명·공개 Release, 자동 GPU→CPU 제품 전환, 실제 YouTube/기준 영상, 자원·장시간·병렬 측정은 **HOLD**다. G7 병렬 옵션은 실제 측정 전까지 사용할 수 없다.
 
 G8 로컬 패키지 증거는 NSIS 생성, PE 버전·크기·SHA-256, fresh 격리 경로의 빌드 앱 8초 생존 확인까지 **PASS**다. 8초 생존 확인 직후 테스트 프로세스를 의도적으로 중단했으며 정상 종료가 아니다. 실제 설치 파일 설치·설치 후 실행·Windows 화면과 updater 서명·공개 Release는 확인하지 않았고, 이 통합에서 push·PR·remote merge(원격 병합)·tag·Release·deploy(배포)는 발생하지 않았으며 `main`은 수정하지 않았다. README의 공개 v0.4.0 다운로드·Release 상태는 유지한다.
 
@@ -224,7 +224,7 @@ v0.4.0의 기존 YouTube 다운로드·재개·취소 검증은 유지한다. �
 
 ## v0.5.0 품질·작업 대기열 검증
 
-현재 상태: G1~G7 구현·자동 검증 **PASS**. 실제 YouTube 자막 기준 영상, 실제 GPU, 실제 자원·장시간, Windows 사용자 화면 흐름은 **HOLD**다.
+현재 상태: G1~G7 구현·자동 검증과 직접 GPU·CPU CLI 음성 인식은 **PASS**. 실제 YouTube 자막 기준 영상, 자동 GPU→CPU 제품 전환, 실제 자원·장시간, Windows 사용자 화면 흐름은 **HOLD**다.
 
 ### 1. YouTube 자막 확보·검증
 
@@ -238,7 +238,7 @@ v0.4.0의 기존 YouTube 다운로드·재개·취소 검증은 유지한다. �
 
 - `자동(GPU 우선)`·GPU·CPU 모드, `빠르게`·`균형`·`정확하게` 단계, CPU 사용량·스레드 수 제어가 작업 설정과 UI에 저장·복원되는지 확인한다.
 - GPU 백엔드 로드와 시험 음성 인식 결과가 실제로 성공한 뒤에만 GPU PASS로 판정한다. 시험·실행 실패는 실패 청크만 CPU로 한 번 대체한다.
-- CPU 전용·지원 GPU·지원하지 않는 GPU·GPU 메모리 부족·드라이버 오류를 검사하고 장치·모델·단계·처리 시간·전환 상태를 기록한다. 자동 계약은 `PASS`, 실제 GPU와 화면 검증은 `HOLD`다.
+- CPU 전용·지원 GPU·지원하지 않는 GPU·GPU 메모리 부족·드라이버 오류를 검사하고 장치·모델·단계·처리 시간·전환 상태를 기록한다. GTX 1060 3GB direct GPU/CPU와 설정·profile/retry focused tests는 `PASS`였고, 자동 GPU→CPU 제품 전환과 화면 검증은 `HOLD`다. 입력·로그·해시는 `docs/DEBUGGING.md` Wave 2 기록을 따른다.
 
 ### 3. 기존 음성 인식 품질 안전장치와 선택 후보 재음성 인식
 

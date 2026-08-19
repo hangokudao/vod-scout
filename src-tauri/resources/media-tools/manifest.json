@@ -1,6 +1,6 @@
 {
   "schemaVersion": 6,
-  "preparedAt": "2026-08-17T23:06:51.900Z",
+  "preparedAt": "2026-08-19T15:47:38.163Z",
   "artifacts": {
     "ffmpeg": {
       "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-17-13-05/ffmpeg-n8.1.2-44-g7c533d0f86-win64-lgpl-shared-8.1.zip",
@@ -16,6 +16,15 @@
       "url": "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.1/whisper-cublas-11.8.0-bin-x64.zip",
       "sha256": "aecdce0e4d4bb758a7c72a31f3f9f19a7b6d861405fd2da743cd86398633c963",
       "archive": "whisper-cublas-11.8.0-bin-x64-v1.9.1.zip"
+    },
+    "whisperGpuCublas": {
+      "url": "https://developer.download.nvidia.com/compute/cuda/redist/libcublas/windows-x86_64/libcublas-windows-x86_64-11.11.3.6-archive.zip",
+      "version": "11.11.3.6",
+      "license": "CUDA Toolkit",
+      "licenseUrl": "https://docs.nvidia.com/cuda/archive/11.8.0/eula/index.html",
+      "licenseSha256": "17a280713a9cf1930d0f3a946935ca968d9726a64f1a41c9a589a959a673784f",
+      "sha256": "67b0934a6359e4ee26fff823c356021589d392c4fd49ca12624f570edc08e2b9",
+      "archive": "libcublas-windows-x86_64-11.11.3.6-archive.zip"
     },
     "model": {
       "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin?download=true",
@@ -67,6 +76,8 @@
     "ffmpeg/swscale-9.dll": "4f4c5153fc1659500b4cfc0c65b1948c0451f3fa996888593fb888409763e9f5",
     "models/ggml-base.bin": "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
     "whisper-gpu/SDL2.dll": "de23db1694a3c7a4a735e7ecd3d214b2023cc2267922c6c35d30c7fc7370d677",
+    "whisper-gpu/cublas64_11.dll": "8ca516b96b29c2fba2344909a896bc1cd7951f6cd11fe595a8a3929c02cccbed",
+    "whisper-gpu/cublasLt64_11.dll": "3d06ca4e4893adb7a153ecd23a540e92817c967312b44646d8c3f91b089196e6",
     "whisper-gpu/cudart32_110.dll": "b8bfc244dd0916ddf7b45e39c101f165a0d9f4846616eaf34336a2c374409408",
     "whisper-gpu/cudart64_110.dll": "ba5c2fb526c4ee4bb218ceb3fa5e8bfde89ce474f38711fdcce802549bf9fc6f",
     "whisper-gpu/cuinj64_118.dll": "b97f3becdfa7d5652b456377ced74766f5e21cb52d2d6edac5bc6114d786f040",

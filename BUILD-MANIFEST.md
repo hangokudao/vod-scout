@@ -6,6 +6,10 @@
 - 자막 선택 순서·트랙 식별자 보존 Rust 테스트 15개, `npm run build`, `git diff --check`: `PASS`.
 - 고정 yt-dlp `2026.07.04` Windows x64 SHA-256 `52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8`, Deno `2.9.4` Windows x64 SHA-256 `4a2757fe99afc2c62c46500c8221cfa0189ac4bfb7064141875ad9c0f04b60ef`를 task TEMP에서 확인했다. 기존 tracked manifest의 URL·버전·라이선스·SHA-256 값은 변경하지 않았다.
 - 승인 URL `JKYmw9-xMIo`의 no-cancel 제품 E2E는 acquisition 전에 로컬 CDP/Tauri IPC 평가에서 실패했다. 기존 HTTP 403 원본 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-evidence-full-225324\e2e-failure-2026-08-19T13-53-48-401Z-21572.json` 및 같은 basename의 `.log`다. 고정 yt-dlp/Deno control은 HTTP `206`과 한국어 자동 자막 저장에 성공했지만 기존 앱 403은 재현하지 못했으므로 원인은 미확정이며, 제품 경로 403 수정은 검증되지 않았다. 재검증 상한에 따라 E2E를 재시도하지 않았고 앱 흐름 검증은 로컬 E2E 진입 실패로 `BLOCKED`다.
+- Wave 2에서 whisper.cpp `v1.9.1` 공식 GPU archive layout을 확인했다. `ggml-cuda.dll`의 정적 import에 `cublas64_11.dll`이 있었고 archive에는 없었으며, `cublas64_11.dll`은 `cublasLt64_11.dll`을 추가로 import한다. 상세 archive/import 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-wave2-gpu-20260820\dependency-inspection.log`다.
+- 공식 NVIDIA CUDA cuBLAS redistributable `11.11.3.6`을 추가로 고정했다: `https://developer.download.nvidia.com/compute/cuda/redist/libcublas/windows-x86_64/libcublas-windows-x86_64-11.11.3.6-archive.zip`, archive SHA-256 `67b0934a6359e4ee26fff823c356021589d392c4fd49ca12624f570edc08e2b9`, license `CUDA Toolkit`, EULA `https://docs.nvidia.com/cuda/archive/11.8.0/eula/index.html`. 설치 파일 SHA-256은 `cublas64_11.dll` `8ca516b96b29c2fba2344909a896bc1cd7951f6cd11fe595a8a3929c02cccbed`, `cublasLt64_11.dll` `3d06ca4e4893adb7a153ecd23a540e92817c967312b44646d8c3f91b089196e6`; notice `src-tauri/resources/media-tools/licenses/NVIDIA-CUDA-Toolkit.txt` SHA-256은 `17a280713a9cf1930d0f3a946935ca968d9726a64f1a41c9a589a959a673784f`다.
+- 새 패키지의 직접 CLI 검증은 GTX 1060 3GB, driver `560.94`, VRAM `3072 MiB`에서 같은 2.0초·64078-byte WAV (`7695bcad887367c33cf9f9bce6bf0d98b4fd1547d1b2f9b392c4d426ef7a33c1`)로 GPU `PASS`(`use gpu=1`, CUDA0 backend, non-empty SRT 47 bytes/SHA-256 `74e9f3ff2da6c73ad7d9bb45ee7f1a5be4a7a8cb29c1c2a33920af9be4ed882c`)와 CPU `PASS`(`--no-gpu`, `use gpu=0`, non-empty SRT)을 확인했다. 전체 GPU→CPU 제품 전환은 직접 CLI 범위 밖이라 `HOLD`다. 전체 로그는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-wave2-gpu-20260820\gpu-direct.log`와 `cpu-direct.log`다.
+- Wave 2 focused tests: media-tools preparation 2 passed, Whisper settings/profile/retry-gate 5 passed, GPU evidence 1 passed, CPU args 1 passed, Windows `node scripts/prepare-media-tools.mjs` reported `media tools already prepared`, 최종 문서·스크립트 확정 후 `git diff --check`는 `PASS`다.
 
 ## v0.5.0 로컬 후보 통합 빌드
 
@@ -23,7 +27,7 @@
 - `vod-scout.exe`: 16,270,848 bytes · SHA-256 `d29cbf3f2d55e993ef896ecddcc202b6586e0a335f8cc6692fc51dcca1ac2d2f` · PE ProductVersion/FileVersion `0.5.0`.
 - `VOD Scout_0.5.0_x64-setup.exe`: 337,435,060 bytes · SHA-256 `2e8cddd19cb756951b58b8937c3171e4a9029cd7de78136bdcd04d745971d0f8` · PE ProductVersion/FileVersion `0.5.0`.
 - fresh `VOD_SCOUT_E2E_DATA_DIR`: **PASS** — 빌드 앱이 8초 생존했고, 확인 직후 테스트 프로세스를 의도적으로 중단했다(정상 종료 아님). 격리 폴더에 `instance.lock`·`queue.json` 2개가 생성됐으며 실제 설치 파일 설치·설치 후 실행·Windows 화면은 확인하지 않았다. 기존 설치 앱·사용자 데이터는 변경하지 않았다.
-- 실제 설치 파일 설치·설치 후 실행, Windows 화면, updater 서명, 공개 v0.5.0 Release 자산, YouTube/reference-video, GPU, 자원·장시간·병렬 측정: **HOLD**.
+- 실제 설치 파일 설치·설치 후 실행, Windows 화면, updater 서명, 공개 v0.5.0 Release 자산, YouTube/reference-video, 자동 GPU→CPU 제품 전환, 자원·장시간·병렬 측정: **HOLD**. 직접 GPU·CPU CLI 음성 인식은 아래 Wave 2 증거로 `PASS`다.
 - G7 병렬 옵션: 같은 입력의 자원 측정을 통과하기 전까지 **사용할 수 없음**.
 
 정확한 FFmpeg asset: `https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-17-13-05/ffmpeg-n8.1.2-44-g7c533d0f86-win64-lgpl-shared-8.1.zip` · size 70,837,934 bytes · SHA-256 `681b9ca6d8f9be1e01d8873ad16f8a632f8a22b9653f1044837de6d5979b0fd6`.
@@ -267,7 +271,7 @@ runtime manifest schema 5는 FFmpeg·Whisper의 EXE/DLL, yt-dlp, Deno, 모델을
 - yt-dlp `2026.07.04`, 빌드 고정본·현재 latest stable 일치 및 YouTube metadata probe PASS
 - Deno `2.9.4`, Windows x64
 - FFmpeg `n8.1.2-34-g9b6c8969e0-20260801`, Windows x64 LGPL shared
-- whisper.cpp `v1.9.1`, CPU x64, multilingual Whisper `base`
+- whisper.cpp `v1.9.1`, CPU/GPU x64, multilingual Whisper `base`; NVIDIA CUDA cuBLAS redistributable `11.11.3.6`의 `cublas64_11.dll`·`cublasLt64_11.dll`을 private `whisper-gpu`에 포함
 - 원본 URL·다운로드 SHA-256·runtime SHA-256: `src-tauri/resources/media-tools/manifest.json`
 - Apache-2.0 프로젝트 라이선스와 외부 구성요소 라이선스 사본 포함
 

@@ -28,6 +28,15 @@ const artifacts = {
     sha256: "aecdce0e4d4bb758a7c72a31f3f9f19a7b6d861405fd2da743cd86398633c963",
     archive: "whisper-cublas-11.8.0-bin-x64-v1.9.1.zip"
   },
+  whisperGpuCublas: {
+    url: "https://developer.download.nvidia.com/compute/cuda/redist/libcublas/windows-x86_64/libcublas-windows-x86_64-11.11.3.6-archive.zip",
+    version: "11.11.3.6",
+    license: "CUDA Toolkit",
+    licenseUrl: "https://docs.nvidia.com/cuda/archive/11.8.0/eula/index.html",
+    licenseSha256: "17a280713a9cf1930d0f3a946935ca968d9726a64f1a41c9a589a959a673784f",
+    sha256: "67b0934a6359e4ee26fff823c356021589d392c4fd49ca12624f570edc08e2b9",
+    archive: "libcublas-windows-x86_64-11.11.3.6-archive.zip"
+  },
   model: {
     url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin?download=true",
     sha256: "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
@@ -151,11 +160,14 @@ async function ready() {
       join(resourceRoot, "ffmpeg", "ffprobe.exe"),
       join(resourceRoot, "whisper", "whisper-cli.exe"),
       join(resourceRoot, "whisper-gpu", "whisper-cli.exe"),
+      join(resourceRoot, "whisper-gpu", "cublas64_11.dll"),
+      join(resourceRoot, "whisper-gpu", "cublasLt64_11.dll"),
       join(resourceRoot, "models", "ggml-base.bin"),
       join(resourceRoot, "yt-dlp", "yt-dlp.exe"),
       join(resourceRoot, "deno", "deno.exe"),
       join(resourceRoot, "licenses", "FFmpeg-LGPL-3.0.txt"),
       join(resourceRoot, "licenses", "whisper.cpp-MIT.txt"),
+      join(resourceRoot, "licenses", "NVIDIA-CUDA-Toolkit.txt"),
       join(resourceRoot, "licenses", "OpenAI-Whisper-MIT.txt"),
       join(resourceRoot, "licenses", "yt-dlp-Unlicense.txt"),
       join(resourceRoot, "licenses", "Deno-MIT.md")
@@ -169,6 +181,12 @@ async function ready() {
       && manifest.artifacts.whisper.sha256 === artifacts.whisper.sha256
       && manifest.artifacts.whisperGpu.url === artifacts.whisperGpu.url
       && manifest.artifacts.whisperGpu.sha256 === artifacts.whisperGpu.sha256
+      && manifest.artifacts.whisperGpuCublas.url === artifacts.whisperGpuCublas.url
+      && manifest.artifacts.whisperGpuCublas.version === artifacts.whisperGpuCublas.version
+      && manifest.artifacts.whisperGpuCublas.license === artifacts.whisperGpuCublas.license
+      && manifest.artifacts.whisperGpuCublas.licenseUrl === artifacts.whisperGpuCublas.licenseUrl
+      && manifest.artifacts.whisperGpuCublas.licenseSha256 === artifacts.whisperGpuCublas.licenseSha256
+      && manifest.artifacts.whisperGpuCublas.sha256 === artifacts.whisperGpuCublas.sha256
       && manifest.artifacts.model.sha256 === artifacts.model.sha256
       && manifest.artifacts.whisperLicense.sha256 === artifacts.whisperLicense.sha256
       && manifest.artifacts.modelLicense.sha256 === artifacts.modelLicense.sha256
@@ -189,10 +207,11 @@ if (await ready()) {
 }
 
 await mkdir(cacheRoot, { recursive: true });
-const [ffmpegArchive, whisperArchive, whisperGpuArchive, modelFile, whisperLicense, modelLicense, ytDlpExe, denoArchive, ytDlpLicense, denoLicense] = await Promise.all([
+const [ffmpegArchive, whisperArchive, whisperGpuArchive, whisperGpuCublasArchive, modelFile, whisperLicense, modelLicense, ytDlpExe, denoArchive, ytDlpLicense, denoLicense] = await Promise.all([
   download(artifacts.ffmpeg),
   download(artifacts.whisper),
   download(artifacts.whisperGpu),
+  download(artifacts.whisperGpuCublas),
   download(artifacts.model),
   download(artifacts.whisperLicense),
   download(artifacts.modelLicense),
@@ -206,10 +225,12 @@ const staging = join(cacheRoot, "staging");
 const ffmpegExtracted = join(staging, "ffmpeg");
 const whisperExtracted = join(staging, "whisper");
 const whisperGpuExtracted = join(staging, "whisper-gpu");
+const whisperGpuCublasExtracted = join(staging, "whisper-gpu-cublas");
 const denoExtracted = join(staging, "deno");
 await extractZip(ffmpegArchive, ffmpegExtracted);
 await extractZip(whisperArchive, whisperExtracted);
 await extractZip(whisperGpuArchive, whisperGpuExtracted);
+await extractZip(whisperGpuCublasArchive, whisperGpuCublasExtracted);
 await extractZip(denoArchive, denoExtracted);
 
 const ffmpegExe = await findFile(ffmpegExtracted, "ffmpeg.exe");
@@ -217,8 +238,11 @@ const ffprobeExe = await findFile(ffmpegExtracted, "ffprobe.exe");
 const ffmpegLicense = await findFile(ffmpegExtracted, "LICENSE.txt");
 const whisperExe = await findFile(whisperExtracted, "whisper-cli.exe");
 const whisperGpuExe = await findFile(whisperGpuExtracted, "whisper-cli.exe");
+const cublasDll = await findFile(whisperGpuCublasExtracted, "cublas64_11.dll");
+const cublasLtDll = await findFile(whisperGpuCublasExtracted, "cublasLt64_11.dll");
+const cublasLicense = await findFile(whisperGpuCublasExtracted, "LICENSE");
 const denoExe = await findFile(denoExtracted, "deno.exe");
-if (!ffmpegExe || !ffprobeExe || !ffmpegLicense || !whisperExe || !whisperGpuExe || !denoExe) {
+if (!ffmpegExe || !ffprobeExe || !ffmpegLicense || !whisperExe || !whisperGpuExe || !cublasDll || !cublasLtDll || !cublasLicense || !denoExe) {
   throw new Error("압축 파일에서 필요한 실행 파일을 찾지 못했습니다.");
 }
 
@@ -242,11 +266,17 @@ for (const entry of await readdir(dirname(whisperGpuExe), { withFileTypes: true 
     await copyFile(join(dirname(whisperGpuExe), entry.name), join(resourceRoot, "whisper-gpu", entry.name));
   }
 }
+await copyFile(cublasDll, join(resourceRoot, "whisper-gpu", "cublas64_11.dll"));
+await copyFile(cublasLtDll, join(resourceRoot, "whisper-gpu", "cublasLt64_11.dll"));
 await copyFile(modelFile, join(resourceRoot, "models", "ggml-base.bin"));
 await copyFile(ytDlpExe, join(resourceRoot, "yt-dlp", "yt-dlp.exe"));
 await copyFile(denoExe, join(resourceRoot, "deno", "deno.exe"));
 await copyFile(ffmpegLicense, join(resourceRoot, "licenses", "FFmpeg-LGPL-3.0.txt"));
 await copyFile(whisperLicense, join(resourceRoot, "licenses", "whisper.cpp-MIT.txt"));
+const normalizedCublasLicense = (await readFile(cublasLicense, "utf8"))
+  .replace(/\r\n/g, "\n")
+  .replace(/[ \t]+$/gm, "");
+await writeFile(join(resourceRoot, "licenses", "NVIDIA-CUDA-Toolkit.txt"), normalizedCublasLicense);
 await copyFile(modelLicense, join(resourceRoot, "licenses", "OpenAI-Whisper-MIT.txt"));
 await copyFile(ytDlpLicense, join(resourceRoot, "licenses", "yt-dlp-Unlicense.txt"));
 await copyFile(denoLicense, join(resourceRoot, "licenses", "Deno-MIT.md"));
