@@ -1,5 +1,12 @@
 # VOD Scout 빌드 명세
 
+## 2026-08-20 validation-fixes 후속 검증
+
+- 현재 브랜치 `codex/v050-validation-fixes`, 시작 HEAD `377937e1e5bbf58eb8420416ed9a29803e9fb57b`; 버전은 `0.5.0`으로 유지했다.
+- 자막 선택 순서·트랙 식별자 보존 Rust 테스트 15개, `npm run build`, `git diff --check`: `PASS`.
+- 고정 yt-dlp `2026.07.04` Windows x64 SHA-256 `52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8`, Deno `2.9.4` Windows x64 SHA-256 `4a2757fe99afc2c62c46500c8221cfa0189ac4bfb7064141875ad9c0f04b60ef`를 task TEMP에서 확인했다. 기존 tracked manifest의 URL·버전·라이선스·SHA-256 값은 변경하지 않았다.
+- 승인 URL `JKYmw9-xMIo`의 no-cancel 앱 E2E는 acquisition 전에 CDP/Tauri IPC 평가에서 실패했다. 기존 HTTP 403 원본 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-evidence-full-225324\e2e-failure-2026-08-19T13-53-48-401Z-21572.json` 및 같은 basename의 `.log`다. 재검증 상한에 따라 E2E를 재시도하지 않았고, 전체 앱 흐름은 외부 YouTube 접근 제한 `BLOCKED`다.
+
 ## v0.5.0 로컬 후보 통합 빌드
 
 상태: **G1~G8 로컬 통합·자동 검증 PASS · 로컬 NSIS/PE/해시(hash)/빌드 앱 격리 8초 생존 PASS · 실제 설치 파일 설치/Windows 화면/updater 서명/공개 자산 HOLD**
@@ -9,7 +16,7 @@
 - G1~G8은 이 작업 트리(worktree)에 로컬 통합되어 있다. 이 통합에서 push, PR 생성, remote merge(원격 병합), tag, Release, deploy(배포)는 발생하지 않았고 `main`은 수정하지 않았다.
 - 버전 정본: `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, `src/releaseNotes.ts`, workflow/helper가 `0.5.0`.
 - `npm ci`: PASS. `npm test`: 49 passed. `npm run build`: PASS (1,793 modules).
-- `cargo.exe test --manifest-path src-tauri/Cargo.toml`: 126 passed, 1 ignored. Fixture worker: 6 passed.
+- `cargo.exe test --manifest-path src-tauri/Cargo.toml`: 127 passed, 1 ignored. Fixture worker: 6 passed.
 - `npm run test:security`: 6 passed. Archive/media-tool/sample-disk tests: 11 passed.
 - `npm run tauri:build` (PowerShell): **NSIS 생성까지 PASS, 서명은 HOLD** — 새 FFmpeg 고정 자산과 media-tools를 준비하고 NSIS를 생성했으며 updater 개인키가 없다. fresh 격리 앱은 8초 생존 확인 직후 테스트 프로세스를 의도적으로 중단했으므로 정상 종료로 기록하지 않는다.
 - `node scripts/generate-release-assets.mjs`: **HOLD** — 공개 Release 자산은 서명 키 부재로 생성하지 않았다.

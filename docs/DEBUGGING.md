@@ -2,6 +2,14 @@
 
 실제로 재현하거나 로그로 확인한 문제만 기록한다. 원인이 확정되지 않은 항목은 `HOLD`로 표시한다.
 
+## 2026-08-20 · v0.5.0 validation-fixes · 자막 선택 순서·YouTube HTTP 403
+
+- 증상: 기존 정본은 제작자 한국어 자막을 자동 한국어 자막보다 먼저 선택했고, 승인된 일반 VOD 흐름은 재개 뒤 YouTube HTTP 403으로 검토 화면에 도달하지 못했다.
+- 재현·증거: 기존 승인 E2E의 원본 실패 JSON/로그 `C:\Users\myhan\AppData\Local\Temp\vod-scout-evidence-full-225324\e2e-failure-2026-08-19T13-53-48-401Z-21572.json`와 같은 basename의 `.log`를 보존했다. 이번 무취소 디버그 실행은 acquisition 전에 CDP 대상·Tauri IPC 평가에서 실패했으므로 같은 HTTP 403 E2E를 재시도하지 않았다.
+- 원인과 수정: 자막 선택은 yt-dlp의 `automatic_captions`를 먼저 검사하고, 사용할 수 없을 때만 `subtitles`를 검사하도록 바꿨다. 트랙 식별자가 제공되지 않으면 언어 태그를 대신 만들어 저장하지 않고 빈 값으로 보존한다. HTTP 403은 버전·선택 포맷·Deno challenge·번들 설정의 결정적 재현으로 확정하지 못했다. 고정 yt-dlp `2026.07.04`(SHA-256 `52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8`)와 Deno `2.9.4`(SHA-256 `4a2757fe99afc2c62c46500c8221cfa0189ac4bfb7064141875ad9c0f04b60ef`)로 같은 승인 URL의 `298+251` signed URL 범위 요청이 HTTP `206`이고 한국어 자동 자막 저장도 성공해, 현재 증거상 외부 YouTube 접근 제한으로 `BLOCKED` 격리한다. 쿠키·시스템 설정·GPU·패키지 버전은 바꾸지 않았다.
+- 회귀 테스트: Rust captions 선택 테스트 15개 `PASS`(자동 한국어 우선, unusable 자동→제작자 fallback, 제외 트랙, track id 비발명), `npm run build` `PASS`, `git diff --check` `PASS`. E2E 실패는 coordinator의 재검증 상한에 따라 재시도하지 않았다.
+- 상태: 자막 순서·트랙 보존 `PASS`; 일반 YouTube 무취소 전체 앱 흐름과 HTTP 403 해결은 외부 원인이 분리될 때까지 `BLOCKED`; GPU 작업은 시작하지 않았다.
+
 ## 2026-08-19 · v0.5.0 validation-fixes · E2E 취소 판정·GPU 패키지
 
 - 증상: 음성 중심 후보의 `chatScore: null`이 검증 도구에서 실패했고, 취소 확인이 화면 문구에 의존했다. 반복 `bootstrap` 조회를 수행하면 제품 복구 경로가 `CANCELLING` 작업을 `INTERRUPTED`로 바꾸어 도구가 취소 완료를 놓쳤다.

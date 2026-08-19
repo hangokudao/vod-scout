@@ -1,6 +1,6 @@
 # VOD Scout 인계서
 
-현재 게이트: **v0.5.0 validation-fixes · E2E 도구·자동 검증 PASS · GPU 패키지 BLOCKED · YouTube 자동 자막 증거 제한적 · 제작자 자막/제품 provenance/Whisper 대체/전체 앱 흐름/화면·설치·updater 서명/공개 Release HOLD**
+현재 게이트: **v0.5.0 validation-fixes · 자막 선택 순서·E2E 도구·자동 검증 PASS · GPU 패키지 BLOCKED · 일반 YouTube 무취소 흐름은 HTTP 403 재현·외부 원인 분리 후 BLOCKED · 제품 provenance/Whisper 대체/전체 앱 흐름/화면·설치·updater 서명/공개 Release HOLD**
 
 ## 현재 정본
 
@@ -17,10 +17,11 @@
 ## validation-fixes 결과 (2026-08-19)
 
 - E2E 검증 도구는 `chatScore: null`을 기본 허용하고, 저장된 작업 스냅샷을 최대 10초 확인해 `CANCELLED`를 판정한다. 오류 시 마지막 스냅샷·예외·구조화 로그를 보존하며 PowerShell 실행기는 앱 경로·스크린샷·자식 프로세스 정리를 지원한다.
-- `npm test` 49개, `npm run build`, Rust 본체 126 passed·1 ignored, fixture-worker 6개, 관련 Node 17개, 보안 6개, `git diff --check`는 `PASS`다. 실제 G8 앱은 승인 URL의 시작 단계와 취소 완료를 확인했다.
-- 세 승인 URL에서 확인한 것은 `language=ko`, 자동 생성 한국어 SRT와 파일 무결성·기본 시간 범위뿐이다. 제작자 자막 우선순위, 제품 snapshot provenance, Whisper 대체는 확인하지 않았고 track id도 yt-dlp에서 노출되지 않아 `HOLD`다. 겹침·공백 수치는 품질 `PASS`가 아니며 일정한 시간 오프셋과 내용 품질도 `HOLD`다.
+- `npm test` 49개, `npm run build`, Rust 본체 127 passed·1 ignored, fixture-worker 6개, 관련 Node 17개, 보안 6개, `git diff --check`는 `PASS`다. 실제 G8 앱은 승인 URL의 시작 단계와 취소 완료를 확인했다.
+- 세 승인 URL은 일반 VOD의 자동 한국어 자막 우선 대표 입력이며 `language=ko`, 자동 생성 한국어 SRT, 파일 무결성·기본 시간 범위를 확인했다. 제작자 자막 부재는 `HOLD`나 릴리스 차단 사유가 아니며, 제품 snapshot provenance와 Whisper 대체는 별도 `HOLD`다. 겹침·공백 수치는 품질 `PASS`가 아니며 일정한 시간 오프셋과 내용 품질도 `HOLD`다.
 - 자막 증거는 다음과 같다: `JKYmw9-xMIo` — 133570 bytes, SHA-256 `af6aa5d008bbdd36e60f8c07d556da52686cb52be99b660e8e555783b4f510ef`, 2121 cues, start>=end 0, out-of-range 0, reverse 0, adjacent overlaps 1346, exact duplicate groups 0, max positive gap 47.080 sec; `LVZ6hFhlF2k` — 399263 bytes, SHA-256 `24857fa9aee1fd459e040d5939159ca3c0ea45bb69fa0f7ed7925bf5dfcf1efa`, 5832 cues, start>=end 0, out-of-range 0, reverse 0, adjacent overlaps 5364, exact duplicate groups 0, max positive gap 207.361 sec; `ZJMpYThMksM` — 88141 bytes, SHA-256 `64d876c1ff3813bfc2309d1302af60a12618a55ace924843d7a536a4136c6c55`, 1472 cues, start>=end 0, out-of-range 0, reverse 0, adjacent overlaps 880, exact duplicate groups 0, max positive gap 147.040 sec.
-- 실제 앱은 취소 요청 뒤 4779 ms에 `CANCELLED`를 확인했지만 HTTP 403이 검토 화면 전에 발생했다. 따라서 화면 캡처와 전체 후보·검토·삭제 흐름은 `HOLD`이며, 최종 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-evidence-full-225324\e2e-failure-2026-08-19T13-53-48-401Z-21572.json`과 같은 basename의 `.log`다.
+- 실제 앱은 취소 요청 뒤 4779 ms에 `CANCELLED`를 확인했지만 HTTP 403이 검토 화면 전에 발생했다. 따라서 전체 앱 흐름은 외부 YouTube 접근 제한으로 `BLOCKED`이며, 화면 캡처와 전체 후보·검토·삭제 흐름은 후속 검증 `HOLD`다. 최종 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-evidence-full-225324\e2e-failure-2026-08-19T13-53-48-401Z-21572.json`과 같은 basename의 `.log`다.
+- 이번 재검증에서는 `JKYmw9-xMIo` 무취소 앱 E2E를 한 번 실행했으나 acquisition 전 CDP/Tauri IPC 평가에서 실패했다. 기존 HTTP 403 원본 JSON/로그는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-evidence-full-225324\e2e-failure-2026-08-19T13-53-48-401Z-21572.json` 및 같은 basename의 `.log`로 보존했고, coordinator의 재검증 상한에 따라 E2E를 다시 실행하지 않았다. 고정 yt-dlp/Deno의 signed URL 범위 요청은 HTTP `206`, 자동 한국어 자막 저장은 성공했으므로 앱 전체 403은 외부 YouTube 접근 제한 `BLOCKED`로 남긴다.
 - G8 GPU 패키지는 `whisper-cli.exe` 489984 bytes/SHA-256 `4bf174113843613cbec146e73e6820a767e54b0e1c736f2c6d7ab16aac4c245d`, `ggml-cuda.dll` 562600960 bytes/SHA-256 `24af2cd89090175beffdf77cd25c176d76f09c4018644915f302d2de64d67631`, `cudart32_110.dll` 467456 bytes/SHA-256 `b8bfc244dd0916ddf7b45e39c101f165a0d9f4846616eaf34336a2c374409408`, `cudart64_110.dll` 526848 bytes/SHA-256 `ba5c2fb526c4ee4bb218ceb3fa5e8bfde89ce474f38711fdcce802549bf9fc6f`이며 `cublas64_11.dll`이 없다. CPU backend 로그는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-evidence-full-225324\gpu-probe\whisper-gpu.log`, valid `probe.srt`는 47 bytes/SHA-256 `5845cd37d6a0bbae0ce13a136d7652d6b5688938ceaf32a6974a20a57a24a97d`다. 외부 GPU 바이너리 추가 없이는 패키지 보완과 실제 GPU 검증을 끝낼 수 없어 `BLOCKED`다.
 - 이번 변경은 G8 패키지·설치 파일·모델을 수정하지 않았다.
 
@@ -28,7 +29,7 @@ G1~G8은 이 작업 트리(worktree)에 로컬 통합되어 있다. 이 통합�
 
 ## G1~G8 구현 결과
 
-- G1: 제작자 한국어 자막 우선, 한국어 자동 자막 대체, 자동 번역·다른 언어·`live_chat` 제외, 원본 시간 검증과 검증 불가 구간의 로컬 Whisper 대체, 자막 provenance 저장. 구현·자동 테스트는 `PASS`지만 실제 확인은 자동 생성 한국어 SRT의 제한적 증거뿐이며 제작자 자막·제품 snapshot provenance·Whisper 대체는 `HOLD`.
+- G1: 한국어 자동 자막 우선, 없거나 사용할 수 없을 때 제작자 한국어 자막 대체, 자동 번역·다른 언어·`live_chat` 제외, 원본 시간 검증과 검증 불가 구간의 로컬 Whisper 대체, 자막 provenance 저장. 선택 순서·제외 트랙 테스트와 세 대표 자동 자막 입력은 `PASS`이며 제품 snapshot provenance·Whisper 대체는 `HOLD`.
 - G2: `자동(GPU 우선)`·GPU·CPU 모드와 프로필, GPU 근거 게이트, 실패 청크의 CPU 1회 대체, 재실행 시 상태 보존. G8 GPU 패키지는 `cublas64_11.dll` 누락으로 `BLOCKED`.
 - G3: 반복·깨진 음성 인식 결과를 품질 경고로 보존하고 표시 결과에서 가리며, 선택 후보만 실행 ID·개정과 함께 다시 음성 인식.
 - G4: FFmpeg·Whisper·채팅·미리보기·UI 단계를 분리한 자원 기록, 경고와 강제 중단 분리, 체크포인트·실패 이유 보존과 자식 종료.
@@ -42,7 +43,7 @@ G1~G8은 이 작업 트리(worktree)에 로컬 통합되어 있다. 이 통합�
 - `npm ci`: PASS.
 - `npm test`: PASS — 49 tests, 3 files.
 - `npm run build`: PASS — TypeScript + Vite, 1,793 modules.
-- `cargo.exe test --manifest-path src-tauri/Cargo.toml`: PASS — 126 passed, 1 ignored.
+- `cargo.exe test --manifest-path src-tauri/Cargo.toml`: PASS — 127 passed, 1 ignored.
 - `cargo.exe test --manifest-path src-tauri/fixture-worker/Cargo.toml`: PASS — 6 passed.
 - `npm run test:security`: PASS — 6 passed.
 - `node --test scripts/archive-safety.test.mjs scripts/prepare-media-tools.test.mjs scripts/sample-disk-usage.test.mjs`: PASS — 11 passed.
@@ -59,7 +60,7 @@ G1~G8은 이 작업 트리(worktree)에 로컬 통합되어 있다. 이 통합�
 
 ## 문서 상태와 남은 HOLD
 
-- 계획·릴리스·아키텍처·UI·테스트 계약은 현재 G1~G8 로컬 통합과 자동 검증 결과를 가리키며, 실제 YouTube 자동 자막 증거는 제한적이다. 제작자 자막, 제품 snapshot provenance, Whisper 대체, GPU, 설치·Windows 화면, 자원·장시간·병렬 측정은 `HOLD` 또는 `BLOCKED`다.
+- 계획·릴리스·아키텍처·UI·테스트 계약은 현재 G1~G8 로컬 통합과 자동 검증 결과를 가리킨다. 제작자 자막 부재는 릴리스 차단 사유가 아니며, 제품 snapshot provenance, Whisper 대체, GPU, 설치·Windows 화면, 자원·장시간·병렬 측정은 `HOLD` 또는 `BLOCKED`다.
 - 세 SRT의 start/end 범위·역순·중복 그룹·겹침·공백을 기록했지만 겹침·공백을 품질 `PASS`로 판정하지 않았고, 일정한 시간 오프셋·내용 품질·사람 판정은 `HOLD`다.
 - 실제 GPU 백엔드 시험은 패키지의 `cublas64_11.dll` 누락으로 `BLOCKED`이며, CPU fallback probe 로그만 보존했다. HTTP 403이 검토 화면 전에 발생해 Windows 사용자 화면 흐름과 screen capture도 `HOLD`다.
 - 1~8시간 resource/long-run 및 기존 v0.4.0과의 동일 입력 비교는 실행하지 않았다.

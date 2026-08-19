@@ -114,13 +114,13 @@ pub struct CaptionPlan {
     pub full_whisper: bool,
 }
 
-/// Select creator Korean captions first, then Korean automatic captions.
+/// Select Korean automatic captions first, then creator Korean captions.
 /// The metadata shape is the one emitted by yt-dlp (`subtitles` and
 /// `automatic_captions`). Translations, other languages, and live chat are
 /// rejected before the priority comparison.
 pub fn select_track(info: &Value) -> Option<CaptionTrack> {
-    select_track_group(info.get("subtitles"), CaptionSource::Creator)
-        .or_else(|| select_track_group(info.get("automatic_captions"), CaptionSource::Automatic))
+    select_track_group(info.get("automatic_captions"), CaptionSource::Automatic)
+        .or_else(|| select_track_group(info.get("subtitles"), CaptionSource::Creator))
 }
 
 fn select_track_group(value: Option<&Value>, source: CaptionSource) -> Option<CaptionTrack> {
@@ -142,9 +142,9 @@ fn select_track_group(value: Option<&Value>, source: CaptionSource) -> Option<Ca
                 .get("vss_id")
                 .or_else(|| format.get("name"))
                 .and_then(Value::as_str)
-                .unwrap_or(language)
+                .unwrap_or_default()
                 .trim();
-            if track_id.is_empty() || is_rejected_text(track_id) {
+            if is_rejected_text(track_id) {
                 return None;
             }
             let url = format
@@ -815,7 +815,7 @@ mod tests {
     }
 
     #[test]
-    fn selects_creator_korean_before_automatic_and_excludes_translation_live_chat_and_other_languages(
+    fn selects_automatic_korean_before_creator_and_excludes_translation_live_chat_and_other_languages(
     ) {
         let info = serde_json::json!({
             "subtitles": {
@@ -827,20 +827,32 @@ mod tests {
             "automatic_captions": {"ko": [{"url": "automatic", "vss_id": "ko-auto"}]}
         });
         let track = select_track(&info).unwrap();
-        assert_eq!(track.source, CaptionSource::Creator);
-        assert_eq!(track.track_id, "ko");
-        assert_eq!(track.url.as_deref(), Some("creator"));
+        assert_eq!(track.source, CaptionSource::Automatic);
+        assert_eq!(track.track_id, "ko-auto");
+        assert_eq!(track.url.as_deref(), Some("automatic"));
     }
 
     #[test]
-    fn falls_back_to_korean_automatic_only_when_creator_is_unavailable() {
+    fn falls_back_to_creator_korean_only_when_automatic_is_unusable() {
         let info = serde_json::json!({
-            "subtitles": {"en": [{"url": "en"}]},
-            "automatic_captions": {"ko": [{"url": "automatic", "vss_id": "ko-auto"}]}
+            "subtitles": {"ko": [{"url": "creator", "vss_id": "ko-creator"}]},
+            "automatic_captions": {"ko": [{"url": "https://example.test/automatic?tlang=ko", "vss_id": "ko-auto"}]}
+        });
+        let track = select_track(&info).unwrap();
+        assert_eq!(track.source, CaptionSource::Creator);
+        assert_eq!(track.track_id, "ko-creator");
+    }
+
+    #[test]
+    fn keeps_track_id_empty_when_provider_does_not_expose_one() {
+        let info = serde_json::json!({
+            "subtitles": {},
+            "automatic_captions": {"ko": [{"url": "automatic"}]}
         });
         let track = select_track(&info).unwrap();
         assert_eq!(track.source, CaptionSource::Automatic);
-        assert_eq!(track.track_id, "ko-auto");
+        assert!(track.track_id.is_empty());
+        assert!(track.revision.is_empty());
     }
 
     #[test]

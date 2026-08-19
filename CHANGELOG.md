@@ -19,6 +19,7 @@
 
 ### Fixed
 
+- YouTube 일반 VOD의 한국어 자막 선택 순서를 한국어 자동 자막 우선으로 바꾸고, 자동 자막이 없거나 사용할 수 없을 때만 제작자 한국어 자막을 사용하도록 맞췄다. 자동 번역·다른 언어·`live_chat`은 계속 제외하며, 제공되지 않은 트랙 식별자를 새로 만들지 않는다.
 - 후보 pool과 화면 목록의 동기화가 후보 수 변경·정렬·수동 재음성 인식 뒤에도 기존 판정을 잃지 않도록 했다.
 - 대기열 저장 실패·복구·실행권·실패 작업의 다음 작업 진행·실행 중 삭제 순서를 닫아 두었다.
 - 404가 된 FFmpeg autobuild 핀을 공식 `autobuild-2026-08-17-13-05` 자산 URL·archive·SHA-256으로 교정했다.
@@ -32,9 +33,9 @@
 ### Known issues
 
 - 실제 YouTube/reference-video, GPU, Windows UI, resource/long-run, parallel measurement는 실행하지 않아 `HOLD`다.
-- 이번 승인 URL의 실제 앱 전체 흐름은 취소 완료까지 확인했으나 재개 뒤 YouTube HTTP 403으로 내려받기가 중단되어 후보·검토·삭제 흐름은 `HOLD`다. G8 GPU 패키지는 `cublas64_11.dll`이 없어 실제 GPU 백엔드 검증이 `BLOCKED`다.
+- 승인 URL의 기존 재개 흐름에서 YouTube HTTP 403이 발생했고, 이번 재검증 상한에 따라 같은 E2E는 재시도하지 않았다. 고정 yt-dlp/Deno의 signed URL 범위 요청과 자동 자막 저장 control은 성공했지만 앱 전체 흐름의 403 원인은 외부 YouTube 접근 제한으로 `BLOCKED` 격리한다. 제작자 자막 부재는 `HOLD`나 릴리스 차단 사유가 아니다. G8 GPU 패키지는 `cublas64_11.dll`이 없어 실제 GPU 백엔드 검증이 `BLOCKED`다.
 - 로컬 NSIS installer와 핵심 EXE의 크기·SHA-256·PE 버전, fresh 격리 데이터 경로 앱 실행은 `PASS`다. updater 개인키 부재로 `.sig`와 공개 v0.5.0 자산은 `HOLD`다.
-- 자동 검증: npm 49, Rust 126 passed·1 ignored, fixture 6, security 6, archive/media-tool 11 passed. `npm audit`의 개발 의존성 high 1건은 제품 경로 취약점으로 단정하지 않는다.
+- 자동 검증: npm 49, Rust 127 passed·1 ignored, fixture 6, security 6, archive/media-tool 11 passed. `npm audit`의 개발 의존성 high 1건은 제품 경로 취약점으로 단정하지 않는다.
 
 ## 0.4.0 - 2026-08-08
 
