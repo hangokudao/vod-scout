@@ -1,6 +1,6 @@
 # 아키텍처와 상태 모델
 
-v0.5.0 G1~G7 구현·자동 검증: **PASS**. 실제 YouTube/기준 영상, 실제 GPU, Windows UI, 자원·장시간 검증은 **HOLD**이며 G7 병렬 옵션은 측정 전까지 사용할 수 없다. 이 worktree의 소스·로컬 패키지 후보 버전은 0.5.0이고 공개 정본은 v0.4.0이다.
+v0.5.0 G1~G7 구현·자동 검증과 GTX 1060 직접 GPU·CPU 음성 인식: **PASS**. 30초 구성요소 자원 측정은 `MEASURED_NO_THRESHOLD`로 완료했으며, 실제 YouTube/reference 전체 흐름·자동 GPU→CPU 제품 전환·Windows UI·1~8시간/동일 입력 자원 비교는 **HOLD 또는 BLOCKED**다. G7 병렬 옵션은 disabled/HOLD다. 이 worktree의 소스·로컬 패키지 후보 버전은 0.5.0이고 공개 정본은 v0.4.0이다.
 
 ## 현재 실제 경로
 
@@ -109,7 +109,7 @@ WAV와 SRT는 한 청크만 작업 디렉터리에 두고 체크포인트 저장
 - 각 원본 URL·SHA-256: `src-tauri/resources/media-tools/manifest.json`
 - 라이선스: `src-tauri/resources/media-tools/licenses`
 
-v0.5.0 GPU 실행 파일·백엔드는 실제 시험 성공 전까지 지원 자산이나 PASS로 기록하지 않는다. CPU 경로는 항상 대체 경로로 유지한다.
+v0.5.0 GPU 실행 파일·백엔드의 GTX 1060 직접 시험과 CPU 경로는 PASS로 확인했다. 제품 자동 GPU→CPU 전환은 별도 제품 흐름에서 아직 검증되지 않았으므로 HOLD로 유지하며 CPU 경로는 항상 대체 경로로 유지한다.
 
 ## 후속 보류 구조
 
@@ -169,7 +169,7 @@ jobs/{job-id}/
 
 v0.5.0은 현재 v0.4.0 경로와 작업 폴더를 유지하면서 아래 순서로 YouTube 자막, GPU·CPU Whisper와 사용자 제어, 기존 음성 인식 품질 안전장치, 자원 제한, 후보 품질, 순차 대기열과 제한적 병렬 처리를 추가한다. 이야기 후보 연결, 자막 검색 UI와 외부 AI API 확장은 선행 구현하지 않는다.
 
-G1~G7 구현과 자동 테스트는 **PASS**다. 실제 자막 기준 영상·시간 오프셋, 실제 GPU, Windows 사용자 흐름과 실제 자원·장시간 측정은 **HOLD**다.
+G1~G7 구현·자동 테스트와 GTX 1060 직접 GPU·CPU 음성 인식은 **PASS**다. 30초 구성요소 자원 측정은 `MEASURED_NO_THRESHOLD`로 완료했으며, 실제 자막 기준 영상 전체 흐름·시간 오프셋, 자동 GPU→CPU 제품 전환, Windows 사용자 흐름, 1~8시간/동일 입력 자원 비교는 **HOLD 또는 BLOCKED**다.
 
 ```mermaid
 flowchart LR

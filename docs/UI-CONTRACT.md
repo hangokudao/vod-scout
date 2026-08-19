@@ -1,6 +1,6 @@
 # UI 근거와 인터랙션 계약
 
-v0.5.0 G1~G7 구현·자동 검증은 **PASS**다. 실제 Windows UI와 실제 YouTube/기준 영상·GPU 흐름은 **HOLD**이며, G7 병렬 선택 항목은 측정 전까지 노출하지 않는다.
+v0.5.0 G1~G7 구현·자동 검증과 GTX 1060 직접 GPU·CPU 음성 인식은 **PASS**다. 실제 Windows UI, YouTube/reference 전체 흐름, 자동 GPU→CPU 제품 전환, 1~8시간 자원 비교는 **HOLD 또는 BLOCKED**이며, G7 병렬 선택 항목은 disabled/HOLD로 노출하지 않는다.
 
 구현 담당: 버전 시작 승인 시 확정. 현재 문서 정본은 Codex/Sol이 관리한다.
 

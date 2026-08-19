@@ -86,7 +86,7 @@ G1~G8은 이 작업 트리(worktree)에 로컬 통합되어 있다. 이 통합�
 
 ## 문서 상태와 남은 HOLD
 
-- 계획·릴리스·아키텍처·UI·테스트 계약은 현재 G1~G8 로컬 통합과 자동 검증 결과를 가리킨다. 제작자 자막 부재는 릴리스 차단 사유가 아니며, 제품 snapshot provenance, Whisper 대체, 자동 GPU→CPU 제품 전환, 설치·Windows 화면, 자원·장시간·병렬 측정은 `HOLD` 또는 `BLOCKED`다. 직접 GPU·CPU CLI는 `PASS`다.
+- 계획·릴리스·아키텍처·UI·테스트 계약은 현재 G1~G8 로컬 통합과 자동 검증 결과를 가리킨다. 제작자 자막 부재는 릴리스 차단 사유가 아니며, 제품 snapshot provenance, Whisper 대체, 자동 GPU→CPU 제품 전환, 설치·Windows 화면, 1~8시간·동일 입력 자원 비교와 G7 병렬 측정은 `HOLD` 또는 `BLOCKED`다. GTX 1060 직접 GPU·CPU CLI는 `PASS`이고 30초 구성요소 자원 측정은 `MEASURED_NO_THRESHOLD`로 완료했다.
 - 세 SRT의 start/end 범위·역순·중복 그룹·겹침·공백을 기록했지만 겹침·공백을 품질 `PASS`로 판정하지 않았고, 일정한 시간 오프셋·내용 품질·사람 판정은 `HOLD`다.
 - 직접 GPU 백엔드 시험과 CPU 시험은 `PASS`이며, HTTP 403 원인과 제품 경로 수정이 미확정이고 새 E2E가 acquisition 전에 실패해 자동 GPU→CPU 제품 전환·Windows 사용자 화면 흐름과 screen capture도 `HOLD`다.
 - 1~8시간 resource/long-run 및 기존 v0.4.0과의 동일 입력 비교는 실행하지 않았다.
