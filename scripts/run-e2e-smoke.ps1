@@ -4,6 +4,7 @@ param(
   [ValidateSet("quick", "range", "full")][string]$Mode = "full",
   [int]$Port = 9225,
   [switch]$Long,
+  [switch]$ReviewExisting,
   [switch]$VerifyDelete,
   [string]$AppPath = "src-tauri\target\release\vod-scout.exe",
   [string]$ScreenshotPath,
@@ -76,6 +77,7 @@ try {
   $arguments = @("scripts/e2e-local-cdp.mjs", $source, "$Port", "--mode", $Mode)
   if ($isYoutube) { $arguments += "--youtube" }
   if ($Long) { $arguments += "--long" }
+  if ($ReviewExisting) { $arguments += "--review-existing" }
   if ($VerifyDelete) { $arguments += "--verify-delete" }
   if ($ScreenshotPath) { $arguments += @("--screenshot", $ScreenshotPath) }
   if ($EvidencePath) { $arguments += @("--evidence-dir", $EvidencePath) }

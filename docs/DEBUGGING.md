@@ -4,6 +4,12 @@
 
 현재 자막 선택 계약은 일반 YouTube VOD의 한국어 자동 자막 우선, 자동 자막이 없거나 사용할 수 없을 때만 제작자 한국어 자막, 두 경로가 없거나 검증할 수 없는 구간은 로컬 Whisper 순서다. 자동 번역·다른 언어·`live_chat`은 제외한다.
 
+## 2026-08-20 · 기존 검토 화면 후보 재인식 E2E 회귀
+
+- 증상·원인: 검토 준비 화면에 진입한 뒤 후보의 `다시 음성 인식` 버튼과 저장된 재인식 결과를 실제 UI에서 검증하는 공통 경로가 없었다. `scripts/e2e-local-cdp.mjs`는 이제 모든 `REVIEW_READY` 흐름에서 이 검사를 수행하며, `--review-existing`일 때만 `bootstrap`으로 현재 작업을 열고 `start_job`이나 분석 재시작은 하지 않도록 한다.
+- 수정·검증: 실행기는 첫 번째로 보이는 활성 후보 행을 실제 클릭한 뒤 보이는 활성 `다시 음성 인식` 버튼을 클릭하고, persisted `snapshot.json`에서 새 `recognitionRuns`의 증가한 `resultRevision`, `COMPLETED` 상태, backend evidence, 실패 이유 없음까지 제한 시간 안에 확인한다. 이어 DOM의 완료 문구를 기다린 다음 지정 스크린샷을 캡처하며, 실패 시 기존 CDP evidence 경로에 마지막 snapshot과 로그를 남긴다.
+- 회귀 범위: `scripts/e2e-local-cdp.test.mjs`는 새 개정 완료·실패·DOM 완료/실패·timeout polling을, `scripts/run-e2e-smoke.test.mjs`는 `-ReviewExisting`/`--review-existing` 전달과 기존 작업 재시작 금지 계약을 확인한다. 이 변경에서는 실제 E2E, 전체 빌드, 커밋을 실행하지 않는다.
+
 ## 2026-08-20 · Wave 5 · release-app product validation
 
 - 원인·수정: 두 E2E의 분석 결과와 맥락 MP4는 정상 생성됐지만 실행기가 임의 TEMP 경로를 `VOD_SCOUT_E2E_DATA_DIR`로 그대로 넘겨 `$APPLOCALDATA/e2e-*/jobs/*/review-clips/*.mp4` Asset Protocol 범위 밖에서 플레이어 준비를 검사했다. `scripts/run-e2e-smoke.ps1`는 요청 경로의 마지막 이름만 사용해 `%LOCALAPPDATA%\com.vodscout.app\e2e-*` 아래로 정규화하고, `scripts/e2e-local-cdp.mjs`는 실패 시 `video`·`readyState`·`networkState`·`errorCode`를 기록한다.

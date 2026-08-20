@@ -50,6 +50,77 @@ export async function waitForCancelled(readSnapshot, {
   throw error;
 }
 
+export async function waitForRecognitionCompletion(readSnapshot, {
+  candidateId,
+  previousRunIds = [],
+  previousRevision = 0,
+  timeoutMs = 120_000,
+  intervalMs = 250
+} = {}) {
+  const startedAt = Date.now();
+  const deadline = startedAt + timeoutMs;
+  const knownRunIds = new Set(previousRunIds);
+  let lastSnapshot = null;
+  while (Date.now() <= deadline) {
+    lastSnapshot = await readSnapshot("recognition_poll");
+    const run = (lastSnapshot?.recognitionRuns ?? []).find((item) => (
+      item.candidateId === candidateId
+      && !knownRunIds.has(item.id)
+      && item.resultRevision > previousRevision
+    ));
+    if (run?.status === "FAILED") {
+      const error = new Error(`선택 후보 음성 인식이 실패했습니다: ${run.failureReason ?? "실패 이유 없음"}`);
+      error.lastSnapshot = lastSnapshot;
+      throw error;
+    }
+    if (run?.status === "COMPLETED") {
+      if (!run.backendEvidence?.trim()) {
+        const error = new Error("선택 후보 음성 인식 완료 기록에 backend evidence가 없습니다.");
+        error.lastSnapshot = lastSnapshot;
+        throw error;
+      }
+      if (run.failureReason) {
+        const error = new Error(`완료된 음성 인식 기록에 실패 이유가 남아 있습니다: ${run.failureReason}`);
+        error.lastSnapshot = lastSnapshot;
+        throw error;
+      }
+      return { snapshot: lastSnapshot, run, elapsedMs: Date.now() - startedAt };
+    }
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
+    await delay(Math.min(intervalMs, remainingMs));
+  }
+  const error = new Error(`선택 후보 음성 인식이 ${timeoutMs}ms 안에 완료되지 않았습니다.`);
+  error.lastSnapshot = lastSnapshot;
+  throw error;
+}
+
+export async function waitForRecognitionDomCompletion(readBody, {
+  runId = null,
+  resultRevision = null,
+  timeoutMs = 30_000,
+  intervalMs = 250
+} = {}) {
+  const startedAt = Date.now();
+  const deadline = startedAt + timeoutMs;
+  let lastBody = "";
+  while (Date.now() <= deadline) {
+    lastBody = await readBody();
+    if (lastBody.includes("다시 음성 인식: 실패")) {
+      throw new Error("검토 화면에 선택 후보 음성 인식 실패가 표시되었습니다.");
+    }
+    const runVisible = (!runId || lastBody.includes(`실행 ID ${runId}`))
+      && (resultRevision == null || lastBody.includes(`개정 ${resultRevision}`));
+    if (runVisible && lastBody.includes("다시 음성 인식: 완료")) {
+      return { body: lastBody, elapsedMs: Date.now() - startedAt };
+    }
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
+    await delay(Math.min(intervalMs, remainingMs));
+  }
+  throw new Error(`검토 화면에 음성 인식 완료 상태가 ${timeoutMs}ms 안에 표시되지 않았습니다.`);
+}
+
 export async function readPersistedSnapshot(jobDirectory, { retries = 5, retryDelayMs = 50 } = {}) {
   let lastError;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -104,9 +175,70 @@ function parseOptions(args) {
     verifyDelete: args.includes("--verify-delete"),
     longRun: args.includes("--long"),
     resumeExisting: args.includes("--resume-existing"),
+    reviewExisting: args.includes("--review-existing"),
     screenshotPath: argumentValue(args, "--screenshot"),
     evidenceDirectory: argumentValue(args, "--evidence-dir") ?? process.env.VOD_SCOUT_E2E_EVIDENCE_DIR ?? join(tmpdir(), "vod-scout-e2e-evidence")
   };
+}
+
+function formatCandidateTime(totalSeconds) {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainder = seconds % 60;
+  return [hours, minutes, remainder].map((value) => String(value).padStart(2, "0")).join(":");
+}
+
+async function clickFirstCandidateRow(evaluate, { timeoutMs = 30_000, intervalMs = 250 } = {}) {
+  const startedAt = Date.now();
+  const deadline = startedAt + timeoutMs;
+  while (Date.now() <= deadline) {
+    const result = await evaluate(`(() => {
+      const row = document.querySelector("button.candidate-row");
+      if (!row) return { found: false, reason: "missing" };
+      const rect = row.getBoundingClientRect();
+      if (row.disabled || rect.width <= 0 || rect.height <= 0) return { found: false, reason: "disabled" };
+      row.click();
+      return { found: true, text: row.innerText, selected: row.classList.contains("selected") };
+    })()`);
+    if (result?.found) return { ...result, elapsedMs: Date.now() - startedAt };
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
+    await delay(Math.min(intervalMs, remainingMs));
+  }
+  throw new Error(`검토 화면의 첫 후보 행이 ${timeoutMs}ms 안에 표시·활성화되지 않았습니다.`);
+}
+
+async function clickVisibleEnabledButton(evaluate, label, { timeoutMs = 30_000, intervalMs = 250 } = {}) {
+  const startedAt = Date.now();
+  const deadline = startedAt + timeoutMs;
+  while (Date.now() <= deadline) {
+    const result = await evaluate(`(() => {
+      const expected = ${JSON.stringify(label)};
+      const button = [...document.querySelectorAll("button")].find((item) => {
+        const rect = item.getBoundingClientRect();
+        return item.textContent?.replace(/\\s+/g, " ").trim() === expected
+          && !item.disabled
+          && rect.width > 0
+          && rect.height > 0;
+      });
+      if (!button) return { found: false };
+      button.click();
+      return { found: true, text: button.textContent?.replace(/\\s+/g, " ").trim() };
+    })()`);
+    if (result?.found) return { ...result, elapsedMs: Date.now() - startedAt };
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
+    await delay(Math.min(intervalMs, remainingMs));
+  }
+  throw new Error(`검토 화면에서 활성화된 '${label}' 버튼을 ${timeoutMs}ms 안에 찾지 못했습니다.`);
+}
+
+function candidateForRowText(candidates, rowText) {
+  return candidates.find((candidate) => (
+    rowText.includes(formatCandidateTime(candidate.startSeconds))
+    && rowText.includes(formatCandidateTime(candidate.endSeconds))
+  )) ?? null;
 }
 
 export async function runE2E(args = process.argv.slice(2)) {
@@ -189,15 +321,20 @@ export async function runE2E(args = process.argv.slice(2)) {
 
     await cdp("Runtime.enable");
     const input = JSON.stringify({ sourceKind, sourceLabel: options.source, scenario: "normal", analysisMode: options.analysisMode });
-    const created = options.resumeExisting
+    const created = options.resumeExisting || options.reviewExisting
       ? await evaluate("window.__TAURI_INTERNALS__.invoke('bootstrap')")
       : await evaluate(`window.__TAURI_INTERNALS__.invoke("create_job", { input: ${input} })`);
     if (!created) throw new Error("재개할 기존 작업을 찾지 못했습니다.");
     lastSnapshot = created;
     jobDirectory = join(runtime.dataDirectory, "jobs", created.id);
     log("job_created", { jobId: created.id, sourceKind });
-    await evaluate(`window.__TAURI_INTERNALS__.invoke("start_job", { jobId: ${JSON.stringify(created.id)} })`);
-    log("job_started", { jobId: created.id });
+    if (options.reviewExisting) {
+      if (created.status !== "REVIEW_READY") throw new Error(`기존 작업이 REVIEW_READY가 아닙니다: ${created.status}`);
+      log("review_existing_ready", { jobId: created.id, status: created.status });
+    } else {
+      await evaluate(`window.__TAURI_INTERNALS__.invoke("start_job", { jobId: ${JSON.stringify(created.id)} })`);
+      log("job_started", { jobId: created.id });
+    }
 
     if (options.startOnly) {
       await delay(options.youtube ? 100 : 750);
@@ -303,6 +440,47 @@ export async function runE2E(args = process.argv.slice(2)) {
     if ((await stat(preview.path)).size < 1024) throw new Error("후보 영상 미리보기가 생성되지 않았습니다.");
     const storage = await evaluate(`window.__TAURI_INTERNALS__.invoke("get_job_storage_info", { jobId: ${JSON.stringify(snapshot.id)} })`);
     if (storage.sizeBytes < 1024) throw new Error("작업 저장 용량을 계산하지 못했습니다.");
+    let recognitionEvidence = null;
+    if (snapshot.status === "REVIEW_READY") {
+      const firstRow = await clickFirstCandidateRow(evaluate);
+      const selectedCandidate = candidateForRowText(snapshot.candidates, firstRow.text);
+      if (!selectedCandidate) throw new Error(`첫 후보 행을 저장된 후보와 연결하지 못했습니다: ${firstRow.text}`);
+      const previousRuns = snapshot.recognitionRuns ?? [];
+      const previousRunIds = previousRuns.map((run) => run.id);
+      const previousRevision = Math.max(
+        0,
+        ...previousRuns
+          .filter((run) => run.candidateId === selectedCandidate.id)
+          .map((run) => run.resultRevision)
+      );
+      log("candidate_selected_for_recognition", {
+        candidateId: selectedCandidate.id,
+        candidateRank: 1,
+        rowText: firstRow.text
+      });
+      const button = await clickVisibleEnabledButton(evaluate, "다시 음성 인식");
+      log("recognition_button_clicked", { label: button.text });
+      const completed = await waitForRecognitionCompletion(readSnapshot, {
+        candidateId: selectedCandidate.id,
+        previousRunIds,
+        previousRevision
+      });
+      const dom = await waitForRecognitionDomCompletion(() => evaluate("document.body.innerText"), {
+        runId: completed.run.id,
+        resultRevision: completed.run.resultRevision
+      });
+      recognitionEvidence = {
+        candidateId: selectedCandidate.id,
+        candidateRank: 1,
+        runId: completed.run.id,
+        status: completed.run.status,
+        resultRevision: completed.run.resultRevision,
+        backendEvidence: completed.run.backendEvidence,
+        domCompletion: true,
+        elapsedMs: completed.elapsedMs + dom.elapsedMs
+      };
+      log("recognition_completed", recognitionEvidence);
+    }
     if (options.screenshotPath) {
       await mkdir(dirname(options.screenshotPath), { recursive: true });
       const screenshot = await cdp("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
@@ -341,7 +519,8 @@ export async function runE2E(args = process.argv.slice(2)) {
       bodyVerified: body.includes("채팅 움직임"),
       etaSeen,
       cancelVerified,
-      deleteVerified
+      deleteVerified,
+      recognitionEvidence
     };
   } catch (error) {
     log("failure", { message: error?.message ?? String(error), status: lastSnapshot?.status ?? null });

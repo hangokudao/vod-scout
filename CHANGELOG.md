@@ -4,6 +4,10 @@
 
 ## Wave 5 release-app product validation - 2026-08-20
 
+### Added
+
+- 모든 `REVIEW_READY` 화면 E2E가 검토 화면의 첫 후보에서 실제 `다시 음성 인식` 버튼을 누르도록 했다. `run-e2e-smoke.ps1 -ReviewExisting`는 기존 작업을 다시 분석하지 않고 불러오며, fresh full YouTube 흐름도 같은 새 개정·완료 상태·backend evidence·화면 완료 문구·스크린샷 검사를 수행한다.
+
 ### Fixed
 
 - 무창 E2E 실행기의 `DataDirectory`를 `%LOCALAPPDATA%\com.vodscout.app\e2e-*` 아래로 정규화해 기존 Asset Protocol 허용 범위와 맞췄다. 제품 저장 경로나 Asset Protocol 범위는 넓히지 않았고, 플레이어 준비 실패 증거에 `video`, `readyState`, `networkState`, `errorCode`를 남기도록 진단을 보강했다.

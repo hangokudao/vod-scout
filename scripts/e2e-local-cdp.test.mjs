@@ -8,8 +8,12 @@ import {
   formatPlayerReadinessFailure,
   readPersistedSnapshot,
   waitForCancelled,
+  waitForRecognitionCompletion,
+  waitForRecognitionDomCompletion,
   writeFailureEvidence
 } from "./e2e-local-cdp.mjs";
+
+const runner = await readFile(new URL("./e2e-local-cdp.mjs", import.meta.url), "utf8");
 
 test("voice-centric candidate checks allow a missing chat score", () => {
   assert.doesNotThrow(() => assertCandidateSignals({ candidates: [{ chatScore: null }] }));
@@ -34,6 +38,86 @@ test("cancel polling exposes the last snapshot when the deadline expires", async
     () => waitForCancelled(async () => ({ status: "CANCELLING" }), { timeoutMs: 5, intervalMs: 1 }),
     (error) => error.lastSnapshot?.status === "CANCELLING" && /CANCELLED/.test(error.message)
   );
+});
+
+test("recognition polling requires a new completed revision with backend evidence", async () => {
+  const snapshots = [
+    { recognitionRuns: [{ id: "old", candidateId: "candidate-1", status: "COMPLETED", resultRevision: 1 }] },
+    { recognitionRuns: [{
+      id: "new",
+      candidateId: "candidate-1",
+      status: "COMPLETED",
+      resultRevision: 2,
+      backendEvidence: "실제 백엔드=whisper.cpp",
+      failureReason: null
+    }] }
+  ];
+  const result = await waitForRecognitionCompletion(async () => snapshots.shift(), {
+    candidateId: "candidate-1",
+    previousRunIds: ["old"],
+    previousRevision: 1,
+    timeoutMs: 100,
+    intervalMs: 1
+  });
+  assert.equal(result.run.id, "new");
+  assert.equal(result.run.resultRevision, 2);
+});
+
+test("recognition polling surfaces a failed run and persisted snapshot", async () => {
+  await assert.rejects(
+    () => waitForRecognitionCompletion(async () => ({ recognitionRuns: [{
+      id: "failed",
+      candidateId: "candidate-1",
+      status: "FAILED",
+      resultRevision: 1,
+      failureReason: "GPU unavailable"
+    }] }), { candidateId: "candidate-1", timeoutMs: 20, intervalMs: 1 }),
+    (error) => error.lastSnapshot?.recognitionRuns?.[0]?.status === "FAILED" && /GPU unavailable/.test(error.message)
+  );
+});
+
+test("recognition polling is bounded and retains the last persisted snapshot", async () => {
+  await assert.rejects(
+    () => waitForRecognitionCompletion(async () => ({ recognitionRuns: [{
+      id: "started",
+      candidateId: "candidate-1",
+      status: "STARTED",
+      resultRevision: 1
+    }] }), { candidateId: "candidate-1", timeoutMs: 5, intervalMs: 1 }),
+    (error) => error.lastSnapshot?.recognitionRuns?.[0]?.status === "STARTED" && /안에 완료되지 않았습니다/.test(error.message)
+  );
+});
+
+test("recognition DOM polling requires the completion status", async () => {
+  const bodies = ["다시 음성 인식: 진행 중", "다시 음성 인식: 완료 · 실행 ID run-1 · 개정 2"];
+  const result = await waitForRecognitionDomCompletion(async () => bodies.shift(), { timeoutMs: 100, intervalMs: 1 });
+  assert.match(result.body, /다시 음성 인식: 완료/);
+});
+
+test("recognition DOM polling rejects a visible failure", async () => {
+  await assert.rejects(
+    () => waitForRecognitionDomCompletion(async () => "다시 음성 인식: 실패", { timeoutMs: 20, intervalMs: 1 }),
+    /음성 인식 실패가 표시되었습니다/
+  );
+});
+
+test("review-existing bootstraps REVIEW_READY without starting a job", () => {
+  assert.match(runner, /options\.resumeExisting \|\| options\.reviewExisting/);
+  const reviewStart = runner.indexOf("if (options.reviewExisting)");
+  const reviewBootstrap = runner.slice(reviewStart, runner.indexOf("} else {", reviewStart));
+  assert.match(reviewBootstrap, /review_existing_ready/);
+  assert.doesNotMatch(reviewBootstrap, /start_job/);
+  assert.match(runner, /if \(options\.reviewExisting\) \{[\s\S]*?else \{[\s\S]*?start_job/);
+});
+
+test("normal REVIEW_READY flows also run the actual candidate re-recognition UI path", () => {
+  const recognitionBlock = runner.slice(runner.indexOf("let recognitionEvidence"), runner.indexOf("if (options.screenshotPath)"));
+  assert.match(recognitionBlock, /if \(snapshot\.status === "REVIEW_READY"\) \{[\s\S]*clickFirstCandidateRow/);
+  assert.match(recognitionBlock, /clickVisibleEnabledButton\(evaluate, "다시 음성 인식"\)/);
+  assert.match(recognitionBlock, /waitForRecognitionCompletion\(readSnapshot/);
+  assert.match(recognitionBlock, /waitForRecognitionDomCompletion/);
+  assert.doesNotMatch(recognitionBlock, /options\.reviewExisting/);
+  assert.match(runner, /Page\.captureScreenshot/);
 });
 
 test("snapshot polling reads the persisted snapshot without invoking bootstrap recovery", async () => {
