@@ -2,6 +2,26 @@
 
 이 문서는 사용자에게 영향을 주는 업데이트를 기록한다. 각 릴리스는 기능 추가뿐 아니라 버그 수정, 보안 수정, 알려진 문제를 함께 적는다.
 
+## Wave 5 canonical final validation - 2026-08-21
+
+### Changed
+
+- 공식 `yt-dlp/yt-dlp-nightly-builds` 최신 nightly `2026.08.19.233000`을 고정했다. Windows asset SHA-256과 GitHub asset digest는 `02bcc69a2a65a2af5da81a79356763522b611edc028c476e78c282735e28d442`, `SHA2-256SUMS` 파일 SHA-256은 `6b2471fa596aaa588446fb0dfcf6025f8533d9dc931fa034b21c40c431473ce6`, source commit은 `yt-dlp/yt-dlp@594bd50c2c78ac432f81600d309fdc4e0a92d82c`다. Unlicense SHA-256 `7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c`와 `THIRD_PARTY_LICENSES.txt` SHA-256 `472aefe951c7db35e1657c1d13fd337140511ed6f2b329205105ad441c5a02b7`도 manifest와 일치한다.
+
+### Validation
+
+- ZJ release-app job `6251521b-6749-4415-9bf1-7eac826bae0f` (`ZJMpYThMksM&t=2017s`)는 download `100%`, `REVIEW_READY`, 후보 `20`, `18/18` units, GPU `12/12` completed까지 PASS했다. 이 흐름의 첫 실패 필수 게이트는 `scripts/e2e-local-cdp.mjs:279` player-ready 검사였고, 그 뒤 screenshot·preview·후보 재인식·전체 UI 게이트는 `HOLD`/`BLOCKED`다. 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-v050-public-gate-20260820\evidence-zjmp-retry\e2e-failure-2026-08-19T19-24-56-054Z-17056.json` 및 같은 basename의 `.log`다.
+- 이어진 JKY job `c8f80e03-33d7-4c3b-af5f-6f498be31f72` (`JKYmw9-xMIo&t=8463s`)도 download `100%`, `REVIEW_READY`, 후보 `20`, `22/22` units, GPU `16/16` completed 뒤 같은 player-ready 게이트에서 실패했다. 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-v050-public-gate-20260820\evidence-jky\e2e-failure-2026-08-19T19-39-18-521Z-24076.json` 및 `.log`다.
+- provenance 이후 최종 자동 검증은 npm 49, Rust 본체 `128 passed·1 ignored`, fixture-worker `6`, `npm.cmd run test:security` `6`, standalone Node `archive-safety 6·prepare-media-tools 3·sample-disk-usage 3` passed이며 build와 `git diff --check`도 `PASS`다. 전체 로그는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-final-post-provenance-vxCIf4`에 보존했다.
+
+### Package gate
+
+- 새 runtime을 포함한 unsigned package build는 EXE `16,279,040` bytes/SHA-256 `4bcac97a30edb54be83b81711524ad4335cce5bdc315a44ff77d53121f52ec74`, NSIS `595,368,676` bytes/SHA-256 `7c9e013794886fc220d82e1503d97277e5d79afca2b97f6ec7d367eab3041d3e`, PE `0.5.0`을 생성했다. Authenticode는 두 파일 모두 `NotSigned`이고 updater private key 부재로 signing은 `HOLD`다. Runtime manifest schema 6은 `51/51` runtime 및 `1/1` license hash, SBOM은 SPDX-2.3/root `vod-scout@0.5.0`/`656` packages다.
+
+### Known issues
+
+- ZJ가 첫 실패 필수 게이트이며 자동 GPU→CPU 제품 전환·설치·updater 서명·공개 Release는 `HOLD` 또는 `BLOCKED`다. 이 canonical docs 작업에서는 GitHub publication, push, PR, tag, Release, remote merge를 하지 않았다.
+
 ## Wave 5 release-app product validation - 2026-08-20
 
 ### Added

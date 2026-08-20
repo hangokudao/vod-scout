@@ -1,5 +1,14 @@
 # VOD Scout 빌드 명세
 
+## 2026-08-21 canonical final validation
+
+- validation-fixes `f3e0d439e3631ec8e57f2ea0ac7ea48c157f4d70`와 integration `f95a50a84b645be65b65d548f0da9b02ce23ac69`를 기준으로 문서만 갱신한다. 두 worktree는 시작 시 clean이며 docs-only 변경 뒤에도 clean으로 복원한다.
+- 공식 최신 `yt-dlp` nightly는 `2026.08.19.233000`이다. asset/digest SHA-256 `02bcc69a2a65a2af5da81a79356763522b611edc028c476e78c282735e28d442`, `SHA2-256SUMS` SHA-256 `6b2471fa596aaa588446fb0dfcf6025f8533d9dc931fa034b21c40c431473ce6`, source commit `594bd50c2c78ac432f81600d309fdc4e0a92d82c`, LICENSE `7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c`, THIRD_PARTY `472aefe951c7db35e1657c1d13fd337140511ed6f2b329205105ad441c5a02b7`가 manifest 및 단일 `check:yt-dlp` PASS 증거와 일치한다.
+- 필수 게이트 순서상 ZJ가 첫 실패다. ZJ는 acquisition/analysis `PASS` 후 `scripts/e2e-local-cdp.mjs:279` player-ready에서 실패했으며 screenshot·preview·후보 재인식·전체 UI는 `HOLD`/`BLOCKED`다. JKY도 같은 게이트에서 실패했다. ZJ 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-v050-public-gate-20260820\evidence-zjmp-retry\e2e-failure-2026-08-19T19-24-56-054Z-17056.json`/`.log`, JKY 증거는 `...\evidence-jky\e2e-failure-2026-08-19T19-39-18-521Z-24076.json`/`.log`다.
+- 최종 post-provenance 자동 검증: npm 49, Rust `128 passed·1 ignored`, fixture `6`, security `6`, standalone Node `6+3+3`, build 및 diff check `PASS`. 전체 로그·exit code·크기·SHA-256은 `C:\Users\myhan\AppData\Local\Temp\vod-scout-final-post-provenance-vxCIf4`에 있다.
+- 새 unsigned package: `vod-scout.exe` `16,279,040` bytes/SHA-256 `4bcac97a30edb54be83b81711524ad4335cce5bdc315a44ff77d53121f52ec74`; `VOD Scout_0.5.0_x64-setup.exe` `595,368,676` bytes/SHA-256 `7c9e013794886fc220d82e1503d97277e5d79afca2b97f6ec7d367eab3041d3e`; both PE `0.5.0`, Authenticode `NotSigned`. Signing/updater/public Release는 `HOLD`; package rebuild는 이 docs-only 변경 뒤 수행하지 않는다.
+- SBOM `SBOM.spdx.json`: SPDX-2.3, root `vod-scout@0.5.0`, `656` packages, `615,471` bytes, SHA-256 `418fd00061bc16a517a524691a8db6272e193c46dc47fba5f90bf012d177ed0a`. GitHub publication은 발생하지 않았다.
+
 ## 2026-08-20 Wave 5 release-app validation gates
 
 - stable `yt-dlp 2026.07.04`의 `android_vr`/`ANDR-V` client는 exact `298+251` 선택 후 HTTP `403`을 반환했다. official nightly `2026.08.18.122307`은 source commit `yt-dlp/yt-dlp@5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c`, Windows asset SHA-256 `652e154bce7170070d0f26415c9a3c35c121f5a7903cb8cde6d31c4577517fb9`로 고정됐고 `visionos` 경로 first-byte control에서 403 없이 도달했으며 release-app full transfer는 두 job 모두 100%였다. 기술 수정 커밋은 `6aa2bc83c48835082b5f08ee14fab0f9570eb691`이다.
