@@ -11,6 +11,37 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+function Resolve-E2eDataDirectory([string]$RequestedDataDirectory) {
+  if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+    throw "E2E 데이터 경로를 확인하지 못했습니다: LOCALAPPDATA가 없습니다."
+  }
+  if ([string]::IsNullOrWhiteSpace($RequestedDataDirectory)) {
+    throw "E2E 데이터 경로를 지정해야 합니다."
+  }
+
+  $requestedLeaf = Split-Path -Leaf $RequestedDataDirectory.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+  if ([string]::IsNullOrWhiteSpace($requestedLeaf) -or $requestedLeaf -in @(".", "..")) {
+    throw "E2E 데이터 경로의 마지막 폴더 이름이 올바르지 않습니다."
+  }
+
+  $safeLeaf = $requestedLeaf -replace "[^A-Za-z0-9._-]", "-"
+  if ([string]::IsNullOrWhiteSpace($safeLeaf)) {
+    throw "E2E 데이터 경로의 마지막 폴더 이름이 올바르지 않습니다."
+  }
+  if (-not $safeLeaf.StartsWith("e2e-", [StringComparison]::OrdinalIgnoreCase)) {
+    $safeLeaf = "e2e-$safeLeaf"
+  }
+
+  $appLocalDataRoot = Join-Path $env:LOCALAPPDATA "com.vodscout.app"
+  $resolved = [IO.Path]::GetFullPath((Join-Path $appLocalDataRoot $safeLeaf))
+  $rootPrefix = [IO.Path]::GetFullPath($appLocalDataRoot).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+  if (-not $resolved.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase) -or $resolved.Substring($rootPrefix.Length) -notmatch "^e2e-[A-Za-z0-9._-]+$") {
+    throw "E2E 데이터 경로는 com.vodscout.app 아래 e2e-* 폴더여야 합니다."
+  }
+  return $resolved
+}
+
 $snapshot = Get-Content -LiteralPath $SnapshotPath -Raw -Encoding utf8 | ConvertFrom-Json
 $source = if ($snapshot.acquiredMediaPath) { $snapshot.acquiredMediaPath } else { $snapshot.sourceLabel }
 $isYoutube = $source -match '^https?://(www\.)?(youtube\.com/watch\?v=|youtu\.be/)'
@@ -26,7 +57,8 @@ function Stop-ProcessTree([int]$ProcessId) {
 }
 
 $env:VOD_SCOUT_HEADLESS_E2E = "1"
-$env:VOD_SCOUT_E2E_DATA_DIR = $DataDirectory
+$resolvedDataDirectory = Resolve-E2eDataDirectory $DataDirectory
+$env:VOD_SCOUT_E2E_DATA_DIR = $resolvedDataDirectory
 $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$Port"
 $app = Start-Process -FilePath $AppPath -WindowStyle Hidden -PassThru
 try {

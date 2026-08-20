@@ -4,6 +4,10 @@
 
 ## Wave 5 release-app product validation - 2026-08-20
 
+### Fixed
+
+- 무창 E2E 실행기의 `DataDirectory`를 `%LOCALAPPDATA%\com.vodscout.app\e2e-*` 아래로 정규화해 기존 Asset Protocol 허용 범위와 맞췄다. 제품 저장 경로나 Asset Protocol 범위는 넓히지 않았고, 플레이어 준비 실패 증거에 `video`, `readyState`, `networkState`, `errorCode`를 남기도록 진단을 보강했다.
+
 ### Validation
 
 - stable `yt-dlp 2026.07.04`의 `android_vr`/`ANDR-V` client는 exact `298+251`을 선택한 뒤 media transfer에서 HTTP `403`을 반환했다. official nightly `2026.08.18.122307`(source commit `yt-dlp/yt-dlp@5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c`, Windows asset SHA-256 `652e154bce7170070d0f26415c9a3c35c121f5a7903cb8cde6d31c4577517fb9`)은 `android_vr`를 제거하고 `visionos` 경로에서 first-byte control에 403 없이 도달했으며, release-app full transfer는 두 job 모두 100%에 도달했다. 이 first-transfer 원인·수정은 기술 수정 커밋 `6aa2bc83c48835082b5f08ee14fab0f9570eb691`에 고정했다.

@@ -7,6 +7,16 @@ import { pathToFileURL } from "node:url";
 export const CANCEL_TIMEOUT_MS = 10_000;
 export const CANCEL_POLL_INTERVAL_MS = 200;
 
+export function formatPlayerReadinessFailure({
+  hasVideo = false,
+  readyState = 0,
+  networkState = 0,
+  errorCode = null,
+  errorMessage = null
+} = {}) {
+  return `검토 화면의 원본 구간 플레이어가 준비되지 않았습니다. video=${hasVideo ? "있음" : "없음"}, readyState=${readyState}, networkState=${networkState}, errorCode=${errorCode ?? "없음"}${errorMessage ? `, error=${errorMessage}` : ""}`;
+}
+
 function argumentValue(args, flag) {
   const index = args.indexOf(flag);
   return index >= 0 ? args[index + 1] : null;
@@ -271,12 +281,23 @@ export async function runE2E(args = process.argv.slice(2)) {
 
     const playerDeadline = Date.now() + 60_000;
     let playerReady = false;
+    let playerState = null;
     while (Date.now() < playerDeadline) {
       await delay(250);
-      playerReady = await evaluate("Boolean(document.querySelector('video') && document.querySelector('video').readyState >= 1)");
+      playerState = await evaluate(`(() => {
+        const video = document.querySelector('video');
+        return {
+          hasVideo: Boolean(video),
+          readyState: video?.readyState ?? 0,
+          networkState: video?.networkState ?? 0,
+          errorCode: video?.error?.code ?? null,
+          errorMessage: video?.error?.message ?? null
+        };
+      })()`);
+      playerReady = Boolean(playerState?.hasVideo && playerState.readyState >= 1);
       if (playerReady) break;
     }
-    if (!playerReady) throw new Error("검토 화면의 원본 구간 플레이어가 준비되지 않았습니다.");
+    if (!playerReady) throw new Error(formatPlayerReadinessFailure(playerState));
 
     const preview = await evaluate(`window.__TAURI_INTERNALS__.invoke("prepare_candidate_preview", { jobId: ${JSON.stringify(snapshot.id)}, candidateId: ${JSON.stringify(snapshot.candidates[0].id)} })`);
     if ((await stat(preview.path)).size < 1024) throw new Error("후보 영상 미리보기가 생성되지 않았습니다.");

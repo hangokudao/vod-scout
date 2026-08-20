@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   assertCandidateSignals,
+  formatPlayerReadinessFailure,
   readPersistedSnapshot,
   waitForCancelled,
   writeFailureEvidence
@@ -41,6 +42,14 @@ test("snapshot polling reads the persisted snapshot without invoking bootstrap r
   await mkdir(jobs, { recursive: true });
   await writeFile(join(jobs, "snapshot.json"), JSON.stringify({ status: "CANCELLED", id: "job-1" }), "utf8");
   assert.deepEqual(await readPersistedSnapshot(jobs), { status: "CANCELLED", id: "job-1" });
+});
+
+test("player readiness diagnostics include actionable media state", () => {
+  assert.equal(
+    formatPlayerReadinessFailure({ hasVideo: true, readyState: 0, networkState: 3, errorCode: 4 }),
+    "검토 화면의 원본 구간 플레이어가 준비되지 않았습니다. video=있음, readyState=0, networkState=3, errorCode=4"
+  );
+  assert.match(formatPlayerReadinessFailure(), /video=없음, readyState=0, networkState=0, errorCode=없음/);
 });
 
 test("CDP failure evidence includes arguments, exception, snapshot, and full log", async () => {

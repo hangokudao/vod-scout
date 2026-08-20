@@ -6,6 +6,9 @@
 
 ## 2026-08-20 · Wave 5 · release-app product validation
 
+- 원인·수정: 두 E2E의 분석 결과와 맥락 MP4는 정상 생성됐지만 실행기가 임의 TEMP 경로를 `VOD_SCOUT_E2E_DATA_DIR`로 그대로 넘겨 `$APPLOCALDATA/e2e-*/jobs/*/review-clips/*.mp4` Asset Protocol 범위 밖에서 플레이어 준비를 검사했다. `scripts/run-e2e-smoke.ps1`는 요청 경로의 마지막 이름만 사용해 `%LOCALAPPDATA%\com.vodscout.app\e2e-*` 아래로 정규화하고, `scripts/e2e-local-cdp.mjs`는 실패 시 `video`·`readyState`·`networkState`·`errorCode`를 기록한다.
+- 회귀: `scripts/e2e-local-cdp.test.mjs`의 플레이어 진단 테스트와 `scripts/run-e2e-smoke.test.mjs`의 경로 허용·거부 계약 테스트를 추가했다. 실제 YouTube E2E·전체 빌드는 이 수정에서 실행하지 않는다.
+
 - stable `yt-dlp 2026.07.04`는 `android_vr`/`ANDR-V` client에서 exact `298+251`을 선택하고 첫 media transfer HTTP `403`으로 종료했다. official nightly `2026.08.18.122307`은 source commit `yt-dlp/yt-dlp@5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c`, bundled Windows asset SHA-256 `652e154bce7170070d0f26415c9a3c35c121f5a7903cb8cde6d31c4577517fb9`로 고정됐고 `visionos` 경로 first-byte control에서 403 없이 도달했으며, release-app full transfer는 두 job 모두 100%였다. 원인·수정 커밋은 `6aa2bc83c48835082b5f08ee14fab0f9570eb691`이다.
 - ZJ release-app job `6251521b-6749-4415-9bf1-7eac826bae0f`는 `ZJMpYThMksM&t=2017s`, download `100%`, `REVIEW_READY`, 20 candidates, `18/18` units, GPU `12/12` completed를 기록했다. `captions`는 automatic Korean, `trackId=Korean`, SHA-256 `d74a0bab2029be6b1d33c27e66031838076b2fe658e13b910c3327e0a3f71562`, `quality=unverified`, `localWhisperFallback=true`였다.
 - JKY release-app job `c8f80e03-33d7-4c3b-af5f-6f498be31f72`는 `JKYmw9-xMIo&t=8463s`, download `100%`, `REVIEW_READY`, 20 candidates, `22/22` units, GPU `16/16` completed를 기록했다. `captions`는 automatic Korean, `trackId=Korean`, SHA-256 `81dff33650b150069a03cd73db2aaf8d8e29682cdf4a80c9366e1b4e64cdb6cc`, `quality=unverified`, `localWhisperFallback=true`였다.
