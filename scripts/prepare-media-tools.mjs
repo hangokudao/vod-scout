@@ -53,19 +53,19 @@ const artifacts = {
     archive: "OpenAI-Whisper-LICENSE.txt"
   },
   ytDlp: {
-    url: "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/download/2026.08.18.122307/yt-dlp.exe",
-    sha256: "652e154bce7170070d0f26415c9a3c35c121f5a7903cb8cde6d31c4577517fb9",
-    archive: "yt-dlp-nightly-2026.08.18.122307.exe",
+    url: "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/download/2026.08.19.233000/yt-dlp.exe",
+    sha256: "02bcc69a2a65a2af5da81a79356763522b611edc028c476e78c282735e28d442",
+    archive: "yt-dlp-nightly-2026.08.19.233000.exe",
     repo: "yt-dlp/yt-dlp-nightly-builds",
     channel: "nightly",
     sourceRepo: "yt-dlp/yt-dlp",
-    sourceCommit: "5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c",
-    sourceCommitUrl: "https://github.com/yt-dlp/yt-dlp/commit/5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c",
-    checksumUrl: "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/download/2026.08.18.122307/SHA2-256SUMS",
-    checksumSha256: "e53fefb8bcec1b7bdbeaa77f662955528d530d76127ea42037c9fd1e6893c990",
+    sourceCommit: "594bd50c2c78ac432f81600d309fdc4e0a92d82c",
+    sourceCommitUrl: "https://github.com/yt-dlp/yt-dlp/commit/594bd50c2c78ac432f81600d309fdc4e0a92d82c",
+    checksumUrl: "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/download/2026.08.19.233000/SHA2-256SUMS",
+    checksumSha256: "6b2471fa596aaa588446fb0dfcf6025f8533d9dc931fa034b21c40c431473ce6",
     license: "Unlicense",
     executableLicenseNotice: "yt-dlp.exe is a GPL-3.0-or-later PyInstaller combined work; yt-dlp source is Unlicense and bundled components are listed in THIRD_PARTY_LICENSES.txt.",
-    licenseUrl: "https://raw.githubusercontent.com/yt-dlp/yt-dlp/5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c/LICENSE",
+    licenseUrl: "https://raw.githubusercontent.com/yt-dlp/yt-dlp/594bd50c2c78ac432f81600d309fdc4e0a92d82c/LICENSE",
     licenseSha256: "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c"
   },
   deno: {
@@ -74,14 +74,14 @@ const artifacts = {
     archive: "deno-x86_64-pc-windows-msvc-v2.9.4.zip"
   },
   ytDlpLicense: {
-    url: "https://raw.githubusercontent.com/yt-dlp/yt-dlp/5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c/LICENSE",
+    url: "https://raw.githubusercontent.com/yt-dlp/yt-dlp/594bd50c2c78ac432f81600d309fdc4e0a92d82c/LICENSE",
     sha256: "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c",
     archive: "yt-dlp-LICENSE.txt"
   },
   ytDlpThirdPartyLicenses: {
-    url: "https://raw.githubusercontent.com/yt-dlp/yt-dlp/5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c/THIRD_PARTY_LICENSES.txt",
+    url: "https://raw.githubusercontent.com/yt-dlp/yt-dlp/594bd50c2c78ac432f81600d309fdc4e0a92d82c/THIRD_PARTY_LICENSES.txt",
     sha256: "472aefe951c7db35e1657c1d13fd337140511ed6f2b329205105ad441c5a02b7",
-    sourceCommit: "5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c",
+    sourceCommit: "594bd50c2c78ac432f81600d309fdc4e0a92d82c",
     archive: "yt-dlp-THIRD_PARTY_LICENSES.txt"
   },
   denoLicense: {

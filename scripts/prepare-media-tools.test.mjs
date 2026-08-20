@@ -32,9 +32,9 @@ test("yt-dlp nightly provenance and checksum remain pinned", () => {
   assert.equal(ytDlp.channel, "nightly");
   assert.equal(ytDlp.repo, "yt-dlp/yt-dlp-nightly-builds");
   assert.equal(ytDlp.sourceRepo, "yt-dlp/yt-dlp");
-  assert.equal(ytDlp.sourceCommit, "5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c");
-  assert.equal(ytDlp.sha256, "652e154bce7170070d0f26415c9a3c35c121f5a7903cb8cde6d31c4577517fb9");
-  assert.equal(ytDlp.checksumSha256, "e53fefb8bcec1b7bdbeaa77f662955528d530d76127ea42037c9fd1e6893c990");
+  assert.equal(ytDlp.sourceCommit, "594bd50c2c78ac432f81600d309fdc4e0a92d82c");
+  assert.equal(ytDlp.sha256, "02bcc69a2a65a2af5da81a79356763522b611edc028c476e78c282735e28d442");
+  assert.equal(ytDlp.checksumSha256, "6b2471fa596aaa588446fb0dfcf6025f8533d9dc931fa034b21c40c431473ce6");
   assert.equal(ytDlp.license, "Unlicense");
   assert.match(ytDlp.executableLicenseNotice, /GPL-3\.0-or-later PyInstaller combined work/);
   assert.equal(ytDlp.licenseSha256, "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c");
@@ -42,8 +42,8 @@ test("yt-dlp nightly provenance and checksum remain pinned", () => {
   assert.equal(manifest.artifacts.ytDlpThirdPartyLicenses.sha256, "472aefe951c7db35e1657c1d13fd337140511ed6f2b329205105ad441c5a02b7");
   assert.equal(manifest.licenseHashes["licenses/yt-dlp-THIRD_PARTY_LICENSES.txt"], manifest.artifacts.ytDlpThirdPartyLicenses.sha256);
   assert.equal(manifest.runtimeHashes["yt-dlp/yt-dlp.exe"], ytDlp.sha256);
-  assert.match(source, /yt-dlp-nightly-2026\.08\.18\.122307\.exe/);
-  assert.match(source, /sourceCommit: "5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c"/);
+  assert.match(source, /yt-dlp-nightly-2026\.08\.19\.233000\.exe/);
+  assert.match(source, /sourceCommit: "594bd50c2c78ac432f81600d309fdc4e0a92d82c"/);
   assert.match(source, /checksumUrl: "https:\/\/github\.com\/yt-dlp\/yt-dlp-nightly-builds/);
   assert.match(source, /ytDlpThirdPartyLicenses:[\s\S]*THIRD_PARTY_LICENSES\.txt/);
   assert.match(source, /licenseHashes/);
