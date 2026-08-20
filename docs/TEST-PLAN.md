@@ -6,9 +6,11 @@
 
 PASS 조건은 실제 GPU backend/device와 유효한 음성 인식 결과, 메인 화면, `0.5.0-rc.1`, Auto/GPU/CPU 설정 표시, 기존 설치·사용자 데이터 무변경이다. 장시간 E2E는 반복하지 않는다. 자동 GPU→CPU 전환은 `DEFERRED`이며 이번 Pre-release를 막지 않는다.
 
-updater artifact는 만들지 않는다. `.sig`, `latest.json`, updater zip이 release 디렉터리나 GitHub Pre-release 자산에 있으면 실패다. 최종 결과는 integration 실행 뒤 기록한다.
+updater artifact는 만들지 않는다. `.sig`, `latest.json`, updater zip이 release 디렉터리나 GitHub Pre-release 자산에 있으면 실패다.
 
-## 2026-08-21 canonical final validation
+최종 결과는 npm 49, Rust `128 passed·1 ignored`, fixture-worker 6, 보안 6, production dependency audit 0 vulnerabilities, build·diff 검사, 실제 CUDA0 GPU fixture, unsigned EXE·NSIS와 CDP 화면 스모크가 모두 `PASS`다. CDP 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-rc1-cdp-smoke-20260821-024212`, GPU 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-rc1-gpu-20260821-020758`에 보존했다.
+
+## 2026-08-21 이전 엄격 공개 게이트 기록
 
 ### 필수 게이트 판정
 

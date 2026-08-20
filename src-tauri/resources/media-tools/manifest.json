@@ -1,6 +1,6 @@
 {
   "schemaVersion": 6,
-  "preparedAt": "2026-08-19T18:59:00.648Z",
+  "preparedAt": "2026-08-20T17:06:32.682Z",
   "artifacts": {
     "ffmpeg": {
       "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-17-13-05/ffmpeg-n8.1.2-44-g7c533d0f86-win64-lgpl-shared-8.1.zip",

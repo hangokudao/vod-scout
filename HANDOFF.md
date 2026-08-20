@@ -1,6 +1,6 @@
 # VOD Scout 인계서
 
-현재 게이트: **v0.5.0-rc.1 unsigned Pre-release 준비 · JKY GPU E2E PASS · ZJ 기존 화면 증거 인정 · 자동 GPU→CPU 전환 DEFERRED · 최종 통합 검증·패키지·공개 대기 · G7 disabled**
+현재 게이트: **v0.5.0-rc.1 unsigned Pre-release 로컬 게이트 PASS · JKY GPU E2E PASS · ZJ 기존 화면 증거 인정 · 자동 GPU→CPU 전환 DEFERRED · GitHub 공개 진행 · G7 disabled**
 
 ## v0.5.0-rc.1 공개 결정 (2026-08-21)
 
@@ -8,9 +8,9 @@
 - 기존 JKY 전체 E2E의 실제 backend `whisper.cpp-gpu` 완료 결과와 ZJMp 기존 후보 화면·원본 미리보기 증거를 사용자 흐름 증거로 인정하고 장시간 E2E는 반복하지 않는다.
 - 실제 GPU 실패 뒤 CPU 자동 전환은 `DEFERRED`로 공개를 막지 않는다. unsigned 설치 파일과 Windows SmartScreen 경고를 알려진 한계로 허용한다.
 - `bundle.createUpdaterArtifacts=false`로 rc.1 updater artifact 생성만 중단한다. `.sig`, `latest.json`, updater zip은 생성·배포하지 않는다.
-- 최종 integration 테스트·GPU fixture·unsigned 패키지·새 임시 데이터 경로 화면 스모크·GitHub 공개 결과와 해시는 아직 `PENDING`이며 확인 전 값을 만들지 않는다.
+- 최종 integration 테스트, 실제 CUDA GPU fixture, unsigned EXE·NSIS, SBOM·checksums와 CDP 화면 스모크가 `PASS`했다. NSIS SHA-256은 `ab231a9619cbbd5c1d5c6e132262202e21cecd8db3ccdce255242e1ab51e3558`, CDP 스크린샷 SHA-256은 `599c7132e57d0baeae12c84f8222ef6d9c669aae930aed4efcee7f2f25153f0d`이며 GitHub 공개 결과만 아직 기록 전이다.
 
-## Canonical final handoff (2026-08-21)
+## 이전 엄격 공개 게이트 기록 (2026-08-21)
 
 - 기준 HEAD는 validation-fixes `ae25f1342ae25f1ee7a2eb6dc6a694d4aedf14d8`, integration `53172fab00d61a398333e0cee18652fa0d1b5387`이며 docs-only 변경 뒤 두 worktree를 clean으로 유지한다.
 - player-ready 평가는 수정 후 PASS다. ZJ integration job `9b6de644-e40f-4130-bffb-301eab4a03a6`는 `REVIEW_READY`, download `100%`, 후보 `20`, `18/18` units, GPU `12/12`, `previewPlayerReady=true`, `bodyVerified=true`를 확인했지만 `candidateRevision=0`, `recognitionRuns=[]`라 선택 후보 재인식 완료 증거가 없어 ZJ 현재 상태는 `HOLD`다. snapshot은 `C:\Users\myhan\AppData\Local\com.vodscout.app\e2e-requested-data-zjmp-integration\jobs\9b6de644-e40f-4130-bffb-301eab4a03a6\snapshot.json`, screenshot은 `C:\Users\myhan\AppData\Local\Temp\vod-scout-zjmp-integration-screen-m3unDv\review.png`다.

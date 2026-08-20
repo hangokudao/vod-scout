@@ -12,7 +12,7 @@
 ### Validation
 
 - 기존 JKY 전체 E2E에서 실제 backend `whisper.cpp-gpu`와 완료된 유효 결과를 확인했다. ZJMp 기존 후보 화면·원본 미리보기 증거도 이번 사용자 흐름 증거로 인정하며 장시간 E2E는 반복하지 않는다.
-- 최종 integration 테스트·짧은 GPU fixture·unsigned package·새 임시 데이터 경로 화면 스모크 결과는 아직 `PENDING`이다.
+- 최종 integration 테스트, GTX 1060 CUDA0 backend의 짧은 GPU fixture, unsigned EXE·NSIS, SBOM·checksums와 포커스를 사용하지 않은 CDP 화면 스모크가 통과했다. 최종 NSIS SHA-256은 `ab231a9619cbbd5c1d5c6e132262202e21cecd8db3ccdce255242e1ab51e3558`이다.
 
 ### Known issues
 

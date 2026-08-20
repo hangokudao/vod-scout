@@ -1,13 +1,17 @@
 # VOD Scout 빌드 명세
 
-## v0.5.0-rc.1 unsigned Pre-release 준비
+## v0.5.0-rc.1 unsigned Pre-release 최종 후보
 
-- 버전 정본: `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, `src/releaseNotes.ts`, installer smoke 기대 버전을 `0.5.0-rc.1`로 맞춘다.
+- 버전 정본: `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, `src/releaseNotes.ts`, installer smoke 기대 버전이 `0.5.0-rc.1`로 일치한다.
 - GPU·Auto·CPU 기능과 GPU runtime은 변경하지 않는다. 실제 JKY `whisper.cpp-gpu` 완료 증거를 GPU 동작 근거로 인정하고, GPU 실패 뒤 CPU 자동 전환은 `DEFERRED`다.
 - `createUpdaterArtifacts=false`; 공개 자산은 unsigned NSIS installer, `SBOM.spdx.json`, `SHA256SUMS.txt`만 허용하며 `.sig`, `latest.json`, updater zip은 금지한다.
-- 최종 EXE·NSIS 크기·SHA-256, SBOM·checksums, GPU fixture, 새 임시 데이터 경로 실행 스모크는 integration 최종 검증 뒤 기록한다. 현재 값은 `PENDING`이다.
+- 최종 검증은 npm `49`, Rust 본체 `128 passed·1 ignored`, fixture-worker `6`, 보안 `6`, production dependency audit 취약점 `0`, build와 `git diff --check`가 `PASS`다.
+- 짧은 GPU fixture는 GTX 1060 3GB의 CUDA0 backend, `use gpu = 1`, `gpu_device = 0`과 유효한 47-byte SRT를 확인했다. SRT SHA-256은 `74e9f3ff2da6c73ad7d9bb45ee7f1a5be4a7a8cb29c1c2a33920af9be4ed882c`, 증거 경로는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-rc1-gpu-20260821-020758`이다.
+- 최종 EXE는 `16,279,040` bytes/SHA-256 `922a5f2a6e9a68485fdbdbfdbc3f16f26bab246fa4e884bfd01dcda99f6c706a`, unsigned NSIS는 `595,322,815` bytes/SHA-256 `ab231a9619cbbd5c1d5c6e132262202e21cecd8db3ccdce255242e1ab51e3558`이며 둘 다 `0.5.0-rc.1`, Authenticode `NotSigned`다.
+- 최종 SBOM은 `618,021` bytes/SHA-256 `71f87ef95a3061a0879ecafad77162a74f9e7538d968a8188566f23521bb7c67`, `SHA256SUMS.txt`는 `182` bytes/SHA-256 `32dc5bcee73ed0db4c748ba3addfd6856d9da0e0d6d88beb5c878cda68311553`다. updater `.sig`, `latest.json`, updater zip은 `0`개다.
+- CDP 화면 스모크는 visible·비최소화 창을 포커스 없이 화면 밖으로 이동해 메인 화면, `0.5.0-rc.1`, Auto/GPU/CPU, 속도 단계와 CPU 사용량을 확인했다. 스크린샷은 `102,626` bytes/SHA-256 `599c7132e57d0baeae12c84f8222ef6d9c669aae930aed4efcee7f2f25153f0d`, 증거 경로는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-rc1-cdp-smoke-20260821-024212`이며 이번 재검증 전후 기존 데이터 지문은 일치한다.
 
-## 2026-08-21 canonical final validation
+## 2026-08-21 이전 엄격 공개 게이트 기록
 
 - validation-fixes `ae25f1342ae25f1ee7a2eb6dc6a694d4aedf14d8`와 integration `53172fab00d61a398333e0cee18652fa0d1b5387`를 기준으로 문서만 갱신한다. 두 worktree는 시작 시 clean이며 docs-only 변경 뒤에도 clean으로 복원한다.
 - 공식 최신 `yt-dlp` nightly는 `2026.08.19.233000`이다. asset/digest SHA-256 `02bcc69a2a65a2af5da81a79356763522b611edc028c476e78c282735e28d442`, `SHA2-256SUMS` SHA-256 `6b2471fa596aaa588446fb0dfcf6025f8533d9dc931fa034b21c40c431473ce6`, source commit `594bd50c2c78ac432f81600d309fdc4e0a92d82c`, LICENSE `7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c`, THIRD_PARTY `472aefe951c7db35e1657c1d13fd337140511ed6f2b329205105ad441c5a02b7`가 manifest 및 단일 `check:yt-dlp` PASS 증거와 일치한다.
