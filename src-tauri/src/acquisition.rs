@@ -1,4 +1,5 @@
 use super::{media, mutate_job, AppState};
+use crate::captions::{self, CaptionTrack, VerificationState};
 use crate::domain::JobStatus;
 use crate::integrity::{
     aggregate_required_bytes_by_volume, format_bytes_for_message, free_disk_space_bytes,
@@ -30,6 +31,10 @@ const YT_DLP_FORMAT_PROBE: &str = "bv*[height<=720]+ba/b[height<=720]/b";
 /// Hard caps on metadata-only probe pipes (fail closed if exceeded).
 const PROBE_STDOUT_BYTE_LIMIT: usize = 2 * 1024 * 1024;
 const PROBE_STDERR_BYTE_LIMIT: usize = 256 * 1024;
+
+fn youtube_extractor_args() -> [&'static str; 2] {
+    ["--extractor-args", "youtube:skip=translated_subs"]
+}
 
 #[derive(Debug)]
 enum AcquisitionError {
@@ -118,6 +123,12 @@ pub(crate) fn validate_youtube_url(value: &str) -> Result<(), String> {
         .host_str()
         .map(|host| host.to_ascii_lowercase())
         .ok_or_else(|| "YouTube 영상 주소 형식을 확인해 주세요.".to_string())?;
+    if parsed
+        .query_pairs()
+        .any(|(key, _)| key.eq_ignore_ascii_case("tlang"))
+    {
+        return Err("번역 자막 주소는 사용할 수 없습니다.".into());
+    }
     let segments = parsed
         .path_segments()
         .map(|segments| segments.filter(|part| !part.is_empty()).collect::<Vec<_>>())
@@ -157,6 +168,7 @@ pub(crate) fn run_youtube_pipeline<R: tauri::Runtime>(
                 if job.status != JobStatus::Cancelling && job.status.is_active() {
                     job.transition(JobStatus::Cancelling)?;
                 }
+                job.owned_child_processes = 0;
                 job.transition(JobStatus::Cancelled)?;
                 job.current_stage_label = "다운로드 취소됨".into();
                 job.error_message = None;
@@ -167,11 +179,12 @@ pub(crate) fn run_youtube_pipeline<R: tauri::Runtime>(
                 );
                 Ok(())
             });
-            finish(&state);
+            finish(&app, &state);
         }
         Err(AcquisitionError::Message(detail)) => {
             let _ = mutate_job(&app, &state, |job| {
                 if job.status == JobStatus::Cancelling {
+                    job.owned_child_processes = 0;
                     job.transition(JobStatus::Cancelled)?;
                     job.current_stage_label = "다운로드 취소됨".into();
                     job.error_message = None;
@@ -189,14 +202,15 @@ pub(crate) fn run_youtube_pipeline<R: tauri::Runtime>(
                 }
                 Ok(())
             });
-            finish(&state);
+            finish(&app, &state);
         }
     }
 }
 
-fn finish(state: &Arc<AppState>) {
+fn finish<R: tauri::Runtime>(app: &tauri::AppHandle<R>, state: &Arc<AppState>) {
     state.cancel_requested.store(false, Ordering::SeqCst);
     state.running.store(false, Ordering::SeqCst);
+    crate::continue_queue(app.clone(), Arc::clone(state));
 }
 
 fn acquire<R: tauri::Runtime>(
@@ -230,6 +244,9 @@ fn acquire<R: tauri::Runtime>(
     let checkpoint_path = job_dir.join("acquisition.json");
 
     let checkpoint = load_checkpoint(&checkpoint_path, &source_url)?;
+    let mut caption_track = None;
+    let mut caption_path = None;
+    let mut caption_provenance_reused = false;
     let (media_path, title) = if let Some(checkpoint) = checkpoint {
         (PathBuf::from(checkpoint.media_path), checkpoint.title)
     } else if let Some(path) = find_downloaded_media(&download_dir)? {
@@ -265,6 +282,7 @@ fn acquire<R: tauri::Runtime>(
             &log_dir,
             &state.cancel_requested,
         )?;
+        caption_track = format_plan.caption_track.clone();
 
         let outcome = run_yt_dlp(
             app,
@@ -274,7 +292,9 @@ fn acquire<R: tauri::Runtime>(
             &download_dir,
             &log_dir,
             &format_plan.format_selector,
+            format_plan.caption_track.as_ref(),
         )?;
+        caption_path = outcome.caption_path.clone();
         let path = outcome
             .media_path
             .filter(|path| path.is_file())
@@ -296,8 +316,58 @@ fn acquire<R: tauri::Runtime>(
         (path, outcome.title)
     };
 
+    if caption_track.is_none() {
+        if let Some((provenance, _)) = captions::read_provenance(&job_dir).ok().flatten() {
+            caption_track = Some(CaptionTrack {
+                track_id: provenance.track_id,
+                language: provenance.language,
+                source: provenance.source,
+                url: None,
+                revision: provenance.revision,
+            });
+            caption_path = Some(job_dir.join(provenance.original_file));
+            caption_provenance_reused = true;
+        }
+    }
+
     if state.cancel_requested.load(Ordering::SeqCst) {
         return Err(AcquisitionError::Cancelled);
+    }
+    if !caption_provenance_reused {
+        if let (Some(track), Some(path)) = (caption_track.as_ref(), caption_path.as_ref()) {
+            if path.is_file() {
+                let bytes = fs::read(path)?;
+                let provenance = captions::persist_provenance(
+                    &job_dir,
+                    &source_url,
+                    track,
+                    &bytes,
+                    VerificationState::Unverified,
+                    Vec::new(),
+                )
+                .map_err(AcquisitionError::Message)?;
+                mutate_job(app, state, |job| {
+                    job.captions = Some(crate::domain::CaptionSummary {
+                        source: Some(provenance.source),
+                        language: Some(provenance.language.clone()),
+                        quality: "unverified".into(),
+                        fallback_intervals: 0,
+                        local_whisper_fallback: true,
+                        diagnostics: Vec::new(),
+                        provenance: Some(crate::domain::CaptionProvenanceSummary {
+                            original_file: provenance.original_file.clone(),
+                            language: Some(provenance.language.clone()),
+                            track_id: provenance.track_id.clone(),
+                            sha256: provenance.sha256.clone(),
+                            revision: provenance.revision.clone(),
+                            verification_state: provenance.verification_state,
+                        }),
+                    });
+                    Ok(())
+                })
+                .map_err(AcquisitionError::Message)?;
+            }
+        }
     }
     let label = title
         .as_deref()
@@ -323,6 +393,7 @@ fn acquire<R: tauri::Runtime>(
 struct DownloadOutcome {
     media_path: Option<PathBuf>,
     title: Option<String>,
+    caption_path: Option<PathBuf>,
 }
 
 fn overflow_plan_error() -> String {
@@ -386,6 +457,7 @@ pub(crate) struct SelectedFormatPlan {
     pub format_ids: Vec<String>,
     pub stream_sizes: Vec<u64>,
     pub duration_seconds: f64,
+    pub caption_track: Option<CaptionTrack>,
 }
 
 /// Checked sum of selected stream sizes (each must be > 0).
@@ -610,6 +682,7 @@ pub(crate) fn selected_format_plan_from_info(info: &Value) -> Result<SelectedFor
         format_ids,
         stream_sizes,
         duration_seconds,
+        caption_track: captions::select_track(info),
     })
 }
 
@@ -862,7 +935,10 @@ fn probe_download_metadata(
             "--format",
             YT_DLP_FORMAT_PROBE,
             "--dump-single-json",
+            "--write-subs",
+            "--write-auto-subs",
         ])
+        .args(youtube_extractor_args())
         .arg("--ffmpeg-location")
         .arg(&tools.ffmpeg_dir)
         .arg("--js-runtimes")
@@ -1151,10 +1227,14 @@ fn run_yt_dlp<R: tauri::Runtime>(
     download_dir: &Path,
     log_dir: &Path,
     format_selector: &str,
+    caption_track: Option<&CaptionTrack>,
 ) -> Result<DownloadOutcome, AcquisitionError> {
     // Fail closed if selector was not pre-validated (should already be pinned from probe).
     for id in format_selector.split('+') {
         validate_format_id(id).map_err(AcquisitionError::Message)?;
+    }
+    if let Some(track) = caption_track {
+        clear_caption_files(download_dir, &track.language);
     }
     let mut command = Command::new(&tools.yt_dlp);
     command
@@ -1188,6 +1268,8 @@ fn run_yt_dlp<R: tauri::Runtime>(
             "--output",
             "source.%(ext)s",
         ])
+        .args(youtube_extractor_args())
+        .args(caption_download_args(caption_track))
         .arg("--paths")
         .arg(format!("home:{}", download_dir.display()))
         .arg("--paths")
@@ -1290,7 +1372,12 @@ fn run_yt_dlp<R: tauri::Runtime>(
             &stderr_tail.into_iter().collect::<Vec<_>>().join("\n"),
         )));
     }
-    Ok(DownloadOutcome { media_path, title })
+    let caption_path = caption_track.and_then(|track| find_caption_file(download_dir, track));
+    Ok(DownloadOutcome {
+        media_path,
+        title,
+        caption_path,
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1510,6 +1597,53 @@ fn find_downloaded_media(download_dir: &Path) -> Result<Option<PathBuf>, Acquisi
     Ok(candidates.into_iter().next())
 }
 
+fn caption_download_args(caption_track: Option<&CaptionTrack>) -> Vec<String> {
+    let Some(track) = caption_track else {
+        return Vec::new();
+    };
+    if selected_caption_output_filename(&track.language).is_none() {
+        return Vec::new();
+    }
+    let source_flag = match track.source {
+        captions::CaptionSource::Creator => "--write-subs",
+        captions::CaptionSource::Automatic => "--write-auto-subs",
+    };
+    vec![
+        source_flag.into(),
+        "--sub-langs".into(),
+        track.language.clone(),
+        "--sub-format".into(),
+        "vtt".into(),
+    ]
+}
+
+fn selected_caption_output_filename(language: &str) -> Option<String> {
+    captions::is_safe_korean_language_tag(language).then(|| format!("source.{language}.vtt"))
+}
+
+fn find_caption_file(download_dir: &Path, track: &CaptionTrack) -> Option<PathBuf> {
+    let expected_name = selected_caption_output_filename(&track.language)?;
+    let mut candidates = fs::read_dir(download_dir)
+        .ok()?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.is_file()
+                && path.file_name().is_some_and(|name| {
+                    name.to_string_lossy().eq_ignore_ascii_case(&expected_name)
+                })
+        })
+        .collect::<Vec<_>>();
+    candidates.sort();
+    candidates.into_iter().next()
+}
+
+fn clear_caption_files(download_dir: &Path, language: &str) {
+    if let Some(name) = selected_caption_output_filename(language) {
+        fs::remove_file(download_dir.join(name)).ok();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1528,6 +1662,7 @@ mod tests {
             "http://www.youtube.com/watch?v=BaW_jenozKc",
             "https://www.youtube.com.evil.test/watch?v=BaW_jenozKc",
             "https://www.youtube.com/playlist?list=abc",
+            "https://www.youtube.com/watch?v=BaW_jenozKc&tlang=ko",
             "https://example.com/watch?v=BaW_jenozKc",
         ] {
             assert!(validate_youtube_url(invalid).is_err(), "{invalid}");
@@ -1541,6 +1676,101 @@ mod tests {
             Some(("395".into(), 43))
         );
         assert_eq!(parse_progress("[download] 42%"), None);
+    }
+
+    #[test]
+    fn downloads_only_the_selected_caption_source_and_language() {
+        let creator = CaptionTrack {
+            track_id: "ko".into(),
+            language: "ko".into(),
+            source: captions::CaptionSource::Creator,
+            url: Some("creator".into()),
+            revision: "ko".into(),
+        };
+        let creator_args = caption_download_args(Some(&creator));
+        assert!(creator_args.contains(&"--write-subs".into()));
+        assert!(!creator_args.contains(&"--write-auto-subs".into()));
+        assert!(creator_args
+            .windows(2)
+            .any(|pair| pair[0] == "--sub-langs" && pair[1] == "ko"));
+
+        let automatic = CaptionTrack {
+            source: captions::CaptionSource::Automatic,
+            language: "ko-KR".into(),
+            ..creator
+        };
+        let automatic_args = caption_download_args(Some(&automatic));
+        assert!(automatic_args.contains(&"--write-auto-subs".into()));
+        assert!(!automatic_args.contains(&"--write-subs".into()));
+        assert!(automatic_args
+            .windows(2)
+            .any(|pair| pair[0] == "--sub-langs" && pair[1] == "ko-KR"));
+        assert!(caption_download_args(None).is_empty());
+    }
+
+    #[test]
+    fn rejects_unsafe_caption_language_tags_before_building_download_args() {
+        for language in ["ko-../../x", r"ko\..\x", "ko.*"] {
+            let track = CaptionTrack {
+                track_id: language.into(),
+                language: language.into(),
+                source: captions::CaptionSource::Creator,
+                url: None,
+                revision: language.into(),
+            };
+            assert!(caption_download_args(Some(&track)).is_empty(), "{language}");
+            assert!(selected_caption_output_filename(language).is_none());
+        }
+        for language in ["ko", "ko-orig", "ko_KR"] {
+            assert_eq!(
+                selected_caption_output_filename(language),
+                Some(format!("source.{language}.vtt"))
+            );
+        }
+    }
+
+    #[test]
+    fn caption_file_lookup_excludes_other_source_and_language() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(temp.path().join("source.ko.vtt"), b"creator").unwrap();
+        fs::write(temp.path().join("source.ko.auto.vtt"), b"automatic").unwrap();
+        fs::write(temp.path().join("source.en.vtt"), b"english").unwrap();
+        let creator = CaptionTrack {
+            track_id: "ko".into(),
+            language: "ko".into(),
+            source: captions::CaptionSource::Creator,
+            url: None,
+            revision: "ko".into(),
+        };
+        assert_eq!(
+            fs::read_to_string(find_caption_file(temp.path(), &creator).unwrap()).unwrap(),
+            "creator"
+        );
+        let automatic = CaptionTrack {
+            source: captions::CaptionSource::Automatic,
+            ..creator
+        };
+        assert_eq!(
+            fs::read_to_string(find_caption_file(temp.path(), &automatic).unwrap()).unwrap(),
+            "creator"
+        );
+    }
+
+    #[test]
+    fn clears_only_the_selected_common_caption_output() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(temp.path().join("source.ko.vtt"), b"selected stale").unwrap();
+        fs::write(temp.path().join("source.ko.auto.vtt"), b"unrelated legacy").unwrap();
+        fs::write(temp.path().join("source.en.vtt"), b"other language").unwrap();
+        clear_caption_files(temp.path(), "ko");
+        assert!(!temp.path().join("source.ko.vtt").exists());
+        assert!(temp.path().join("source.ko.auto.vtt").exists());
+        assert!(temp.path().join("source.en.vtt").exists());
+    }
+
+    #[test]
+    fn extractor_args_skip_only_translated_subtitles() {
+        assert_eq!(youtube_extractor_args(), ["--extractor-args", "youtube:skip=translated_subs"]);
     }
 
     #[test]
@@ -1637,6 +1867,7 @@ mod tests {
             format_ids: vec!["298".into(), "251".into()],
             stream_sizes: vec![10, 20],
             duration_seconds: 30.0,
+            caption_track: None,
         };
         let log = build_minimal_metadata_log(
             Some(&plan),

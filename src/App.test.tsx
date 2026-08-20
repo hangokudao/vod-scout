@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App, {
   CANDIDATE_SORTS,
+  CANDIDATE_COUNTS,
   DEFAULT_CONTEXT_PADDING_SECONDS,
   DEFAULT_UI_SETTINGS,
   SETTINGS_STORAGE_KEY,
@@ -9,9 +10,15 @@ import App, {
   resolveCandidateContext,
   resolveTheme,
   resolveUpdateStatus,
+  safeCandidateDerivedText,
+  safeTranscriptText,
+  hasStartedRecognitionRun,
   selectionStorageKey,
   sortCandidates,
   writeUiSettings,
+  normalizeWhisperSettings,
+  queueEvaluationExplanation,
+  resourceMetricValue,
   type CandidateSortKey
 } from "./App";
 import type { Candidate } from "./types";
@@ -87,6 +94,49 @@ describe("sortCandidates", () => {
   });
 });
 
+describe("candidate count contract", () => {
+  it("offers only the persisted 8, 20, and 30 choices", () => {
+    expect(CANDIDATE_COUNTS).toEqual([8, 20, 30]);
+    expect(CANDIDATE_COUNTS).not.toContain(0);
+    expect(CANDIDATE_COUNTS).not.toContain(10);
+  });
+
+  it("keeps quality evidence separate from ranking score", () => {
+    const item = candidate({
+      id: "quality",
+      totalScore: 91,
+      qualityStatus: "WARNING",
+      selectionReasons: ["오디오 반응 91"],
+      uncertaintyReasons: ["앞뒤 문장이 연결되지 않아 맥락 확인이 필요함"]
+    });
+    expect(item.totalScore).toBe(91);
+    expect(item.qualityStatus).toBe("WARNING");
+    expect(item.selectionReasons).not.toEqual(item.uncertaintyReasons);
+  });
+});
+
+describe("queue parallel evaluation display", () => {
+  it("explains that unmeasured parallel execution is unavailable", () => {
+    expect(queueEvaluationExplanation({
+      status: "UNMEASURED_PENDING",
+      effectiveExecutionMode: "SEQUENTIAL",
+      maxConcurrency: 1,
+      parallelAvailable: false,
+      sequentialFallbackReason: null
+    })).toContain("승인된 하드웨어가 없고");
+  });
+
+  it("keeps a persisted fallback reason read-only in the explanation", () => {
+    expect(queueEvaluationExplanation({
+      status: "SEQUENTIAL_FALLBACK",
+      effectiveExecutionMode: "SEQUENTIAL",
+      maxConcurrency: 1,
+      parallelAvailable: false,
+      sequentialFallbackReason: "동일 입력 측정이 없어 순차 처리로 고정했습니다."
+    })).toContain("동일 입력 측정이 없어 순차 처리로 고정했습니다.");
+  });
+});
+
 describe("selection stays with the candidate id across a reorder", () => {
   it("finds the same candidate in every sort order", () => {
     const selectedId = "b";
@@ -109,6 +159,68 @@ describe("selection stays with the candidate id across a reorder", () => {
   it("scopes the stored selection key to a job", () => {
     expect(selectionStorageKey("job-1")).toBe("vod-scout.selected-candidate.job-1");
     expect(selectionStorageKey("job-2")).not.toBe(selectionStorageKey("job-1"));
+  });
+});
+
+describe("transcript quality display", () => {
+  it("masks replacement characters and uncertain source text", () => {
+    expect(safeTranscriptText("깨진 � 문장")).toContain("불확실");
+    expect(safeTranscriptText("원문", "UNCERTAIN")).toContain("불확실");
+    expect(safeTranscriptText("정상 문장", "CERTAIN")).toBe("정상 문장");
+  });
+
+  it("keeps audio evidence visible while masking uncertain candidate text", () => {
+    const uncertain = candidate({
+      id: "uncertain",
+      title: "음성 인식 결과 불확실 · 오디오 근거 구간",
+      summary: "음성 인식 결과 불확실 · 오디오 반응 91 · 발화 밀도 64",
+      transcriptExcerpt: "음성 인식 결과가 불확실해 원문을 표시하지 않습니다.",
+      transcriptQualityStatus: "UNCERTAIN"
+    });
+    expect(safeCandidateDerivedText(uncertain.title)).toContain("오디오 근거 구간");
+    expect(safeCandidateDerivedText(uncertain.summary)).toContain("오디오 반응 91");
+    expect(safeTranscriptText(uncertain.transcriptExcerpt, uncertain.transcriptQualityStatus)).toContain("불확실");
+  });
+
+  it("masks unsafe derived text even when its status is unavailable", () => {
+    expect(safeCandidateDerivedText("제목 � 손상")).toContain("불확실");
+    expect(safeCandidateDerivedText("오디오 반응 91 · 채팅 움직임 84")).toBe("오디오 반응 91 · 채팅 움직임 84");
+  });
+
+  it("masks only context lines that contain unsafe text", () => {
+    const context = resolveCandidateContext({
+      ...candidate({ id: "context" }),
+      contextTranscript: [
+        { startSeconds: 8, endSeconds: 10, text: "안전한 앞 맥락" },
+        { startSeconds: 22, endSeconds: 24, text: "깨진 � 원문" },
+        { startSeconds: 35, endSeconds: 37, text: "안전한 뒤 맥락" }
+      ]
+    }, 60);
+    expect(context.lines.map((line) => line.text)).toEqual([
+      "안전한 앞 맥락",
+      "음성 인식 결과가 불확실해 원문을 표시하지 않습니다.",
+      "안전한 뒤 맥락"
+    ]);
+  });
+});
+
+describe("manual recognition busy state", () => {
+  it("stays busy when a started run belongs to a non-selected candidate", () => {
+    expect(hasStartedRecognitionRun([
+      {
+        id: "run-other",
+        candidateId: "candidate-other",
+        status: "STARTED",
+        startedAt: "2026-08-18T00:00:00.000Z",
+        completedAt: null,
+        resultRevision: 1,
+        originalResult: "기존 결과",
+        rawResult: null,
+        displayResult: null,
+        failureReason: null,
+        backendEvidence: "CPU 시도"
+      }
+    ])).toBe(true);
   });
 });
 
@@ -268,5 +380,32 @@ describe("settings entry visibility", () => {
     fireEvent.click(settings);
     expect(await screen.findByRole("dialog", { name: "설정·업데이트" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "설정·업데이트" })).toBeVisible();
+  });
+
+  it("shows GPU device, profile, and bounded CPU controls before starting", async () => {
+    render(<App />);
+    expect(await screen.findByRole("button", { name: /자동\(GPU 우선\)/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /빠르게/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /정확하게/ })).toBeVisible();
+    expect(screen.getByRole("combobox")).toHaveValue("auto");
+  });
+});
+
+describe("Whisper settings payload", () => {
+  it("uses auto CPU control and clamps explicit threads to the safe range", () => {
+    expect(normalizeWhisperSettings("gpu", "accurate", "auto")).toEqual({
+      deviceMode: "gpu",
+      profile: "accurate",
+      cpuThreads: null
+    });
+    expect(normalizeWhisperSettings("cpu", "fast", "99").cpuThreads).toBe(32);
+    expect(normalizeWhisperSettings("cpu", "fast", "0").cpuThreads).toBe(1);
+  });
+});
+
+describe("resource metric labels", () => {
+  it("keeps unavailable measurements visibly distinct from zero", () => {
+    expect(resourceMetricValue(null, "B")).toBe("측정 불가");
+    expect(resourceMetricValue(0, "개")).toBe("0개");
   });
 });

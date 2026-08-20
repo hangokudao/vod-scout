@@ -3,14 +3,18 @@ import { listen } from "@tauri-apps/api/event";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 import type {
   Candidate,
+  CandidateCount,
   CandidateDecision,
   CreateJobInput,
   JobStorageInfo,
   JobSnapshot,
   JobStatus,
   PreviewMedia,
+  CandidateRecognitionRun,
   RuntimeInfo,
-  StoredJobInfo
+  StoredJobInfo,
+  ResourceStage,
+  QueueIndex
 } from "./types";
 
 const tauriAvailable = "__TAURI_INTERNALS__" in window;
@@ -31,6 +35,8 @@ const mockCandidates: Candidate[] = [
     chatScore: 95,
     totalScore: 91,
     decision: "PENDING",
+    transcriptQualityStatus: "CERTAIN",
+    transcriptQualityReasons: [],
     contextStartSeconds: 730,
     contextEndSeconds: 828,
     contextTranscript: [
@@ -121,6 +127,65 @@ function addMockActivity(kind: string, message: string) {
   });
 }
 
+export type CandidateTranscriptUpdate = Pick<
+  Candidate,
+  "transcriptExcerpt" | "transcriptQualityStatus" | "transcriptQualityReasons" | "qualityStatus" | "qualityWarnings" | "uncertaintyReasons"
+>;
+
+export function syncCandidateDecision(
+  candidates: Candidate[],
+  candidatePool: Candidate[] | undefined,
+  candidateId: string,
+  decision: CandidateDecision
+): boolean {
+  let found = false;
+  for (const candidate of candidates) {
+    if (candidate.id === candidateId) {
+      candidate.decision = decision;
+      found = true;
+    }
+  }
+  for (const candidate of candidatePool ?? []) {
+    if (candidate.id === candidateId) {
+      candidate.decision = decision;
+      found = true;
+    }
+  }
+  return found;
+}
+
+export function selectCandidatesForCount(
+  candidates: Candidate[],
+  candidatePool: Candidate[] | undefined,
+  count: number
+): Candidate[] {
+  const source = candidatePool?.length ? candidatePool : candidates;
+  const decisions = new Map(candidates.map((candidate) => [candidate.id, candidate.decision]));
+  for (const candidate of candidatePool ?? []) {
+    if (!decisions.has(candidate.id)) decisions.set(candidate.id, candidate.decision);
+  }
+  return source.slice(0, count).map((candidate) => ({
+    ...structuredClone(candidate),
+    decision: decisions.get(candidate.id) ?? "PENDING"
+  }));
+}
+
+export function syncCandidateTranscript(
+  candidates: Candidate[],
+  candidatePool: Candidate[] | undefined,
+  candidateId: string,
+  update: CandidateTranscriptUpdate
+): boolean {
+  let found = false;
+  for (const candidate of [...candidates, ...(candidatePool ?? [])]) {
+    if (candidate.id === candidateId) {
+      Object.assign(candidate, update);
+      found = true;
+    }
+  }
+  return found;
+}
+
 export async function bootstrap(): Promise<JobSnapshot | null> {
   if (tauriAvailable) return invoke("bootstrap");
   return mockJob ? structuredClone(mockJob) : null;
@@ -140,7 +205,7 @@ export async function createJob(input: CreateJobInput): Promise<JobSnapshot> {
   if (tauriAvailable) return invoke("create_job", { input });
   const now = new Date().toISOString();
   mockJob = {
-    schemaVersion: 3,
+    schemaVersion: 5,
     id: crypto.randomUUID(),
     sourceKind: input.sourceKind,
     sourceLabel: input.sourceLabel,
@@ -161,10 +226,44 @@ export async function createJob(input: CreateJobInput): Promise<JobSnapshot> {
     errorMessage: null,
     errorDetail: null,
     candidates: [],
-    activity: [{ sequence: 1, timestamp: now, kind: "job", message: "새 분석 작업을 만들었습니다." }]
+    candidatePool: [],
+    candidateCount: input.candidateCount,
+    candidateRevision: 0,
+    candidateRevisions: [],
+    activity: [{ sequence: 1, timestamp: now, kind: "job", message: "새 분석 작업을 만들었습니다." }],
+    captions: null,
+    whisper: input.whisper,
+    whisperRuntime: {
+      status: "untested",
+      unitIndex: null,
+      effectiveCpuThreads: null,
+      gpuFailureReason: null
+    },
+    resourcePolicy: {
+      warningMemoryBytes: null,
+      hardMemoryBytes: null,
+      warningTempBytes: null,
+      hardTempBytes: null,
+      warningExternalToolCount: null,
+      hardExternalToolCount: null
+    },
+    resourceMetrics: (["ffmpegAudio", "whisper", "chatDecode", "preview", "uiResponsiveness"] as ResourceStage[]).map((stage) => ({
+      stage,
+      elapsedMs: null,
+      cpuPercent: null,
+      memoryBytes: null,
+      diskBytes: null,
+      tempBytes: null,
+      ownedChildProcesses: null,
+      unavailableReasons: ["이 단계의 측정값을 아직 수집하지 않았습니다."],
+      policyStatus: "UNCONFIGURED",
+      policyReason: null
+    })),
+    resourceFailure: null,
+    ownedChildProcesses: 0
   };
   notifyMock();
-  return structuredClone(mockJob);
+  return structuredClone(mockJob!);
 }
 
 export async function startJob(jobId: string): Promise<JobSnapshot> {
@@ -233,7 +332,8 @@ export async function startJob(jobId: string): Promise<JobSnapshot> {
     if (next === 12) {
       mockJob.status = "REVIEW_READY";
       mockJob.currentStageLabel = "후보 검토 준비";
-      mockJob.candidates = structuredClone(mockCandidates);
+      mockJob.candidatePool = structuredClone(mockCandidates);
+      mockJob.candidates = mockJob.candidatePool.slice(0, mockJob.candidateCount);
       addMockActivity("complete", "분석을 마쳤습니다. 후보를 검토해 주세요.");
       window.clearInterval(mockTimer!);
       mockTimer = null;
@@ -264,8 +364,87 @@ export async function setCandidateDecision(
   if (!mockJob || mockJob.id !== jobId) throw new Error("현재 작업을 찾을 수 없습니다.");
   const candidate = mockJob.candidates.find((item) => item.id === candidateId);
   if (!candidate) throw new Error("후보를 찾을 수 없습니다.");
-  candidate.decision = decision;
+  syncCandidateDecision(mockJob.candidates, mockJob.candidatePool, candidateId, decision);
   addMockActivity("review", `후보를 ${decision === "ACCEPTED" ? "채택" : decision === "REJECTED" ? "제외" : "보류"} 처리했습니다.`);
+  notifyMock();
+  return structuredClone(mockJob);
+}
+
+export async function rerunCandidateTranscription(jobId: string, candidateId: string): Promise<JobSnapshot> {
+  if (tauriAvailable) return invoke("rerun_candidate_transcription", { jobId, candidateId });
+  if (!mockJob || mockJob.id !== jobId || mockJob.status !== "REVIEW_READY") {
+    throw new Error("검토 준비가 끝난 현재 작업에서만 다시 음성 인식을 실행할 수 있습니다.");
+  }
+  const candidate = mockJob.candidates.find((item) => item.id === candidateId);
+  if (!candidate) throw new Error("선택한 후보를 찾을 수 없습니다.");
+  const runs = mockJob.recognitionRuns ?? (mockJob.recognitionRuns = []);
+  if (runs.some((run) => run.status === "STARTED")) throw new Error("다른 후보 음성 인식이 실행 중입니다.");
+  const revision = Math.max(0, ...runs.filter((run) => run.candidateId === candidateId).map((run) => run.resultRevision)) + 1;
+  if (mockJob.candidates.length > 0) {
+    mockJob.candidateRevisions.push({
+      revision: mockJob.candidateRevision,
+      candidateCount: mockJob.candidateCount,
+      reason: "수동 재음성 인식 전 기존 결과 보존",
+      createdAt: new Date().toISOString(),
+      candidates: structuredClone(mockJob.candidates)
+    });
+    mockJob.candidateRevision += 1;
+  }
+  const runId = crypto.randomUUID();
+  const startedAt = new Date().toISOString();
+  const started: CandidateRecognitionRun = {
+    id: runId,
+    candidateId,
+    status: "STARTED",
+    startedAt,
+    completedAt: null,
+    resultRevision: revision,
+    originalResult: candidate.transcriptExcerpt,
+    rawResult: null,
+    displayResult: null,
+    failureReason: null,
+    backendEvidence: "요청됨 · 내장 G2 Whisper 런타임·모델 사용"
+  };
+  runs.push(started);
+  addMockActivity("recognition", "선택한 후보의 음성을 다시 인식하기 시작했습니다.");
+  notifyMock();
+  const rawResult = candidate.transcriptExcerpt;
+  const completedAt = new Date().toISOString();
+  started.status = "COMPLETED";
+  started.completedAt = completedAt;
+  started.rawResult = rawResult;
+  started.displayResult = rawResult;
+  started.backendEvidence = "실제 백엔드=fixture · 내장 G2 Whisper 명령 형태 유지";
+  syncCandidateTranscript(mockJob.candidates, mockJob.candidatePool, candidateId, {
+    transcriptExcerpt: rawResult,
+    transcriptQualityStatus: "CERTAIN",
+    transcriptQualityReasons: [],
+    qualityStatus: "VALID",
+    qualityWarnings: [],
+    uncertaintyReasons: []
+  });
+  addMockActivity("recognition", "선택 후보 음성 인식을 완료했습니다. 기존 후보 판정은 유지했습니다.");
+  notifyMock();
+  return structuredClone(mockJob);
+}
+
+export async function setCandidateCount(jobId: string, candidateCount: CandidateCount): Promise<JobSnapshot> {
+  if (tauriAvailable) return invoke("set_candidate_count", { jobId, candidateCount });
+  if (!mockJob || mockJob.id !== jobId || mockJob.status !== "REVIEW_READY") {
+    throw new Error("검토 준비가 끝난 현재 작업에서만 후보 수를 바꿀 수 있습니다.");
+  }
+  if (mockJob.candidateCount === candidateCount) return structuredClone(mockJob);
+  mockJob.candidateRevisions.push({
+    revision: mockJob.candidateRevision,
+    candidateCount: mockJob.candidateCount,
+    reason: "후보 수 변경 전 기존 결과 보존",
+    createdAt: new Date().toISOString(),
+    candidates: structuredClone(mockJob.candidates)
+  });
+  mockJob.candidateRevision += 1;
+  mockJob.candidateCount = candidateCount;
+  mockJob.candidates = selectCandidatesForCount(mockJob.candidates, mockJob.candidatePool, candidateCount);
+  addMockActivity("candidates", `후보 수를 ${candidateCount}개로 바꿔 새 개정으로 저장했습니다.`);
   notifyMock();
   return structuredClone(mockJob);
 }
@@ -327,6 +506,14 @@ export function previewMediaUrl(path: string): string {
 
 function mockCsv(): string {
   if (!mockJob) return "";
+  const safeDerived = (value: string) =>
+    value.includes("\uFFFD")
+      ? "음성 인식 결과가 불확실해 원문을 표시하지 않습니다."
+      : value;
+  const safeTranscript = (value: string, status?: string) =>
+    status === "UNCERTAIN" || value.includes("\uFFFD")
+      ? "음성 인식 결과가 불확실해 원문을 표시하지 않습니다."
+      : value;
   const escape = (value: string) => {
     const cleaned = value.replaceAll("\0", "");
     const safe = /^[\s]*[=+\-@]/.test(cleaned) ? `'${cleaned}` : cleaned;
@@ -343,8 +530,8 @@ function mockCsv(): string {
       candidate.dialogueScore,
       candidate.chatScore ?? "",
       candidate.decision,
-      escape(candidate.title),
-      escape(candidate.transcriptExcerpt)
+      escape(safeDerived(candidate.title)),
+      escape(safeTranscript(candidate.transcriptExcerpt, candidate.transcriptQualityStatus))
     ].join(","));
   });
   return rows.join("\r\n");
@@ -366,6 +553,35 @@ export async function saveCandidatesCsv(jobId: string): Promise<string | null> {
 export async function listJobs(): Promise<StoredJobInfo[]> {
   if (tauriAvailable) return invoke("list_jobs");
   return mockJob ? [{ snapshot: structuredClone(mockJob), sizeBytes: new Blob([JSON.stringify(mockJob)]).size }] : [];
+}
+
+export async function getQueue(): Promise<QueueIndex> {
+  if (tauriAvailable) return invoke("get_queue");
+  const orderedJobIds = mockJob ? [mockJob.id] : [];
+  return {
+    schemaVersion: 1,
+    orderedJobIds,
+    transitionState: mockJob?.status === "ACQUIRING" ? "RUNNING" : "IDLE",
+    executionMode: "SEQUENTIAL",
+    evaluation: {
+      status: "UNMEASURED_PENDING",
+      effectiveExecutionMode: "SEQUENTIAL",
+      maxConcurrency: 1,
+      parallelAvailable: false,
+      sequentialFallbackReason: null
+    }
+  };
+}
+
+export async function reorderJob(jobId: string, newIndex: number): Promise<QueueIndex> {
+  if (tauriAvailable) return invoke("reorder_job", { jobId, newIndex });
+  const queue = await getQueue();
+  const current = queue.orderedJobIds.indexOf(jobId);
+  if (current >= 0) {
+    queue.orderedJobIds.splice(current, 1);
+    queue.orderedJobIds.splice(Math.min(newIndex, queue.orderedJobIds.length), 0, jobId);
+  }
+  return queue;
 }
 
 export async function deleteStoredJob(jobId: string): Promise<void> {

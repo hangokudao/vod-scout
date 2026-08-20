@@ -43,11 +43,15 @@ import {
   deleteAllJobs,
   deleteStoredJob,
   getRuntimeInfo,
+  getQueue,
   getJobStorageInfo,
   listJobs,
+  reorderJob,
   isDesktopRuntime,
   prepareCandidateContextPreview,
   previewMediaUrl,
+  rerunCandidateTranscription,
+  setCandidateCount,
   saveCandidatesCsv,
   setCandidateDecision,
   startJob,
@@ -55,17 +59,154 @@ import {
 } from "./api";
 import type {
   Candidate,
+  CandidateCount,
   CandidateDecision,
+  CandidateRecognitionRun,
+  CaptionSummary,
   ContextLine,
   AnalysisMode,
   JobSnapshot,
   JobStatus,
   RuntimeInfo,
   PreviewMedia,
+  QueueEvaluation,
+  QueueIndex,
   Scenario,
   SourceKind,
-  StoredJobInfo
+  StoredJobInfo,
+  TranscriptQualityStatus,
+  WhisperDeviceMode,
+  WhisperProfile
 } from "./types";
+
+export function normalizeWhisperSettings(
+  deviceMode: WhisperDeviceMode,
+  profile: WhisperProfile,
+  cpuThreads: string
+) {
+  const parsed = cpuThreads === "auto" ? null : Number(cpuThreads);
+  return {
+    deviceMode,
+    profile,
+    cpuThreads: parsed == null || !Number.isFinite(parsed) ? null : Math.min(Math.max(Math.trunc(parsed), 1), 32)
+  };
+}
+
+function captionSummaryLabel(captions: CaptionSummary | null | undefined): string | null {
+  if (!captions) return null;
+  const source = captions.provenance?.verificationState === "FAILED"
+    ? "출처 알 수 없는 자막"
+    : captions.source === "creator" ? "제작자 한국어 자막" : captions.source === "automatic" ? "한국어 자동 자막" : "자막 없음";
+  const quality = captions.quality === "failed" ? "검증 실패" : captions.quality === "trusted" ? "검증된 구간" : captions.quality === "mixed" ? "일부 구간 대체" : "검증 전";
+  if (captions.quality === "failed") return `${source} · ${quality}`;
+  if (captions.fallbackIntervals > 0) return `${source} · Whisper 대체 ${captions.fallbackIntervals}구간`;
+  return `${source} · ${quality}`;
+}
+
+function captionDiagnosticLabel(kind: string): string {
+  if (["StartAfterEnd", "OutOfRange", "Overlap", "Duplicate", "EmptyText", "QualityWarning"].includes(kind)) return "시간·내용 구조";
+  if (kind === "OffsetUnverified") return "시간 오프셋";
+  if (kind === "GapObserved") return "자막 공백";
+  if (kind === "ProvenanceInvalid") return "근거 확인";
+  return "음성 인식 대체";
+}
+
+function whisperRuntimeLabel(status: JobSnapshot["whisperRuntime"]["status"] | undefined): string {
+  switch (status) {
+    case "testing": return "시험 중";
+    case "gpu": return "GPU 사용";
+    case "cpu": return "CPU 사용";
+    case "cpuFallback": return "CPU 대체 처리";
+    case "failed": return "실패";
+    default: return "확인 전";
+  }
+}
+
+function resourceStageLabel(stage: string): string {
+  switch (stage) {
+    case "ffmpegAudio": return "FFmpeg 오디오";
+    case "whisper": return "Whisper 음성 인식";
+    case "chatDecode": return "채팅 영역 디코딩";
+    case "preview": return "후보 미리보기";
+    case "uiResponsiveness": return "UI 반응성";
+    default: return stage;
+  }
+}
+
+export function resourceMetricValue(value: number | null | undefined, suffix = "") {
+  return value == null ? "측정 불가" : `${value}${suffix}`;
+}
+
+export function queueEvaluationExplanation(evaluation: QueueEvaluation | null | undefined): string {
+  if (evaluation?.status === "SEQUENTIAL_FALLBACK" && evaluation.sequentialFallbackReason) {
+    return `순차 처리로 고정됨 · ${evaluation.sequentialFallbackReason}`;
+  }
+  return "승인된 하드웨어가 없고, 동일 입력의 실제 처리 시간·메모리·GPU 자원 측정도 없어 병렬 분석을 사용할 수 없습니다.";
+}
+
+function ResourcePanel({ job }: { job: JobSnapshot }) {
+  const metrics = job.resourceMetrics ?? [];
+  return (
+    <article className="resource-board" aria-label="단계별 자원 상태">
+      <div className="panel-heading"><span><Gauge size={17} /> 단계별 자원 상태</span><span className="safe-label">현재 자식 {job.ownedChildProcesses ?? 0}개 · CPU·메모리 미측정은 HOLD</span></div>
+      <p className="resource-policy-note">
+        경고는 작업을 계속하고, 강제 중단은 현재 작업만 실패 처리합니다. 측정하지 않은 기준은 PASS로 표시하지 않습니다.
+      </p>
+      <div className="resource-metrics">
+        {metrics.map((metric, index) => (
+          <div className="resource-metric" key={`${metric.stage}-${index}`}>
+            <strong>{resourceStageLabel(metric.stage)}</strong>
+            <span>경과 {resourceMetricValue(metric.elapsedMs, "ms")}</span>
+            <span>CPU {resourceMetricValue(metric.cpuPercent, "%")}</span>
+            <span>메모리 {resourceMetricValue(metric.memoryBytes, "B")}</span>
+            <span>디스크 {resourceMetricValue(metric.diskBytes, "B")}</span>
+            <span>임시 {resourceMetricValue(metric.tempBytes, "B")}</span>
+            <span>피크 자식 {resourceMetricValue(metric.ownedChildProcesses, "개")}</span>
+            {metric.policyStatus === "UNCONFIGURED" ? <em className="resource-unconfigured">기준 미설정 · HOLD</em> : null}
+            {metric.policyStatus === "WARNING" ? <em className="resource-warning">경고 · {metric.policyReason}</em> : null}
+            {metric.policyStatus === "HARD_LIMIT" ? <em className="resource-hard-limit">강제 중단 · {metric.policyReason}</em> : null}
+            {metric.unavailableReasons.length > 0 ? <small>{metric.unavailableReasons.join(" · ")}</small> : null}
+          </div>
+        ))}
+      </div>
+      {job.resourceFailure ? <p className="resource-hard-limit" role="alert">{resourceStageLabel(job.resourceFailure.stage)}에서 강제 중단: {job.resourceFailure.reason} · 마지막 완료 {job.resourceFailure.lastCompletedUnits}단위 보존</p> : null}
+    </article>
+  );
+}
+
+function captionVerificationLabel(value: CaptionSummary["provenance"]): string {
+  if (!value) return "확인 정보 없음";
+  return value.verificationState === "VERIFIED" ? "검증됨" : value.verificationState === "FAILED" ? "검증 실패" : "검증 전";
+}
+
+function CaptionDetails({ captions }: { captions: CaptionSummary }) {
+  const provenance = captions.provenance;
+  const source = provenance?.verificationState === "FAILED"
+    ? "알 수 없음"
+    : captions.source === "creator" ? "제작자" : captions.source === "automatic" ? "자동" : "없음";
+  return (
+    <div className="caption-details" aria-label="YouTube 자막 근거">
+      <div className="caption-detail-row">
+        <span>자막 출처: {source}</span>
+        <span>언어: {captions.language ?? provenance?.language ?? "알 수 없음"}</span>
+        <span>트랙: {provenance?.trackId || "알 수 없음"}</span>
+      </div>
+      <div className="caption-detail-row">
+        <span>원본 파일: {provenance?.originalFile || "없음"}</span>
+        <span>SHA-256: {provenance?.sha256 || "없음"}</span>
+        <span>검증: {captionVerificationLabel(provenance)}</span>
+      </div>
+      <div className="caption-detail-row">
+        <span>로컬 음성 인식 대체: {captions.localWhisperFallback ? `${captions.fallbackIntervals}구간` : "없음"}</span>
+      </div>
+      {captions.diagnostics.length > 0 ? (
+        <ul className="caption-diagnostics">
+          {captions.diagnostics.map((diagnostic, index) => <li key={`${diagnostic.kind}-${index}`}><strong>{captionDiagnosticLabel(diagnostic.kind)}</strong> · {diagnostic.detail}</li>)}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
 import {
   ACTIVE_STATUSES,
   estimateJobTiming,
@@ -114,6 +255,18 @@ const ANALYSIS_MODES: Array<{ value: AnalysisMode; label: string; detail: string
   { value: "full", label: "전체 정밀 분석", detail: "전체 오디오를 10분 단위로 음성 인식" }
 ];
 
+const WHISPER_DEVICES: Array<{ value: WhisperDeviceMode; label: string; detail: string }> = [
+  { value: "auto", label: "자동(GPU 우선)", detail: "짧은 실제 시험이 성공한 경우에만 GPU를 사용합니다." },
+  { value: "gpu", label: "GPU", detail: "GPU 시험·실행 실패 시 해당 구간만 CPU로 한 번 대체합니다." },
+  { value: "cpu", label: "CPU", detail: "GPU를 명시적으로 끄고 CPU에서만 실행합니다." }
+];
+
+const WHISPER_PROFILES: Array<{ value: WhisperProfile; label: string; detail: string }> = [
+  { value: "fast", label: "빠르게", detail: "낮은 탐색 폭으로 빠르게 처리" },
+  { value: "balanced", label: "균형", detail: "기본 설정" },
+  { value: "accurate", label: "정확하게", detail: "더 넓은 탐색 폭으로 처리" }
+];
+
 export type CandidateSortKey =
   | "totalScore"
   | "startSeconds"
@@ -130,6 +283,8 @@ export const CANDIDATE_SORTS: Array<{ value: CandidateSortKey; label: string }> 
   { value: "chatScore", label: "채팅 움직임 높은 순" },
   { value: "decision", label: "채택·보류·제외 상태" }
 ];
+
+export const CANDIDATE_COUNTS: CandidateCount[] = [8, 20, 30];
 
 const DECISION_SORT_RANK: Record<CandidateDecision, number> = { ACCEPTED: 0, PENDING: 1, REJECTED: 2 };
 
@@ -224,6 +379,23 @@ export function resolveTheme(preference: ThemePreference, prefersDark: boolean):
 /** worker가 맥락 구간을 보내지 않는 작업에서 사용할 기본 여유 시간. */
 export const DEFAULT_CONTEXT_PADDING_SECONDS = 15;
 
+export function safeTranscriptText(text: string, status?: TranscriptQualityStatus | null): string {
+  return status === "UNCERTAIN" || text.includes("\uFFFD")
+    ? "음성 인식 결과가 불확실해 원문을 표시하지 않습니다."
+    : text;
+}
+
+/** 불확실한 후보의 제목·요약은 오디오·채팅 같은 안전한 근거를 계속 보여준다. */
+export function safeCandidateDerivedText(text: string): string {
+  return text.includes("\uFFFD")
+    ? "음성 인식 결과가 불확실해 원문을 표시하지 않습니다."
+    : text;
+}
+
+export function hasStartedRecognitionRun(runs: CandidateRecognitionRun[] | null | undefined): boolean {
+  return (runs ?? []).some((run) => run.status === "STARTED");
+}
+
 export interface CandidateContext {
   startSeconds: number;
   endSeconds: number;
@@ -247,7 +419,9 @@ export function resolveCandidateContext(
   return {
     startSeconds: clamp(requestedStart, 0, candidate.startSeconds),
     endSeconds: clamp(requestedEnd, candidate.endSeconds, sourceEnd),
-    lines: [...(candidate.contextTranscript ?? [])].sort((a, b) => a.startSeconds - b.startSeconds),
+    lines: [...(candidate.contextTranscript ?? [])]
+      .map((line) => ({ ...line, text: safeTranscriptText(line.text) }))
+      .sort((a, b) => a.startSeconds - b.startSeconds),
     fromWorker: candidate.contextStartSeconds != null || candidate.contextEndSeconds != null
   };
 }
@@ -330,7 +504,7 @@ function SignalRail({ candidate }: { candidate: Candidate }) {
           <div className="signal-track" aria-hidden="true">
             <div className={`signal-fill ${signal.className}`} style={{ width: `${signal.score ?? 0}%` }} />
           </div>
-          <strong>{signal.score ?? "—"}</strong>
+          <strong>{signal.score ?? (signal.label === "채팅" ? "확인 가능한 채팅 영역 움직임 없음" : "—")}</strong>
         </div>
       ))}
     </div>
@@ -356,6 +530,10 @@ function App() {
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("quick");
   const [rangeStart, setRangeStart] = useState("00:00:00");
   const [rangeEnd, setRangeEnd] = useState("01:00:00");
+  const [whisperDevice, setWhisperDevice] = useState<WhisperDeviceMode>("auto");
+  const [whisperProfile, setWhisperProfile] = useState<WhisperProfile>("balanced");
+  const [cpuThreads, setCpuThreads] = useState("auto");
+  const [candidateCount, setCandidateCountValue] = useState<CandidateCount>(20);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [settings, setSettings] = useState<UiSettings>(() => readUiSettings());
   const [systemPrefersDark, setSystemPrefersDark] = useState(
@@ -371,6 +549,7 @@ function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [storedJobs, setStoredJobs] = useState<StoredJobInfo[]>([]);
+  const [queue, setQueue] = useState<QueueIndex | null>(null);
   const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
   const [updateChecking, setUpdateChecking] = useState(false);
   const [updateInstalling, setUpdateInstalling] = useState(false);
@@ -390,14 +569,26 @@ function App() {
         unsubscribe = await subscribeToJob((nextJob) => {
           if (!disposed) {
             setJob(nextJob);
+            setStoredJobs((current) => {
+              const found = current.some((item) => item.snapshot.id === nextJob.id);
+              return found
+                ? current.map((item) => item.snapshot.id === nextJob.id ? { ...item, snapshot: nextJob } : item)
+                : [...current, { snapshot: nextJob, sizeBytes: 0 }];
+            });
             setNewJobMode(false);
           }
         });
-        const [restored, runtimeInfo] = await Promise.all([bootstrap(), getRuntimeInfo()]);
+        const [restored, runtimeInfo, queued, queueSnapshot] = await Promise.all([bootstrap(), getRuntimeInfo(), listJobs(), getQueue()]);
         if (!disposed) {
           setRuntime(runtimeInfo);
+          setStoredJobs(queued);
+          setQueue(queueSnapshot);
           if (restored) {
             setJob(restored);
+            setWhisperDevice(restored.whisper?.deviceMode ?? "auto");
+            setWhisperProfile(restored.whisper?.profile ?? "balanced");
+            setCpuThreads(restored.whisper?.cpuThreads == null ? "auto" : String(restored.whisper.cpuThreads));
+            setCandidateCountValue(restored.candidateCount ?? 20);
             setNewJobMode(false);
           }
         }
@@ -489,6 +680,10 @@ function App() {
   const timing = job ? estimateJobTiming(job, new Date(clock)) : null;
   const audioSignalsReady = !!job && PIPELINE_STATUS_ORDER.indexOf(job.status) >= PIPELINE_STATUS_ORDER.indexOf("AUDIO_SIGNALS");
   const chatSignalsReady = !!job && PIPELINE_STATUS_ORDER.indexOf(job.status) >= PIPELINE_STATUS_ORDER.indexOf("CHAT_SIGNALS");
+  const selectedRun = selected && job
+    ? [...(job.recognitionRuns ?? [])].filter((run) => run.candidateId === selected.id).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0]
+    : undefined;
+  const recognitionBusy = hasStartedRecognitionRun(job?.recognitionRuns);
 
   useEffect(() => {
     if (!job?.id || !selected) return;
@@ -558,10 +753,13 @@ function App() {
           scenario,
           analysisMode,
           analysisStartSeconds: start,
-          analysisEndSeconds: end
+          analysisEndSeconds: end,
+          whisper: normalizeWhisperSettings(whisperDevice, whisperProfile, cpuThreads),
+          candidateCount
         });
         setJob(target);
         setNewJobMode(false);
+        await refreshStoredJobs();
       }
       const started = await startJob(target.id);
       setJob(started);
@@ -573,7 +771,7 @@ function App() {
   }
 
   async function requestCancel() {
-    if (!job || !active || job.status === "CANCELLING") return;
+    if (!job || (!active && !recognitionBusy && job.status !== "INTERRUPTED") || job.status === "CANCELLING") return;
     setActionBusy(true);
     setUiError(null);
     try {
@@ -590,6 +788,35 @@ function App() {
     setActionBusy(true);
     try {
       setJob(await setCandidateDecision(job.id, selected.id, decision));
+    } catch (error) {
+      setUiError(messageFrom(error));
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function rerunSelectedCandidate() {
+    if (!job || job.status !== "REVIEW_READY" || !selected || actionBusy || recognitionBusy) return;
+    setActionBusy(true);
+    setUiError(null);
+    try {
+      setJob(await rerunCandidateTranscription(job.id, selected.id));
+    } catch (error) {
+      setUiError(messageFrom(error));
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function changeCandidateCount(next: CandidateCount) {
+    if (!job || job.status !== "REVIEW_READY" || actionBusy) return;
+    setActionBusy(true);
+    setUiError(null);
+    try {
+      const updated = await setCandidateCount(job.id, next);
+      setCandidateCountValue(updated.candidateCount);
+      setJob(updated);
+      setNotice(`후보 ${next}개 설정을 새 개정으로 저장했습니다. 부족한 후보는 채우지 않았습니다.`);
     } catch (error) {
       setUiError(messageFrom(error));
     } finally {
@@ -687,6 +914,27 @@ function App() {
   async function refreshStoredJobs() {
     try {
       setStoredJobs(await listJobs());
+    } catch (error) {
+      setUiError(messageFrom(error));
+    }
+  }
+
+  function openQueuedJob(item: StoredJobInfo) {
+    if (active && item.snapshot.id !== job?.id) return;
+    setJob(item.snapshot);
+    setNewJobMode(false);
+    setSettingsOpen(false);
+  }
+
+  async function moveQueuedJob(item: StoredJobInfo, step: number) {
+    if (active) return;
+    const index = storedJobs.findIndex((entry) => entry.snapshot.id === item.snapshot.id);
+    const nextIndex = clamp(index + step, 0, storedJobs.length - 1);
+    if (index < 0 || index === nextIndex) return;
+    try {
+      const updatedQueue = await reorderJob(item.snapshot.id, nextIndex);
+      setQueue(updatedQueue);
+      await refreshStoredJobs();
     } catch (error) {
       setUiError(messageFrom(error));
     }
@@ -971,6 +1219,41 @@ function App() {
               </div> : null}
             </section> : null}
 
+            <section className="analysis-mode-panel whisper-settings-panel" aria-label="음성 인식 설정">
+              <div className="panel-heading"><span><Mic2 size={17} /> 음성 인식 장치</span><strong>{WHISPER_DEVICES.find((item) => item.value === whisperDevice)?.label}</strong></div>
+              <div className="analysis-mode-options">
+                {WHISPER_DEVICES.map((item) => (
+                  <button key={item.value} type="button" className={whisperDevice === item.value ? "selected" : ""} onClick={() => setWhisperDevice(item.value)}>
+                    <strong>{item.label}</strong><small>{item.detail}</small>
+                  </button>
+                ))}
+              </div>
+              <div className="analysis-mode-options">
+                {WHISPER_PROFILES.map((item) => (
+                  <button key={item.value} type="button" className={whisperProfile === item.value ? "selected" : ""} onClick={() => setWhisperProfile(item.value)}>
+                    <strong>{item.label}</strong><small>{item.detail}</small>
+                  </button>
+                ))}
+              </div>
+              <label className="cpu-thread-control">CPU 사용량
+                <select value={cpuThreads} onChange={(event) => setCpuThreads(event.target.value)}>
+                  <option value="auto">자동</option>
+                  {[1, 2, 4, 8, 16, 32].map((value) => <option key={value} value={value}>{value}개 스레드</option>)}
+                </select>
+              </label>
+            </section>
+
+            <section className="analysis-mode-panel" aria-label="후보 수 설정">
+              <div className="panel-heading"><span><ListChecks size={17} /> 후보 수</span><strong>{candidateCount}개</strong></div>
+              <div className="analysis-mode-options">
+                {CANDIDATE_COUNTS.map((count) => (
+                  <button key={count} type="button" className={candidateCount === count ? "selected" : ""} onClick={() => setCandidateCountValue(count)}>
+                    <strong>{count}개</strong><small>후보가 부족하면 그대로 표시</small>
+                  </button>
+                ))}
+              </div>
+            </section>
+
             {sourceKind === "demo" ? <details className="scenario-panel">
               <summary><TerminalSquare size={16} /> 복구 시나리오 선택 <span>{SCENARIOS.find((item) => item.value === scenario)?.label}</span></summary>
               <div className="scenario-options">
@@ -1000,20 +1283,26 @@ function App() {
                 </div>
                 <h1>{job.status === "REVIEW_READY" ? "편집 후보를 검토하세요" : job.currentStageLabel}</h1>
                 <p>{job.status === "REVIEW_READY" ? `후보 ${job.candidates.length}개 중 ${reviewedCount}개를 판정했습니다.` : `${job.completedUnits} / ${job.totalUnits} 체크포인트 완료${job.mediaDurationSeconds ? ` · 원본 ${formatTime(Math.round(job.mediaDurationSeconds))}` : ""}${active && timing ? ` · 경과 ${formatDuration(timing.elapsedSeconds)}${timing.remainingSeconds === null ? " · 남은 시간 계산 중" : ` · 약 ${formatDuration(timing.remainingSeconds)} 남음`}` : ""}`}</p>
+                {job.sourceKind === "youtube" && captionSummaryLabel(job.captions) ? <small className="caption-summary">{captionSummaryLabel(job.captions)}</small> : null}
+                {job.sourceKind === "youtube" && job.captions ? <CaptionDetails captions={job.captions} /> : null}
+                <small className="whisper-status">음성 인식: {WHISPER_DEVICES.find((item) => item.value === (job.whisper?.deviceMode ?? "auto"))?.label} · {WHISPER_PROFILES.find((item) => item.value === (job.whisper?.profile ?? "balanced"))?.label} · CPU {job.whisper?.cpuThreads == null ? "자동" : `${job.whisper.cpuThreads}개 스레드`} · 실제 {whisperRuntimeLabel(job.whisperRuntime?.status)}{job.whisperRuntime?.unitIndex == null ? "" : ` · 단위 ${job.whisperRuntime.unitIndex + 1}`}{job.whisperRuntime?.effectiveCpuThreads == null ? "" : ` · ${job.whisperRuntime.effectiveCpuThreads}개 스레드 적용`}{job.whisperRuntime?.gpuFailureReason ? ` · ${job.whisperRuntime.gpuFailureReason}` : ""}</small>
               </div>
               <div className="job-actions">
                 {storageBytes !== null ? <span className="storage-label"><HardDrive size={14} /> {formatBytes(storageBytes)}</span> : null}
                 {job.status === "REVIEW_READY" ? <button className="button ghost" disabled={actionBusy} onClick={() => void exportCsv()}><Download size={15} /> CSV</button> : null}
-                {!active ? <button className="button ghost" onClick={() => setNewJobMode(true)}><Square size={15} /> 새 작업</button> : null}
-                {!active ? <button className="button danger" disabled={actionBusy || previewLoading} onClick={() => void removeCurrentJob()}><Trash2 size={15} /> 작업 삭제</button> : null}
-                {active ? (
+                {!active && !recognitionBusy ? <button className="button ghost" onClick={() => setNewJobMode(true)}><Square size={15} /> 새 작업</button> : null}
+                {!active && !recognitionBusy ? <button className="button danger" disabled={actionBusy || previewLoading} onClick={() => void removeCurrentJob()}><Trash2 size={15} /> 작업 삭제</button> : null}
+                {active || recognitionBusy ? (
                   <button className="button danger" disabled={job.status === "CANCELLING" || actionBusy} onClick={() => void requestCancel()}>
                     <Pause size={16} /> {job.status === "CANCELLING" ? "취소 중…" : "안전하게 취소"}
                   </button>
                 ) : job.status !== "REVIEW_READY" ? (
-                  <button className="button primary" disabled={actionBusy} onClick={() => void runPrimary()}>
-                    {resumable ? <RotateCcw size={16} /> : <Play size={16} fill="currentColor" />} {primaryLabel}
-                  </button>
+                  <>
+                    <button className="button primary" disabled={actionBusy} onClick={() => void runPrimary()}>
+                      {resumable ? <RotateCcw size={16} /> : <Play size={16} fill="currentColor" />} {primaryLabel}
+                    </button>
+                    {job.status === "INTERRUPTED" ? <button className="button ghost" disabled={actionBusy} onClick={() => void requestCancel()}><X size={16} /> 중단 작업 취소</button> : null}
+                  </>
                 ) : null}
               </div>
             </section>
@@ -1036,6 +1325,13 @@ function App() {
                   <div className="panel-heading">
                     <span><ListChecks size={17} /> 후보 큐</span>
                     <strong>{job.candidates.length}</strong>
+                  </div>
+                  <div className="candidate-count-control">
+                    <label htmlFor="candidate-count">후보 수 개정</label>
+                    <select id="candidate-count" value={job.candidateCount} onChange={(event) => void changeCandidateCount(Number(event.target.value) as CandidateCount)} disabled={actionBusy}>
+                      {CANDIDATE_COUNTS.map((count) => <option key={count} value={count}>{count}개</option>)}
+                    </select>
+                    <small>현재 {job.candidates.length}개 · 부족한 후보는 채우지 않음 · 개정 {job.candidateRevision}</small>
                   </div>
                   <div className="candidate-sort">
                     <label htmlFor="candidate-sort">정렬</label>
@@ -1064,8 +1360,8 @@ function App() {
                           <span className="candidate-rank">{String(index + 1).padStart(2, "0")}</span>
                           <span className="candidate-copy">
                             <span className="candidate-time">{formatTime(candidate.startSeconds)} — {formatTime(candidate.endSeconds)}</span>
-                            <strong>{candidate.title}</strong>
-                            <small>{candidate.summary}</small>
+                            <strong>{safeCandidateDerivedText(candidate.title)}</strong>
+                            <small>{safeCandidateDerivedText(candidate.summary)}</small>
                           </span>
                           <span className="candidate-score">{candidate.totalScore}</span>
                           <DecisionMark decision={candidate.decision} />
@@ -1107,11 +1403,27 @@ function App() {
                     <div className="detail-title">
                       <div>
                         <span className="eyebrow">CANDIDATE {String(selectedIndex + 1).padStart(2, "0")}</span>
-                        <h2>{selected.title}</h2>
+                        <h2>{safeCandidateDerivedText(selected.title)}</h2>
                       </div>
                       <span className="total-score"><small>TOTAL</small>{selected.totalScore}</span>
                     </div>
-                    <blockquote>“{selected.transcriptExcerpt}”</blockquote>
+                    <blockquote>“{safeTranscriptText(selected.transcriptExcerpt, selected.transcriptQualityStatus)}”</blockquote>
+                    {selected.transcriptQualityStatus === "UNCERTAIN" || selected.transcriptExcerpt.includes("\uFFFD") ? (
+                      <p className="quality-warning" role="status">
+                        <AlertTriangle size={14} /> 음성 인식 결과 불확실 · {selected.transcriptQualityReasons?.join(" · ") || "원문을 후보 제목과 화면 문구에 표시하지 않았습니다."}
+                      </p>
+                    ) : null}
+                    {selectedRun ? (
+                      <p className="quality-warning" role="status">
+                        <Mic2 size={14} /> 다시 음성 인식: {selectedRun.status === "STARTED" ? "진행 중" : selectedRun.status === "COMPLETED" ? "완료" : "실패"} · 실행 ID {selectedRun.id} · 개정 {selectedRun.resultRevision}
+                        {selectedRun.failureReason ? ` · ${selectedRun.failureReason}` : ""}
+                      </p>
+                    ) : null}
+                    <section className="quality-evidence" aria-label="후보 품질과 선택 근거">
+                      <strong>내용 품질: {selected.qualityStatus === "WARNING" ? "경고" : selected.qualityStatus === "INVALID" ? "무효" : "확인 가능한 근거 있음"}</strong>
+                      <p>왜 선택됨: {(selected.selectionReasons?.length ? selected.selectionReasons : ["점수 계산에 사용 가능한 근거"]).join(" · ")}</p>
+                      <p>무엇이 불확실함: {(selected.uncertaintyReasons?.length || selected.qualityWarnings?.length) ? Array.from(new Set([...(selected.uncertaintyReasons ?? []), ...(selected.qualityWarnings ?? [])])).join(" · ") : "확인된 품질 경고 없음"}</p>
+                    </section>
                     <SignalRail candidate={selected} />
                     {context ? (
                       <section className="context-panel" aria-labelledby="context-title">
@@ -1173,6 +1485,9 @@ function App() {
                       </section>
                     ) : null}
                     <div className="candidate-tools">
+                      <button className="button ghost compact" disabled={actionBusy || recognitionBusy} onClick={() => void rerunSelectedCandidate()}>
+                        <Mic2 size={15} /> {recognitionBusy ? "다시 음성 인식 중…" : "다시 음성 인식"}
+                      </button>
                       <button className="button ghost compact" onClick={() => void copyTimecode()}><Copy size={15} /> 타임코드 복사</button>
                       <button className="button ghost compact" disabled={actionBusy} onClick={() => void exportCsv()}><Download size={15} /> CSV 내보내기</button>
                     </div>
@@ -1215,6 +1530,8 @@ function App() {
                   </div>
                 </article>
 
+                <ResourcePanel job={job} />
+
                 <article className="signal-preview">
                   <div className="panel-heading"><span><Activity size={17} /> Signal Rail 준비 상태</span><span>{audioSignalsReady ? (chatSignalsReady ? "3 / 3" : "2 / 3") : "0 / 3"}</span></div>
                   <div className={`preview-signal ${audioSignalsReady ? "ready" : ""}`}><span>오디오 반응</span><i /><strong>{audioSignalsReady ? "READY" : "WAIT"}</strong></div>
@@ -1228,6 +1545,32 @@ function App() {
       </main>
 
       <aside className="activity-panel">
+        <section className="queue-panel" aria-label="분석 작업 대기열">
+          <div className="activity-heading">
+            <div><span className="eyebrow">SEQUENTIAL QUEUE</span><h2>작업 대기열</h2></div>
+            <span className="quiet-copy">분석 1개</span>
+          </div>
+          <div className="queue-list">
+            {storedJobs.length ? storedJobs.map((item, index) => (
+              <div className={`queue-item ${item.snapshot.id === job?.id ? "selected" : ""}`} key={item.snapshot.id}>
+                <button className="queue-item-main" onClick={() => openQueuedJob(item)} disabled={active && item.snapshot.id !== job?.id}>
+                  <StatusPill status={item.snapshot.status} />
+                  <span><strong>{shortSource(item.snapshot.sourceLabel, 30)}</strong><small>{item.snapshot.currentStageLabel} · {item.snapshot.completedUnits}/{item.snapshot.totalUnits}</small></span>
+                </button>
+                <div className="queue-item-actions">
+                  <button className="icon-button" aria-label="위로 이동" disabled={active || index === 0} onClick={() => void moveQueuedJob(item, -1)}><ChevronLeft size={14} /></button>
+                  <button className="icon-button" aria-label="아래로 이동" disabled={active || index === storedJobs.length - 1} onClick={() => void moveQueuedJob(item, 1)}><ChevronRight size={14} /></button>
+                </div>
+              </div>
+            )) : <p className="quiet-copy">등록된 작업이 없습니다.</p>}
+          </div>
+          <div className="queue-evaluation" aria-label="병렬 분석 평가 상태">
+            <strong>병렬 분석: 사용할 수 없음</strong>
+            <span>{queueEvaluationExplanation(queue?.evaluation)}</span>
+            <small>현재 실행 상한: {queue?.evaluation.maxConcurrency ?? 1}개 · 평가 상태: {queue?.evaluation.status === "SEQUENTIAL_FALLBACK" ? "순차 전환" : "측정 전·대기"}</small>
+          </div>
+          <p className="queue-note">중단됨·실패·취소됨 작업은 사용자가 다시 시작하거나 취소하기 전까지 자동으로 진행하지 않습니다.</p>
+        </section>
         <div className="activity-heading">
           <div><span className="eyebrow">AGENT ACTIVITY</span><h2>실행 기록</h2></div>
           {active ? <span className="listening"><span /> LIVE</span> : null}

@@ -1,5 +1,87 @@
 # VOD Scout 빌드 명세
 
+## v0.5.0-rc.1 unsigned Pre-release 최종 후보
+
+- 버전 정본: `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, `src/releaseNotes.ts`, installer smoke 기대 버전이 `0.5.0-rc.1`로 일치한다.
+- GPU·Auto·CPU 기능과 GPU runtime은 변경하지 않는다. 실제 JKY `whisper.cpp-gpu` 완료 증거를 GPU 동작 근거로 인정하고, GPU 실패 뒤 CPU 자동 전환은 `DEFERRED`다.
+- `createUpdaterArtifacts=false`; 공개 자산은 unsigned NSIS installer, `SBOM.spdx.json`, `SHA256SUMS.txt`만 허용하며 `.sig`, `latest.json`, updater zip은 금지한다.
+- 최종 검증은 npm `49`, Rust 본체 `128 passed·1 ignored`, fixture-worker `6`, 보안 `6`, production dependency audit 취약점 `0`, build와 `git diff --check`가 `PASS`다.
+- 짧은 GPU fixture는 GTX 1060 3GB의 CUDA0 backend, `use gpu = 1`, `gpu_device = 0`과 유효한 47-byte SRT를 확인했다. SRT SHA-256은 `74e9f3ff2da6c73ad7d9bb45ee7f1a5be4a7a8cb29c1c2a33920af9be4ed882c`, 증거 경로는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-rc1-gpu-20260821-020758`이다.
+- 최종 EXE는 `16,279,040` bytes/SHA-256 `922a5f2a6e9a68485fdbdbfdbc3f16f26bab246fa4e884bfd01dcda99f6c706a`, unsigned NSIS는 `595,322,815` bytes/SHA-256 `ab231a9619cbbd5c1d5c6e132262202e21cecd8db3ccdce255242e1ab51e3558`이며 둘 다 `0.5.0-rc.1`, Authenticode `NotSigned`다.
+- 최종 SBOM은 `618,021` bytes/SHA-256 `71f87ef95a3061a0879ecafad77162a74f9e7538d968a8188566f23521bb7c67`, `SHA256SUMS.txt`는 `182` bytes/SHA-256 `32dc5bcee73ed0db4c748ba3addfd6856d9da0e0d6d88beb5c878cda68311553`다. updater `.sig`, `latest.json`, updater zip은 `0`개다.
+- CDP 화면 스모크는 visible·비최소화 창을 포커스 없이 화면 밖으로 이동해 메인 화면, `0.5.0-rc.1`, Auto/GPU/CPU, 속도 단계와 CPU 사용량을 확인했다. 스크린샷은 `102,626` bytes/SHA-256 `599c7132e57d0baeae12c84f8222ef6d9c669aae930aed4efcee7f2f25153f0d`, 증거 경로는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-rc1-cdp-smoke-20260821-024212`이며 이번 재검증 전후 기존 데이터 지문은 일치한다.
+
+## 2026-08-21 이전 엄격 공개 게이트 기록
+
+- validation-fixes `ae25f1342ae25f1ee7a2eb6dc6a694d4aedf14d8`와 integration `53172fab00d61a398333e0cee18652fa0d1b5387`를 기준으로 문서만 갱신한다. 두 worktree는 시작 시 clean이며 docs-only 변경 뒤에도 clean으로 복원한다.
+- 공식 최신 `yt-dlp` nightly는 `2026.08.19.233000`이다. asset/digest SHA-256 `02bcc69a2a65a2af5da81a79356763522b611edc028c476e78c282735e28d442`, `SHA2-256SUMS` SHA-256 `6b2471fa596aaa588446fb0dfcf6025f8533d9dc931fa034b21c40c431473ce6`, source commit `594bd50c2c78ac432f81600d309fdc4e0a92d82c`, LICENSE `7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c`, THIRD_PARTY `472aefe951c7db35e1657c1d13fd337140511ed6f2b329205105ad441c5a02b7`가 manifest 및 단일 `check:yt-dlp` PASS 증거와 일치한다.
+- player-ready 평가 수정 후 ZJ integration job `9b6de644-e40f-4130-bffb-301eab4a03a6`는 `REVIEW_READY`, download `100%`, 후보 `20`, `18/18` units, GPU `12/12`, `previewPlayerReady=true`, `bodyVerified=true`를 기록했다. `candidateRevision=0`, `recognitionRuns=[]`라 선택 후보 재인식 완료가 입증되지 않은 ZJ 현재 상태만 `HOLD`다. snapshot은 `C:\Users\myhan\AppData\Local\com.vodscout.app\e2e-requested-data-zjmp-integration\jobs\9b6de644-e40f-4130-bffb-301eab4a03a6\snapshot.json`, screenshot은 `C:\Users\myhan\AppData\Local\Temp\vod-scout-zjmp-integration-screen-m3unDv\review.png`다.
+- JKY full E2E job `ee834a3d-fde9-49c9-8cf8-ced9654e1c45`는 `REVIEW_READY`, download `100%`, 후보 `20`, `22/22` units, GPU `16/16`, candidate revision `1`, recognition run `28ba3f98-8727-4517-868b-2a42f9091f51` `COMPLETED`, result revision `1`, `failureReason=null`, 실제 backend `whisper.cpp-gpu`로 current full E2E `PASS`다. snapshot/data root는 `C:\Users\myhan\AppData\Local\com.vodscout.app\e2e-requested-data-jky\jobs\ee834a3d-fde9-49c9-8cf8-ced9654e1c45`, screenshot은 `C:\Users\myhan\AppData\Local\Temp\vod-scout-jky-full-20260820-231751\review.png`다.
+- exact automatic GPU→CPU fallback·signing·install·GitHub publication은 `HOLD`이며 overall release judgment도 `HOLD`다.
+- 최종 post-provenance 자동 검증: npm 49, Rust `128 passed·1 ignored`, fixture `6`, security `6`, standalone Node `6+3+3`, build 및 diff check `PASS`. 전체 로그·exit code·크기·SHA-256은 `C:\Users\myhan\AppData\Local\Temp\vod-scout-final-post-provenance-vxCIf4`에 있다.
+- 새 unsigned package: `vod-scout.exe` `16,279,040` bytes/SHA-256 `4bcac97a30edb54be83b81711524ad4335cce5bdc315a44ff77d53121f52ec74`; `VOD Scout_0.5.0_x64-setup.exe` `595,368,676` bytes/SHA-256 `7c9e013794886fc220d82e1503d97277e5d79afca2b97f6ec7d367eab3041d3e`; both PE `0.5.0`, Authenticode `NotSigned`. Signing/updater/public Release는 `HOLD`; package rebuild는 이 docs-only 변경 뒤 수행하지 않는다.
+- SBOM `SBOM.spdx.json`: SPDX-2.3, root `vod-scout@0.5.0`, `656` packages, `615,471` bytes, SHA-256 `418fd00061bc16a517a524691a8db6272e193c46dc47fba5f90bf012d177ed0a`. GitHub publication은 발생하지 않았다.
+
+## 2026-08-20 Wave 5 release-app validation gates
+
+- stable `yt-dlp 2026.07.04`의 `android_vr`/`ANDR-V` client는 exact `298+251` 선택 후 HTTP `403`을 반환했다. official nightly `2026.08.18.122307`은 source commit `yt-dlp/yt-dlp@5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c`, Windows asset SHA-256 `652e154bce7170070d0f26415c9a3c35c121f5a7903cb8cde6d31c4577517fb9`로 고정됐고 `visionos` 경로 first-byte control에서 403 없이 도달했으며 release-app full transfer는 두 job 모두 100%였다. 기술 수정 커밋은 `6aa2bc83c48835082b5f08ee14fab0f9570eb691`이다.
+- ZJ job `6251521b-6749-4415-9bf1-7eac826bae0f` (`ZJMpYThMksM&t=2017s`): download `100%`, `REVIEW_READY`, candidates `20`, `18/18` units, GPU `12/12` completed. Automatic Korean caption provenance: `trackId=Korean`, SHA-256 `d74a0bab2029be6b1d33c27e66031838076b2fe658e13b910c3327e0a3f71562`, `quality=unverified`; unverified intervals used local Whisper.
+- JKY job `c8f80e03-33d7-4c3b-af5f-6f498be31f72` (`JKYmw9-xMIo&t=8463s`): download `100%`, `REVIEW_READY`, candidates `20`, `22/22` units, GPU `16/16` completed. Automatic Korean caption provenance: `trackId=Korean`, SHA-256 `81dff33650b150069a03cd73db2aaf8d8e29682cdf4a80c9366e1b4e64cdb6cc`, `quality=unverified`; unverified intervals used local Whisper.
+- Both release-app attempts then failed the same player-ready check at `scripts/e2e-local-cdp.mjs:279`; screenshots, preview, candidate re-recognition, and complete UI remain `HOLD`/`BLOCKED`. Automatic GPU→CPU fallback was not safely inducible and remains `HOLD`. Evidence: `C:\Users\myhan\AppData\Local\Temp\vod-scout-v050-public-gate-20260820\evidence-zjmp-retry\e2e-failure-2026-08-19T19-24-56-054Z-17056.json`/`.log` and `...\evidence-jky\e2e-failure-2026-08-19T19-39-18-521Z-24076.json`/`.log`.
+- Release build, Rust release, and NSIS body succeeded; the overall `tauri:build` rc `1` is signing-only because `TAURI_SIGNING_PRIVATE_KEY` is absent. Current `vod-scout.exe`: `16,279,040` bytes, SHA-256 `a26e472265e52bd48d02bab6fbee357efa99764dcc56d16f82aa705626fd9fba`, PE `0.5.0`; current NSIS: `595,405,262` bytes, SHA-256 `75d46c747eca1969c46f85160caf4cfb315b6e2485f9d62f54cbde38be1593ff`, PE `0.5.0`. Runtime manifest schema 6 `51/51` runtime + `1/1` license hash, security `6/6`, and `npm audit --omit=dev` 0 vulnerabilities are `PASS`; `cargo-audit` is unavailable/not a project gate. signing/install/public Release are `HOLD`/`BLOCKED`. Windows Sandbox is unavailable; long-run, human content quality, and GPU memory remain `HOLD`; G7 is disabled.
+- Measured automatic Korean VTT: ZJ duration `6847.121`, `2943` cues, first `57.640`, last `6829.639`; JKY duration `9590.061`, `4241` cues, first `51.199`, last `9566.720`. Both measured inverted/out-of-range/adjacent overlap/exact-time duplicate `0` and max positive cue gap `0`; constant time drift remains `UNVERIFIED`, with no acceptance threshold invented.
+- Candidate display guard masked ZJ `20/20` and JKY `16/20` candidate excerpts with `음성 인식 결과가 불확실해 원문을 표시하지 않습니다.`; visible repeated/broken pattern count was `0`. ZJ: elapsed `662.728s`, final `1,371,590,406` bytes (`1.277 GiB`), media `1,344,021,572`, caption `308,005`, `122` files. JKY: elapsed `784.380s`, final `2,048,005,882` bytes (`1.907 GiB`), media `2,019,916,819`, caption `476,641`, `154` files. These are `MEASURED_NO_THRESHOLD`; CPU/peak memory/GPU memory/temp peak were not sampled in these runs and retain prior/HOLD evidence.
+- Tracked `SBOM.spdx.json` parses as SPDX-2.3 with root `vod-scout@0.5.0`, `656` packages, `615,471` bytes, SHA-256 `418fd00061bc16a517a524691a8db6272e193c46dc47fba5f90bf012d177ed0a`. `SHA256SUMS.txt` and release-assets remain ungenerated because the updater signing artifact is absent; no PASS is claimed.
+
+## 2026-08-20 Wave 4 자원·패키지 검증
+
+- 자막 선택 계약은 일반 YouTube VOD에서 한국어 자동 자막 우선, 자동 자막이 없거나 사용할 수 없을 때만 제작자 한국어 자막, 두 경로가 없거나 검증할 수 없는 구간은 로컬 Whisper 순서다. 자동 번역·다른 언어·`live_chat`은 제외한다.
+- 승인된 보존 `probe-motion-30s.mp4`(30.0초·3,427,504 bytes·SHA-256 `c20156488327d68e435120a599970ac03bc716aa55d163b57079f1a2dc5b54fc`)로 직접 GPU/CPU만 측정했다. FFmpeg: elapsed `29.755s`, CPU `0.094s`, peak WS `22,716,416`, peak private `20,803,584`, temp peak `4,393,690`, final job `960,590`, wrapper rc `0`. GPU Whisper: elapsed `2.710s`, CPU `2.438s`, WS `273,334,272`, private `1,148,428,288`, temp peak `4,395,267`, final `48`, wrapper rc `0`, non-empty SRT SHA-256 `71aca4471d2f8b60f8fee3665378f93851650831ab0334cc05bd516ffac89b64`. CPU Whisper: elapsed `8.110s`, CPU `14.953s`, WS `324,505,600`, private `837,447,680`, temp peak `4,396,535`, final `69`, wrapper rc `0`, non-empty SRT SHA-256 `346f8c5f7783d976fce352249764fbbd3a002b1a66dda35746b1e804d1de7bb0`. 세 JSON의 exitCode는 `null`이며 wrapper 결과 로그가 rc `0`을 증명한다. GPU `peakGpuBytesObserved=0`은 per-process sample 없음이므로 GPU memory는 `UNAVAILABLE`/`HOLD`; `nvidia-smi` 1442 MiB는 whole-GPU snapshot일 뿐 app peak이 아니다. 모든 수치는 `MEASURED_NO_THRESHOLD`다.
+- Windows Node에서 공식 manifest 핀 재준비와 release runtime manifest schema 6의 51/51 파일·해시 검증은 `PASS`다. Linux Node의 Windows `tar.exe` 경로 실패는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-wave4-20260820\logs\prepare-media-tools-linux-failure.log`에 보존했다.
+- lockfile v3 `npm.cmd ci`(rc 0) 뒤 단일 Windows `npm.cmd run tauri:build`는 NSIS 본문 생성까지 성공했지만 signing key 부재로 전체 rc `1`로 종료했다. NSIS 생성·hash는 `PASS`, signing은 `HOLD`다. `vod-scout.exe`: 16,274,944 bytes/SHA-256 `8754dc944d8f685195425bb4d3698c8992225888b2b95e9ed484283b7868cced`, PE ProductVersion/FileVersion `0.5.0`; `VOD Scout_0.5.0_x64-setup.exe`: 595,736,201 bytes/SHA-256 `cd024e2d4523c34f4795c0e3d5bca1f72edca82b89d294033194fa465624ca36`, PE `0.5.0`이다.
+- fresh 격리 data-dir 앱은 8초 생존 후 테스트 프로세스를 의도적으로 중단했다(`PASS`, 정상 종료 아님). 1~8시간 입력은 승인된 안전한 증거가 없어 `HOLD`; G7 병렬은 disabled/`HOLD`다.
+
+## 2026-08-20 Wave 3 production-app 검증
+
+- production-protocol unpacked `vod-scout.exe`는 `cargo.exe build --release --features custom-protocol`로 만들었다. 첫 valid no-cancel YouTube path는 `JKYmw9-xMIo&t=8463s`에서 acquisition까지 도달했으나 HTTP 403으로 실패했다. full command reconstruction은 `C:\Users\myhan\AppData\Local\Temp\vod-scout-e0b0c58-20260820\product-yt-dlp-command.txt`, stderr는 `...\data-release-real\jobs\bfb8c79b-181a-4533-b4fd-ef5a0da29b75\tool-logs\yt-dlp.stderr.log`다.
+- Product는 pinned yt-dlp `2026.07.04` SHA-256 `52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8`, Deno `2.9.4` SHA-256 `4a2757fe99afc2c62c46500c8221cfa0189ac4bfb7064141875ad9c0f04b60ef`, format `298+251`, Deno JS runtime, Korean auto-caption flags를 사용했다. 동일 control은 HTTP 206과 Korean auto-caption save에 성공했으므로 product 403 원인은 미확정이며 product-path fix/retest는 하지 않았다.
+- release-app GPU retest input `probe-motion-30s.mp4`: 30.0 sec, 3,427,504 bytes, SHA-256 `c20156488327d68e435120a599970ac03bc716aa55d163b57079f1a2dc5b54fc`. Checkpoint `...\data-gpu-success-retest\jobs\cc87929e-8980-4c20-a0ee-c3c8016d8dc8\media-checkpoint.json` records GTX 1060 runtime's `device=gpu`, `gpu.status=COMPLETED`, one GPU unit, and non-empty raw SRT; its repeated raw transcript was display-masked as uncertain rather than presented as valid content. Release E2E ended at player-ready and produced no screenshot.
+- One task-local package fault injection removed only `whisper-gpu/cublas64_11.dll`; product stopped at the existing exact runtime-file-list integrity guard before Whisper. Snapshot and failure evidence are under `...\data-gpu-fault\jobs\d715e4c6-f9da-46a8-afd5-30ae635e69d0\snapshot.json` and `...\evidence-gpu-fault\`. Automatic GPU→CPU fallback under dependency failure remains `HOLD`.
+- One independent intact-resource process-only `CUDA_VISIBLE_DEVICES=-1` attempt was made. The app's child-process environment allowlist removed that variable, so the checkpoint records one completed GPU unit, `cpuFallback.status=PENDING`, and a non-empty raw SRT rather than a fallback; the pre-fix candidate snapshot exposed the raw token `띄웅`, which is not valid content. Evidence: `...\gpu-fallback-env.log`, `...\data-gpu-fallback-env\jobs\996ef279-3c47-4415-8feb-2d3de24b4bce\media-checkpoint.json`, and `...\data-gpu-fallback-env\jobs\996ef279-3c47-4415-8feb-2d3de24b4bce\tool-logs\whisper-gpu-0000-00.stderr.log`; no further attempt was made.
+- Display safety now uses known media duration and speech coverage, not an observed token: only a single <=2.5-second, <=2-Korean-character, <=20%-coverage result is masked. A whole ~2-second input with a short one-word utterance remains visible; raw evidence remains preserved.
+
+## 2026-08-20 validation-fixes 후속 검증
+
+- 현재 브랜치 `codex/v050-validation-fixes`, 시작 HEAD `377937e1e5bbf58eb8420416ed9a29803e9fb57b`; 버전은 `0.5.0`으로 유지했다.
+- 자막 선택 순서·트랙 식별자 보존 Rust 테스트 15개, `npm run build`, `git diff --check`: `PASS`.
+- 고정 yt-dlp `2026.07.04` Windows x64 SHA-256 `52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8`, Deno `2.9.4` Windows x64 SHA-256 `4a2757fe99afc2c62c46500c8221cfa0189ac4bfb7064141875ad9c0f04b60ef`를 task TEMP에서 확인했다. 기존 tracked manifest의 URL·버전·라이선스·SHA-256 값은 변경하지 않았다.
+- 승인 URL `JKYmw9-xMIo`의 no-cancel 제품 E2E는 acquisition 전에 로컬 CDP/Tauri IPC 평가에서 실패했다. 기존 HTTP 403 원본 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-evidence-full-225324\e2e-failure-2026-08-19T13-53-48-401Z-21572.json` 및 같은 basename의 `.log`다. 고정 yt-dlp/Deno control은 HTTP `206`과 한국어 자동 자막 저장에 성공했지만 기존 앱 403은 재현하지 못했으므로 원인은 미확정이며, 제품 경로 403 수정은 검증되지 않았다. 재검증 상한에 따라 E2E를 재시도하지 않았고 앱 흐름 검증은 로컬 E2E 진입 실패로 `BLOCKED`다.
+- Wave 2에서 whisper.cpp `v1.9.1` 공식 GPU archive layout을 확인했다. `ggml-cuda.dll`의 정적 import에 `cublas64_11.dll`이 있었고 archive에는 없었으며, `cublas64_11.dll`은 `cublasLt64_11.dll`을 추가로 import한다. 상세 archive/import 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-wave2-gpu-20260820\dependency-inspection.log`다.
+- 공식 NVIDIA CUDA cuBLAS redistributable `11.11.3.6`을 추가로 고정했다: `https://developer.download.nvidia.com/compute/cuda/redist/libcublas/windows-x86_64/libcublas-windows-x86_64-11.11.3.6-archive.zip`, archive SHA-256 `67b0934a6359e4ee26fff823c356021589d392c4fd49ca12624f570edc08e2b9`, license `CUDA Toolkit`, EULA `https://docs.nvidia.com/cuda/archive/11.8.0/eula/index.html`. 설치 파일 SHA-256은 `cublas64_11.dll` `8ca516b96b29c2fba2344909a896bc1cd7951f6cd11fe595a8a3929c02cccbed`, `cublasLt64_11.dll` `3d06ca4e4893adb7a153ecd23a540e92817c967312b44646d8c3f91b089196e6`; notice `src-tauri/resources/media-tools/licenses/NVIDIA-CUDA-Toolkit.txt` SHA-256은 `17a280713a9cf1930d0f3a946935ca968d9726a64f1a41c9a589a959a673784f`다.
+- 새 패키지의 직접 CLI 검증은 GTX 1060 3GB, driver `560.94`, VRAM `3072 MiB`에서 같은 2.0초·64078-byte WAV (`7695bcad887367c33cf9f9bce6bf0d98b4fd1547d1b2f9b392c4d426ef7a33c1`)로 GPU `PASS`(`use gpu=1`, CUDA0 backend, non-empty SRT 47 bytes/SHA-256 `74e9f3ff2da6c73ad7d9bb45ee7f1a5be4a7a8cb29c1c2a33920af9be4ed882c`)와 CPU `PASS`(`--no-gpu`, `use gpu=0`, non-empty SRT)을 확인했다. 전체 GPU→CPU 제품 전환은 직접 CLI 범위 밖이라 `HOLD`다. 전체 로그는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-wave2-gpu-20260820\gpu-direct.log`와 `cpu-direct.log`다.
+- Wave 2 focused tests: media-tools preparation 2 passed, Whisper settings/profile/retry-gate 5 passed, GPU evidence 1 passed, CPU args 1 passed, Windows `node scripts/prepare-media-tools.mjs` reported `media tools already prepared`, 최종 문서·스크립트 확정 후 `git diff --check`는 `PASS`다.
+
+## v0.5.0 로컬 후보 통합 빌드
+
+상태: **G1~G8 로컬 통합·자동 검증 PASS · 로컬 NSIS/PE/해시(hash)/빌드 앱 격리 8초 생존 PASS · 실제 설치 파일 설치/Windows 화면/updater 서명/공개 자산 HOLD**
+
+- origin/main 기준: `eee71e04776a6179c289167596e9d82d52e94e13` (PR #18 반영).
+- G8 패키지 증거 원본: `6ecbd49` · 로컬 통합 병합: `7c8b336` · 현재 브랜치: `codex/v050-integration`.
+- G1~G8은 이 작업 트리(worktree)에 로컬 통합되어 있다. 이 통합에서 push, PR 생성, remote merge(원격 병합), tag, Release, deploy(배포)는 발생하지 않았고 `main`은 수정하지 않았다.
+- 버전 정본: `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, `src/releaseNotes.ts`, workflow/helper가 `0.5.0`.
+- `npm ci`: PASS. `npm test`: 49 passed. `npm run build`: PASS (1,793 modules).
+- `cargo.exe test --manifest-path src-tauri/Cargo.toml`: 128 passed, 1 ignored. Fixture worker: 6 passed.
+- `npm run test:security`: 6 passed. Archive/media-tool/sample-disk tests: 11 passed.
+- `npm run tauri:build` (PowerShell): **NSIS 생성까지 PASS, 서명은 HOLD** — 새 FFmpeg 고정 자산과 media-tools를 준비하고 NSIS를 생성했으며 updater 개인키가 없다. fresh 격리 앱은 8초 생존 확인 직후 테스트 프로세스를 의도적으로 중단했으므로 정상 종료로 기록하지 않는다.
+- `node scripts/generate-release-assets.mjs`: **HOLD** — 공개 Release 자산은 서명 키 부재로 생성하지 않았다.
+- `vod-scout.exe`: 16,274,944 bytes · SHA-256 `8754dc944d8f685195425bb4d3698c8992225888b2b95e9ed484283b7868cced` · PE ProductVersion/FileVersion `0.5.0`.
+- `VOD Scout_0.5.0_x64-setup.exe`: 595,736,201 bytes · SHA-256 `cd024e2d4523c34f4795c0e3d5bca1f72edca82b89d294033194fa465624ca36` · PE ProductVersion/FileVersion `0.5.0`.
+- fresh `VOD_SCOUT_E2E_DATA_DIR`: **PASS** — 빌드 앱이 8초 생존했고, 확인 직후 테스트 프로세스를 의도적으로 중단했다(정상 종료 아님). 격리 폴더에 `instance.lock`·`queue.json` 2개가 생성됐으며 실제 설치 파일 설치·설치 후 실행·Windows 화면은 확인하지 않았다. 기존 설치 앱·사용자 데이터는 변경하지 않았다.
+- 실제 설치 파일 설치·설치 후 실행, Windows 화면, updater 서명, 공개 v0.5.0 Release 자산, YouTube/reference-video, 자동 GPU→CPU 제품 전환, 자원·장시간·병렬 측정: **HOLD**. 직접 GPU·CPU CLI 음성 인식은 아래 Wave 2 증거로 `PASS`다.
+- G7 병렬 옵션: 같은 입력의 자원 측정을 통과하기 전까지 **사용할 수 없음**.
+
+정확한 FFmpeg asset: `https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-17-13-05/ffmpeg-n8.1.2-44-g7c533d0f86-win64-lgpl-shared-8.1.zip` · size 70,837,934 bytes · SHA-256 `681b9ca6d8f9be1e01d8873ad16f8a632f8a22b9653f1044837de6d5979b0fd6`.
+
 ## v0.4.0 공개 빌드
 
 상태: **PASS — exact tag·updater 서명·공개 자산·installer smoke·토큰 없는 직접 다운로드 확인 완료**. Authenticode `NotSigned`는 알려진 한계다.
@@ -239,7 +321,7 @@ runtime manifest schema 5는 FFmpeg·Whisper의 EXE/DLL, yt-dlp, Deno, 모델을
 - yt-dlp `2026.07.04`, 빌드 고정본·현재 latest stable 일치 및 YouTube metadata probe PASS
 - Deno `2.9.4`, Windows x64
 - FFmpeg `n8.1.2-34-g9b6c8969e0-20260801`, Windows x64 LGPL shared
-- whisper.cpp `v1.9.1`, CPU x64, multilingual Whisper `base`
+- whisper.cpp `v1.9.1`, CPU/GPU x64, multilingual Whisper `base`; NVIDIA CUDA cuBLAS redistributable `11.11.3.6`의 `cublas64_11.dll`·`cublasLt64_11.dll`을 private `whisper-gpu`에 포함
 - 원본 URL·다운로드 SHA-256·runtime SHA-256: `src-tauri/resources/media-tools/manifest.json`
 - Apache-2.0 프로젝트 라이선스와 외부 구성요소 라이선스 사본 포함
 

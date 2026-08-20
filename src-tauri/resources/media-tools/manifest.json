@@ -1,16 +1,30 @@
 {
-  "schemaVersion": 5,
-  "preparedAt": "2026-08-02T15:18:01.053Z",
+  "schemaVersion": 6,
+  "preparedAt": "2026-08-20T17:06:32.682Z",
   "artifacts": {
     "ffmpeg": {
-      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-01-13-21/ffmpeg-n8.1.2-34-g9b6c8969e0-win64-lgpl-shared-8.1.zip",
-      "sha256": "3bba81dcfd017a6ea1627905549769913948831ef10f3e7df7541f736067bff8",
-      "archive": "ffmpeg-n8.1.2-34-g9b6c8969e0-win64-lgpl-shared-8.1.zip"
+      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-17-13-05/ffmpeg-n8.1.2-44-g7c533d0f86-win64-lgpl-shared-8.1.zip",
+      "sha256": "681b9ca6d8f9be1e01d8873ad16f8a632f8a22b9653f1044837de6d5979b0fd6",
+      "archive": "ffmpeg-n8.1.2-44-g7c533d0f86-win64-lgpl-shared-8.1.zip"
     },
     "whisper": {
       "url": "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.1/whisper-bin-x64.zip",
       "sha256": "7d8be46ecd31828e1eb7a2ecdd0d6b314feafd82163038ab6092594b0a063539",
       "archive": "whisper-bin-x64-v1.9.1.zip"
+    },
+    "whisperGpu": {
+      "url": "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.1/whisper-cublas-11.8.0-bin-x64.zip",
+      "sha256": "aecdce0e4d4bb758a7c72a31f3f9f19a7b6d861405fd2da743cd86398633c963",
+      "archive": "whisper-cublas-11.8.0-bin-x64-v1.9.1.zip"
+    },
+    "whisperGpuCublas": {
+      "url": "https://developer.download.nvidia.com/compute/cuda/redist/libcublas/windows-x86_64/libcublas-windows-x86_64-11.11.3.6-archive.zip",
+      "version": "11.11.3.6",
+      "license": "CUDA Toolkit",
+      "licenseUrl": "https://docs.nvidia.com/cuda/archive/11.8.0/eula/index.html",
+      "licenseSha256": "17a280713a9cf1930d0f3a946935ca968d9726a64f1a41c9a589a959a673784f",
+      "sha256": "67b0934a6359e4ee26fff823c356021589d392c4fd49ca12624f570edc08e2b9",
+      "archive": "libcublas-windows-x86_64-11.11.3.6-archive.zip"
     },
     "model": {
       "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin?download=true",
@@ -28,9 +42,20 @@
       "archive": "OpenAI-Whisper-LICENSE.txt"
     },
     "ytDlp": {
-      "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.07.04/yt-dlp.exe",
-      "sha256": "52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8",
-      "archive": "yt-dlp-2026.07.04.exe"
+      "url": "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/download/2026.08.19.233000/yt-dlp.exe",
+      "sha256": "02bcc69a2a65a2af5da81a79356763522b611edc028c476e78c282735e28d442",
+      "archive": "yt-dlp-nightly-2026.08.19.233000.exe",
+      "repo": "yt-dlp/yt-dlp-nightly-builds",
+      "channel": "nightly",
+      "sourceRepo": "yt-dlp/yt-dlp",
+      "sourceCommit": "594bd50c2c78ac432f81600d309fdc4e0a92d82c",
+      "sourceCommitUrl": "https://github.com/yt-dlp/yt-dlp/commit/594bd50c2c78ac432f81600d309fdc4e0a92d82c",
+      "checksumUrl": "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/download/2026.08.19.233000/SHA2-256SUMS",
+      "checksumSha256": "6b2471fa596aaa588446fb0dfcf6025f8533d9dc931fa034b21c40c431473ce6",
+      "license": "Unlicense",
+      "executableLicenseNotice": "yt-dlp.exe is a GPL-3.0-or-later PyInstaller combined work; yt-dlp source is Unlicense and bundled components are listed in THIRD_PARTY_LICENSES.txt.",
+      "licenseUrl": "https://raw.githubusercontent.com/yt-dlp/yt-dlp/594bd50c2c78ac432f81600d309fdc4e0a92d82c/LICENSE",
+      "licenseSha256": "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c"
     },
     "deno": {
       "url": "https://github.com/denoland/deno/releases/download/v2.9.4/deno-x86_64-pc-windows-msvc.zip",
@@ -38,9 +63,15 @@
       "archive": "deno-x86_64-pc-windows-msvc-v2.9.4.zip"
     },
     "ytDlpLicense": {
-      "url": "https://raw.githubusercontent.com/yt-dlp/yt-dlp/2026.07.04/LICENSE",
+      "url": "https://raw.githubusercontent.com/yt-dlp/yt-dlp/594bd50c2c78ac432f81600d309fdc4e0a92d82c/LICENSE",
       "sha256": "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c",
       "archive": "yt-dlp-LICENSE.txt"
+    },
+    "ytDlpThirdPartyLicenses": {
+      "url": "https://raw.githubusercontent.com/yt-dlp/yt-dlp/594bd50c2c78ac432f81600d309fdc4e0a92d82c/THIRD_PARTY_LICENSES.txt",
+      "sha256": "472aefe951c7db35e1657c1d13fd337140511ed6f2b329205105ad441c5a02b7",
+      "sourceCommit": "594bd50c2c78ac432f81600d309fdc4e0a92d82c",
+      "archive": "yt-dlp-THIRD_PARTY_LICENSES.txt"
     },
     "denoLicense": {
       "url": "https://raw.githubusercontent.com/denoland/deno/v2.9.4/LICENSE.md",
@@ -48,19 +79,45 @@
       "archive": "Deno-LICENSE.md"
     }
   },
+  "licenseHashes": {
+    "licenses/yt-dlp-THIRD_PARTY_LICENSES.txt": "472aefe951c7db35e1657c1d13fd337140511ed6f2b329205105ad441c5a02b7"
+  },
   "runtimeHashes": {
     "deno/deno.exe": "4a2757fe99afc2c62c46500c8221cfa0189ac4bfb7064141875ad9c0f04b60ef",
-    "ffmpeg/avcodec-62.dll": "df6d5452bac5827233e112a9ad21ff7b8acc35f99bb0de1a97e12327d3edccd3",
-    "ffmpeg/avdevice-62.dll": "bebed52f9caf848bacb13463e67e48018968bd20aaf78e76e29585bdb01d7e10",
-    "ffmpeg/avfilter-11.dll": "5875b0bf9f2598e78e8417195d451ff348eec14d8ac7ff236d4e23ec71d0a5e3",
-    "ffmpeg/avformat-62.dll": "9eaab4d320dd6a3c406bf4a1586d5f38794419de6db7044937caf178fc2955c0",
-    "ffmpeg/avutil-60.dll": "de817c6eb71ae79b3c02aef72b2d3ce7bd078e325035e09713c514444bf0d160",
-    "ffmpeg/ffmpeg.exe": "f8df8d6173a49bf87e0879f695e6f9522e40af1185b82b3096a16656b84a29a6",
-    "ffmpeg/ffplay.exe": "a0f703cd5d4e022e984eed7351d09261654b50cff3f28ad99ee29ed46447303f",
-    "ffmpeg/ffprobe.exe": "c18452f173d1c157557cf65455e8d0a6060f53ead244de3a331af2906116aacc",
-    "ffmpeg/swresample-6.dll": "bf2fe637f2e972781a9d213c05169df7156395afb7991970dd96c75f35b55e30",
-    "ffmpeg/swscale-9.dll": "c6dd6f63d9e60be056d3b44e2e49b94a2e9ffbf341e9b12762c8ed2ca4a1536c",
+    "ffmpeg/avcodec-62.dll": "327c99272c3c078e327daa22c5de2913c8af8c58ecc98973ba62f2753681ac41",
+    "ffmpeg/avdevice-62.dll": "912c45a91b05de44245d515b9e7ab751dd706dd4bc8bb0d4d949aff5a7e5207e",
+    "ffmpeg/avfilter-11.dll": "1166390e24a7626fa32f11074f3edd650429165abf5e56099c104ef86535995d",
+    "ffmpeg/avformat-62.dll": "cc29d1701df8eb8c06c644b8cee157626f742960ee3a743eb7301c95a9157eb4",
+    "ffmpeg/avutil-60.dll": "deedad06165b1b323140fb68ca27eeeda10b797c2a313fc11d1ec80907a49e66",
+    "ffmpeg/ffmpeg.exe": "fe38116e1c4fe8a2c5089a3055324999a6efad416adf15f85e313258e73afc1e",
+    "ffmpeg/ffplay.exe": "2fbe2be2c1d3ae2caad2b0983744dfc2b02a390576ce791f89d46afb33119b6e",
+    "ffmpeg/ffprobe.exe": "6c5d294579b546a6a2bad3dc7b8360a5d400facb8541a5d3290bf119ef74ad3f",
+    "ffmpeg/swresample-6.dll": "84222a15713caf4bf0f7236aa3a9ddf2fbbc6f31674833a5836a9e0d77219eb3",
+    "ffmpeg/swscale-9.dll": "4f4c5153fc1659500b4cfc0c65b1948c0451f3fa996888593fb888409763e9f5",
     "models/ggml-base.bin": "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
+    "whisper-gpu/SDL2.dll": "de23db1694a3c7a4a735e7ecd3d214b2023cc2267922c6c35d30c7fc7370d677",
+    "whisper-gpu/cublas64_11.dll": "8ca516b96b29c2fba2344909a896bc1cd7951f6cd11fe595a8a3929c02cccbed",
+    "whisper-gpu/cublasLt64_11.dll": "3d06ca4e4893adb7a153ecd23a540e92817c967312b44646d8c3f91b089196e6",
+    "whisper-gpu/cudart32_110.dll": "b8bfc244dd0916ddf7b45e39c101f165a0d9f4846616eaf34336a2c374409408",
+    "whisper-gpu/cudart64_110.dll": "ba5c2fb526c4ee4bb218ceb3fa5e8bfde89ce474f38711fdcce802549bf9fc6f",
+    "whisper-gpu/cuinj64_118.dll": "b97f3becdfa7d5652b456377ced74766f5e21cb52d2d6edac5bc6114d786f040",
+    "whisper-gpu/ggml-base.dll": "efa68e57d9c039b9e7b9e757fa32b11f12c804664c48edf967b941cc42b713a6",
+    "whisper-gpu/ggml-cpu-alderlake.dll": "a1ef7c4c6e95b2633ae0a0573c70312ace32806be04edd7b67bc1484e8a0b872",
+    "whisper-gpu/ggml-cpu-cannonlake.dll": "55f4eeba819a8f0c008359616afd85c5c2bd724ffae4e749143bb016d8b6cffa",
+    "whisper-gpu/ggml-cpu-cascadelake.dll": "227ae54524e58637aacff9ed211b9ec1fbf8293670a74667e99c215ff8528254",
+    "whisper-gpu/ggml-cpu-haswell.dll": "86c7cadc4412c69f4375ef2992cfdd7f5d3350eaacb33b297d7e35279945c0ce",
+    "whisper-gpu/ggml-cpu-icelake.dll": "c56f9b7468c65c2e1887b3625d56b5d45a497eda4b02846d1d66a602c0d73dc3",
+    "whisper-gpu/ggml-cpu-sandybridge.dll": "53e88f728ef28b26863a94c2ba6f1aea1eda8ca531a383052c9de220da03c2ae",
+    "whisper-gpu/ggml-cpu-skylakex.dll": "ac4d8e42767a186ccb71b5c55064fdd5b17ff1b3304deb5b4b8b41d64637c5ad",
+    "whisper-gpu/ggml-cpu-sse42.dll": "4d426c67a6b91e33d4609a0fa0454bebb8d2d6054de1e9a800b65a85924fa611",
+    "whisper-gpu/ggml-cpu-x64.dll": "a401aaf2f3f5e945bb4f00a0e1ebc5aa75acd004d7f500576a1f1e4a9d237ac6",
+    "whisper-gpu/ggml-cuda.dll": "24af2cd89090175beffdf77cd25c176d76f09c4018644915f302d2de64d67631",
+    "whisper-gpu/ggml.dll": "868c1abc732c1616cac141c940bf15d3169591cc666e4006747bf20a7b7df032",
+    "whisper-gpu/nvrtc-builtins64_118.dll": "8642cd940445f0eb79ae73c04b3dfb8c8e61fc3aca191dc2239b28a9cb6964d8",
+    "whisper-gpu/nvrtc64_112_0.dll": "7a1d6c894d9db5f043e7cca5ea328bc4f29c45aa7af3f0dd1bde1f31f02b41bd",
+    "whisper-gpu/parakeet.dll": "3208ca00518839ba8bd0dfd64644ad8f50e1c56ec73b1bd9c6129562673f9739",
+    "whisper-gpu/whisper-cli.exe": "4bf174113843613cbec146e73e6820a767e54b0e1c736f2c6d7ab16aac4c245d",
+    "whisper-gpu/whisper.dll": "b95d3d4d0fcbf419fd45ab2ba4cd7f39df1ecaa93effacdc7a90b18c6e282cb7",
     "whisper/SDL2.dll": "de23db1694a3c7a4a735e7ecd3d214b2023cc2267922c6c35d30c7fc7370d677",
     "whisper/ggml-base.dll": "8be6f3e06388b3a9aac75d29bec86363e2e2f5b0cee86ce6438866bcac0bcf86",
     "whisper/ggml-cpu-alderlake.dll": "323408503da53ccc67248b26d711f16d73d2d6239f7703a00a6a18b60ed5b8b8",
@@ -76,6 +133,6 @@
     "whisper/parakeet.dll": "6b95a072bdba1bdf1ad252f658c0fce6d21250951a99ef1898fbc737131f76d3",
     "whisper/whisper-cli.exe": "58245314fb73b30fbd0cf0542c5c172e23f02b6eb7cad7b51e792439cf5e1755",
     "whisper/whisper.dll": "b31690c12461517fe9774e61318ab63a69972b948151feed98b913be35f708b6",
-    "yt-dlp/yt-dlp.exe": "52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8"
+    "yt-dlp/yt-dlp.exe": "02bcc69a2a65a2af5da81a79356763522b611edc028c476e78c282735e28d442"
   }
 }

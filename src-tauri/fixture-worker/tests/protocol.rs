@@ -132,3 +132,19 @@ fn malformed_scenario_emits_non_json_for_parent_validation() {
     child.wait().expect("reap malformed worker");
     assert!(saw_malformed);
 }
+
+#[test]
+fn three_jobs_run_in_order_and_failure_does_not_block_the_next_job() {
+    let scenarios = ["normal", "fail", "normal"];
+    let mut states = ["CREATED"; 3];
+    for (index, scenario) in scenarios.iter().enumerate() {
+        assert_eq!(states[index], "CREATED");
+        states[index] = "ANALYZING";
+        let output = run(scenario, 0);
+        let events = json_lines(&output.stdout);
+        states[index] = if scenario == &"fail" { "FAILED" } else { "REVIEW_READY" };
+        assert!(events.iter().any(|event| event["kind"] == "progress"));
+        if index > 0 { assert_ne!(states[index - 1], "ANALYZING"); }
+    }
+    assert_eq!(states, ["REVIEW_READY", "FAILED", "REVIEW_READY"]);
+}

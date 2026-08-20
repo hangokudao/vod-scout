@@ -1,3 +1,6 @@
+use crate::captions::{CaptionSource, VerificationState};
+use crate::whisper::{WhisperRuntimeState, WhisperSettings};
+use crate::resource::{ResourceLimitFailure, ResourcePolicy, ResourceStage, StageResourceMetric};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -150,12 +153,27 @@ pub enum CandidateDecision {
     Rejected,
 }
 
+pub fn normalize_candidate_count(value: u8) -> u8 {
+    match value {
+        8 | 20 | 30 => value,
+        _ => 20,
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContextTranscriptEntry {
     pub start_seconds: f64,
     pub end_seconds: f64,
     pub text: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum TranscriptQualityStatus {
+    #[default]
+    Certain,
+    Uncertain,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -172,12 +190,90 @@ pub struct Candidate {
     pub chat_score: Option<u8>,
     pub total_score: u8,
     pub decision: CandidateDecision,
+    #[serde(default = "default_quality_status")]
+    pub quality_status: String,
+    #[serde(default)]
+    pub quality_warnings: Vec<String>,
+    #[serde(default)]
+    pub selection_reasons: Vec<String>,
+    #[serde(default)]
+    pub uncertainty_reasons: Vec<String>,
+    #[serde(default)]
+    pub transcript_quality_status: TranscriptQualityStatus,
+    #[serde(default)]
+    pub transcript_quality_reasons: Vec<String>,
     #[serde(default)]
     pub context_start_seconds: f64,
     #[serde(default)]
     pub context_end_seconds: f64,
     #[serde(default)]
     pub context_transcript: Vec<ContextTranscriptEntry>,
+}
+
+fn default_quality_status() -> String { "VALID".into() }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CandidateRevision {
+    pub revision: u32,
+    pub candidate_count: u8,
+    pub reason: String,
+    pub created_at: DateTime<Utc>,
+    pub candidates: Vec<Candidate>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum RecognitionRunStatus {
+    Started,
+    Completed,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CandidateRecognitionRun {
+    pub id: String,
+    pub candidate_id: String,
+    pub status: RecognitionRunStatus,
+    pub started_at: DateTime<Utc>,
+    #[serde(default)]
+    pub completed_at: Option<DateTime<Utc>>,
+    pub result_revision: u32,
+    #[serde(default)]
+    pub original_result: Option<String>,
+    #[serde(default)]
+    pub raw_result: Option<String>,
+    #[serde(default)]
+    pub display_result: Option<String>,
+    #[serde(default)]
+    pub failure_reason: Option<String>,
+    pub backend_evidence: String,
+}
+
+impl CandidateRecognitionRun {
+    pub fn complete(&mut self, completed_at: DateTime<Utc>, raw_result: String, display_result: String, backend_evidence: String) -> Result<(), String> {
+        if self.status != RecognitionRunStatus::Started || self.completed_at.is_some() {
+            return Err("음성 인식 실행은 이미 종료됐습니다.".into());
+        }
+        self.status = RecognitionRunStatus::Completed;
+        self.completed_at = Some(completed_at);
+        self.raw_result = Some(raw_result);
+        self.display_result = Some(display_result);
+        self.backend_evidence = backend_evidence;
+        Ok(())
+    }
+
+    pub fn fail(&mut self, completed_at: DateTime<Utc>, reason: String, evidence: String) -> Result<(), String> {
+        if self.status != RecognitionRunStatus::Started || self.completed_at.is_some() {
+            return Err("음성 인식 실행은 이미 종료됐습니다.".into());
+        }
+        self.status = RecognitionRunStatus::Failed;
+        self.completed_at = Some(completed_at);
+        self.failure_reason = Some(reason);
+        self.backend_evidence = evidence;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,6 +283,43 @@ pub struct ActivityEvent {
     pub timestamp: DateTime<Utc>,
     pub kind: String,
     pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptionProvenanceSummary {
+    pub original_file: String,
+    #[serde(default)]
+    pub language: Option<String>,
+    pub track_id: String,
+    pub sha256: String,
+    pub revision: String,
+    pub verification_state: VerificationState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptionDiagnosticSummary {
+    pub kind: String,
+    pub interval_index: Option<usize>,
+    pub start_seconds: Option<f64>,
+    pub end_seconds: Option<f64>,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptionSummary {
+    pub source: Option<CaptionSource>,
+    #[serde(default)]
+    pub language: Option<String>,
+    pub quality: String,
+    pub fallback_intervals: u32,
+    #[serde(default)]
+    pub local_whisper_fallback: bool,
+    #[serde(default)]
+    pub diagnostics: Vec<CaptionDiagnosticSummary>,
+    pub provenance: Option<CaptionProvenanceSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -213,13 +346,53 @@ pub struct JobSnapshot {
     #[serde(default)]
     pub media_duration_seconds: Option<f64>,
     pub current_stage_label: String,
+    #[serde(default)]
     pub last_heartbeat_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(default)]
     pub error_message: Option<String>,
+    #[serde(default)]
     pub error_detail: Option<String>,
+    #[serde(default)]
+    pub delete_failure_reason: Option<String>,
     pub candidates: Vec<Candidate>,
+    #[serde(default)]
+    pub candidate_pool: Vec<Candidate>,
+    #[serde(default = "default_candidate_count")]
+    pub candidate_count: u8,
+    #[serde(default)]
+    pub candidate_revision: u32,
+    #[serde(default)]
+    pub candidate_revisions: Vec<CandidateRevision>,
     pub activity: Vec<ActivityEvent>,
+    #[serde(default)]
+    pub captions: Option<CaptionSummary>,
+    #[serde(default = "legacy_whisper_settings")]
+    pub whisper: WhisperSettings,
+    #[serde(default)]
+    pub whisper_runtime: WhisperRuntimeState,
+    #[serde(default)]
+    pub recognition_runs: Vec<CandidateRecognitionRun>,
+    #[serde(default)]
+    pub resource_policy: ResourcePolicy,
+    #[serde(default)]
+    pub resource_metrics: Vec<StageResourceMetric>,
+    #[serde(default)]
+    pub resource_failure: Option<ResourceLimitFailure>,
+    #[serde(default)]
+    /// Number of currently owned external-tool processes, not a planned or inferred count.
+    pub owned_child_processes: u32,
+}
+
+fn default_candidate_count() -> u8 { 20 }
+
+fn legacy_whisper_settings() -> WhisperSettings {
+    WhisperSettings {
+        device_mode: crate::whisper::WhisperDeviceMode::Cpu,
+        profile: crate::whisper::WhisperProfile::Balanced,
+        cpu_threads: None,
+    }
 }
 
 impl JobSnapshot {
@@ -234,7 +407,7 @@ impl JobSnapshot {
     ) -> Self {
         let now = Utc::now();
         let mut job = Self {
-            schema_version: 4,
+            schema_version: 5,
             id,
             source_kind,
             source_label,
@@ -254,8 +427,30 @@ impl JobSnapshot {
             updated_at: now,
             error_message: None,
             error_detail: None,
+            delete_failure_reason: None,
             candidates: Vec::new(),
+            candidate_pool: Vec::new(),
+            candidate_count: 20,
+            candidate_revision: 0,
+            candidate_revisions: Vec::new(),
             activity: Vec::new(),
+            captions: None,
+            whisper: WhisperSettings::default(),
+            whisper_runtime: WhisperRuntimeState::default(),
+            recognition_runs: Vec::new(),
+            resource_policy: ResourcePolicy::default(),
+            resource_metrics: [
+                ResourceStage::FfmpegAudio,
+                ResourceStage::Whisper,
+                ResourceStage::ChatDecode,
+                ResourceStage::Preview,
+                ResourceStage::UiResponsiveness,
+            ]
+            .into_iter()
+            .map(StageResourceMetric::unavailable)
+            .collect(),
+            resource_failure: None,
+            owned_child_processes: 0,
         };
         job.push_activity("job", "새 분석 작업을 만들었습니다.");
         job
@@ -320,6 +515,14 @@ impl JobSnapshot {
 mod tests {
     use super::*;
 
+    #[test]
+    fn candidate_count_accepts_only_supported_values_and_defaults_to_twenty() {
+        assert_eq!(normalize_candidate_count(8), 8);
+        assert_eq!(normalize_candidate_count(20), 20);
+        assert_eq!(normalize_candidate_count(30), 30);
+        assert_eq!(normalize_candidate_count(9), 20);
+    }
+
     fn job() -> JobSnapshot {
         JobSnapshot::new(
             "test".into(),
@@ -371,6 +574,38 @@ mod tests {
     }
 
     #[test]
+    fn job_snapshot_wire_format_and_legacy_defaults_are_preserved() {
+        let encoded = serde_json::to_value(job()).unwrap();
+        assert!(encoded.get("schemaVersion").is_some());
+        assert!(encoded.get("sourceKind").is_some());
+        assert!(encoded.get("schema_version").is_none());
+
+        let mut legacy = encoded;
+        let object = legacy.as_object_mut().unwrap();
+        for field in [
+            "acquiredMediaPath",
+            "downloadPercent",
+            "analysisMode",
+            "analysisStartSeconds",
+            "analysisEndSeconds",
+            "mediaDurationSeconds",
+            "lastHeartbeatAt",
+            "errorMessage",
+            "errorDetail",
+            "captions",
+            "whisper",
+            "whisperRuntime",
+        ] {
+            object.remove(field);
+        }
+        let loaded: JobSnapshot = serde_json::from_value(legacy).unwrap();
+        assert_eq!(loaded.analysis_mode, AnalysisMode::Full);
+        assert_eq!(loaded.whisper, legacy_whisper_settings());
+        assert_eq!(loaded.whisper_runtime, WhisperRuntimeState::default());
+        assert!(loaded.recognition_runs.is_empty());
+    }
+
+    #[test]
     fn candidate_context_fields_round_trip_and_old_snapshots_still_deserialize() {
         let candidate = Candidate {
             id: "candidate-1".into(),
@@ -384,6 +619,12 @@ mod tests {
             chat_score: None,
             total_score: 75,
             decision: CandidateDecision::Pending,
+            quality_status: "VALID".into(),
+            quality_warnings: Vec::new(),
+            selection_reasons: Vec::new(),
+            uncertainty_reasons: Vec::new(),
+            transcript_quality_status: TranscriptQualityStatus::Certain,
+            transcript_quality_reasons: Vec::new(),
             context_start_seconds: 5.0,
             context_end_seconds: 55.0,
             context_transcript: vec![ContextTranscriptEntry {
@@ -415,7 +656,40 @@ mod tests {
             "decision": "PENDING"
         });
         let legacy = serde_json::from_value::<Candidate>(old).unwrap();
+        assert_eq!(legacy.transcript_quality_status, TranscriptQualityStatus::Certain);
+        assert!(legacy.transcript_quality_reasons.is_empty());
         assert_eq!(legacy.context_start_seconds, 0.0);
         assert!(legacy.context_transcript.is_empty());
+    }
+
+    #[test]
+    fn recognition_run_has_exactly_one_terminal_transition() {
+        let now = Utc::now();
+        let mut run = CandidateRecognitionRun {
+            id: "run".into(), candidate_id: "candidate".into(), status: RecognitionRunStatus::Started,
+            started_at: now, completed_at: None, result_revision: 1, original_result: Some("before".into()), raw_result: None,
+            display_result: None, failure_reason: None, backend_evidence: "started".into(),
+        };
+        run.complete(now, "raw".into(), "display".into(), "cpu".into()).unwrap();
+        assert_eq!(run.status, RecognitionRunStatus::Completed);
+        assert!(run.fail(now, "late".into(), "late".into()).is_err());
+    }
+
+    #[test]
+    fn legacy_recognition_run_defaults_original_result_to_none() {
+        let value = serde_json::json!({
+            "id": "legacy-run",
+            "candidateId": "candidate",
+            "status": "FAILED",
+            "startedAt": Utc::now(),
+            "completedAt": Utc::now(),
+            "resultRevision": 1,
+            "rawResult": "old",
+            "displayResult": "old",
+            "failureReason": null,
+            "backendEvidence": "legacy"
+        });
+        let run: CandidateRecognitionRun = serde_json::from_value(value).unwrap();
+        assert_eq!(run.original_result, None);
     }
 }

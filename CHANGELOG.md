@@ -2,6 +2,147 @@
 
 이 문서는 사용자에게 영향을 주는 업데이트를 기록한다. 각 릴리스는 기능 추가뿐 아니라 버그 수정, 보안 수정, 알려진 문제를 함께 적는다.
 
+## 0.5.0-rc.1 - 2026-08-21
+
+### Changed
+
+- GPU runtime과 `자동(GPU 우선)`·GPU·CPU 모드를 유지한 unsigned GitHub Pre-release로 버전 정본을 `0.5.0-rc.1`에 맞췄다.
+- 이 시험판은 updater artifact를 생성하지 않는다. `.sig`, `latest.json`, updater zip 없이 unsigned NSIS installer, SBOM, SHA-256 목록만 배포한다.
+
+### Validation
+
+- 기존 JKY 전체 E2E에서 실제 backend `whisper.cpp-gpu`와 완료된 유효 결과를 확인했다. ZJMp 기존 후보 화면·원본 미리보기 증거도 이번 사용자 흐름 증거로 인정하며 장시간 E2E는 반복하지 않는다.
+- 최종 integration 테스트, GTX 1060 CUDA0 backend의 짧은 GPU fixture, unsigned EXE·NSIS, SBOM·checksums와 포커스를 사용하지 않은 CDP 화면 스모크가 통과했다. 최종 NSIS SHA-256은 `ab231a9619cbbd5c1d5c6e132262202e21cecd8db3ccdce255242e1ab51e3558`이다.
+
+### Known issues
+
+- GPU 실패 뒤 CPU 자동 전환은 실제 실패 조건에서 검증하지 않아 `DEFERRED`다. PASS로 기록하지 않는다.
+- Authenticode 코드 서명이 없어 Windows SmartScreen 경고가 표시될 수 있다.
+
+## Wave 5 canonical final validation - 2026-08-21
+
+### Changed
+
+- 공식 `yt-dlp/yt-dlp-nightly-builds` 최신 nightly `2026.08.19.233000`을 고정했다. Windows asset SHA-256과 GitHub asset digest는 `02bcc69a2a65a2af5da81a79356763522b611edc028c476e78c282735e28d442`, `SHA2-256SUMS` 파일 SHA-256은 `6b2471fa596aaa588446fb0dfcf6025f8533d9dc931fa034b21c40c431473ce6`, source commit은 `yt-dlp/yt-dlp@594bd50c2c78ac432f81600d309fdc4e0a92d82c`다. Unlicense SHA-256 `7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c`와 `THIRD_PARTY_LICENSES.txt` SHA-256 `472aefe951c7db35e1657c1d13fd337140511ed6f2b329205105ad441c5a02b7`도 manifest와 일치한다.
+
+### Validation
+
+- player-ready 평가 수정 후 ZJ integration job `9b6de644-e40f-4130-bffb-301eab4a03a6` (`ZJMpYThMksM&t=2017s`)는 download `100%`, `REVIEW_READY`, 후보 `20`, `18/18` units, GPU `12/12`, `previewPlayerReady=true`, `bodyVerified=true`를 확인했다. 다만 `candidateRevision=0`, `recognitionRuns=[]`라 선택 후보 재인식 완료를 증명하지 못해 ZJ 현재 게이트만 `HOLD`다. snapshot은 `C:\Users\myhan\AppData\Local\com.vodscout.app\e2e-requested-data-zjmp-integration\jobs\9b6de644-e40f-4130-bffb-301eab4a03a6\snapshot.json`, screenshot은 `C:\Users\myhan\AppData\Local\Temp\vod-scout-zjmp-integration-screen-m3unDv\review.png`다.
+- JKY full E2E job `ee834a3d-fde9-49c9-8cf8-ced9654e1c45` (`JKYmw9-xMIo&t=8463s`)는 download `100%`, `REVIEW_READY`, 후보 `20`, `22/22` units, GPU `16/16`, candidate revision `1`, 선택 후보 재인식 `28ba3f98-8727-4517-868b-2a42f9091f51` `COMPLETED`, result revision `1`, `failureReason=null`, 실제 backend `whisper.cpp-gpu`를 기록해 current full E2E `PASS`다. snapshot/data root는 `C:\Users\myhan\AppData\Local\com.vodscout.app\e2e-requested-data-jky\jobs\ee834a3d-fde9-49c9-8cf8-ced9654e1c45`, screenshot은 `C:\Users\myhan\AppData\Local\Temp\vod-scout-jky-full-20260820-231751\review.png`다.
+- exact automatic GPU→CPU fallback은 직접 증명되지 않아 `HOLD`다. signing·install·GitHub publication도 `HOLD`이며, overall release judgment는 `HOLD` 하나로 유지한다.
+- provenance 이후 최종 자동 검증은 npm 49, Rust 본체 `128 passed·1 ignored`, fixture-worker `6`, `npm.cmd run test:security` `6`, standalone Node `archive-safety 6·prepare-media-tools 3·sample-disk-usage 3` passed이며 build와 `git diff --check`도 `PASS`다. 전체 로그는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-final-post-provenance-vxCIf4`에 보존했다.
+
+### Package gate
+
+- 새 runtime을 포함한 unsigned package build는 EXE `16,279,040` bytes/SHA-256 `4bcac97a30edb54be83b81711524ad4335cce5bdc315a44ff77d53121f52ec74`, NSIS `595,368,676` bytes/SHA-256 `7c9e013794886fc220d82e1503d97277e5d79afca2b97f6ec7d367eab3041d3e`, PE `0.5.0`을 생성했다. Authenticode는 두 파일 모두 `NotSigned`이고 updater private key 부재로 signing은 `HOLD`다. Runtime manifest schema 6은 `51/51` runtime 및 `1/1` license hash, SBOM은 SPDX-2.3/root `vod-scout@0.5.0`/`656` packages다.
+
+### Known issues
+
+- ZJ는 선택 후보 재인식 증거 부족으로 `HOLD`이고, exact automatic GPU→CPU fallback·설치·updater 서명·공개 Release도 `HOLD`다. 이 canonical docs 작업에서는 GitHub publication, push, PR, tag, Release, remote merge를 하지 않았다.
+
+## Wave 5 release-app product validation - 2026-08-20
+
+### Added
+
+- 모든 `REVIEW_READY` 화면 E2E가 검토 화면의 첫 후보에서 실제 `다시 음성 인식` 버튼을 누르도록 했다. `run-e2e-smoke.ps1 -ReviewExisting`는 기존 작업을 다시 분석하지 않고 불러오며, fresh full YouTube 흐름도 같은 새 개정·완료 상태·backend evidence·화면 완료 문구·스크린샷 검사를 수행한다.
+
+### Fixed
+
+- CDP E2E 실행기가 앱 포트가 열린 직후 page target이 아직 등록되지 않은 startup race를 최대 10초·250ms 간격으로 재시도하고, timeout 주 오류에 마지막 target의 title/url과 마지막 조회 오류를 함께 남기도록 했다. PowerShell readiness 계약과 제품 저장 범위는 변경하지 않았다.
+- 무창 E2E 실행기의 `DataDirectory`를 `%LOCALAPPDATA%\com.vodscout.app\e2e-*` 아래로 정규화해 기존 Asset Protocol 허용 범위와 맞췄다. 제품 저장 경로나 Asset Protocol 범위는 넓히지 않았고, 플레이어 준비 실패 증거에 `video`, `readyState`, `networkState`, `errorCode`를 남기도록 진단을 보강했다.
+
+### Validation
+
+- stable `yt-dlp 2026.07.04`의 `android_vr`/`ANDR-V` client는 exact `298+251`을 선택한 뒤 media transfer에서 HTTP `403`을 반환했다. official nightly `2026.08.18.122307`(source commit `yt-dlp/yt-dlp@5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c`, Windows asset SHA-256 `652e154bce7170070d0f26415c9a3c35c121f5a7903cb8cde6d31c4577517fb9`)은 `android_vr`를 제거하고 `visionos` 경로에서 first-byte control에 403 없이 도달했으며, release-app full transfer는 두 job 모두 100%에 도달했다. 이 first-transfer 원인·수정은 기술 수정 커밋 `6aa2bc83c48835082b5f08ee14fab0f9570eb691`에 고정했다.
+- release-app 실제 ZJ job `6251521b-6749-4415-9bf1-7eac826bae0f`(`ZJMpYThMksM&t=2017s`)는 download `100%`, `REVIEW_READY`, 후보 `20`개, `18/18` units, GPU `12/12` completed를 기록했다. snapshot의 자막 provenance는 `source=automatic`, `language=ko`, `trackId=Korean`, SHA-256 `d74a0bab2029be6b1d33c27e66031838076b2fe658e13b910c3327e0a3f71562`, `quality=unverified`였고 검증할 수 없는 구간에는 local Whisper가 사용됐다.
+- release-app 실제 JKY job `c8f80e03-33d7-4c3b-af5f-6f498be31f72`(`JKYmw9-xMIo&t=8463s`)도 download `100%`, `REVIEW_READY`, 후보 `20`개, `22/22` units, GPU `16/16` completed를 기록했다. snapshot의 자막 provenance는 `source=automatic`, `language=ko`, `trackId=Korean`, SHA-256 `81dff33650b150069a03cd73db2aaf8d8e29682cdf4a80c9366e1b4e64cdb6cc`, `quality=unverified`였고 검증할 수 없는 구간에는 local Whisper가 사용됐다.
+- 두 기존 E2E 시도는 이후 모두 `scripts/e2e-local-cdp.mjs:279`의 같은 player-ready 검사에서 실패했다. 따라서 screenshot·preview·후보 재인식·전체 UI 흐름은 `HOLD`/`BLOCKED`이며, 자동 GPU→CPU 제품 fallback은 안전하게 유발하지 못해 `HOLD`다. 원본 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-v050-public-gate-20260820\evidence-zjmp-retry\e2e-failure-2026-08-19T19-24-56-054Z-17056.json` 및 `.log`, `...\evidence-jky\e2e-failure-2026-08-19T19-39-18-521Z-24076.json` 및 `.log`다.
+
+### Package gate
+
+- release build·Rust release·NSIS 본문 생성은 성공했지만 전체 `tauri:build` rc `1`은 `TAURI_SIGNING_PRIVATE_KEY` 부재로 signing 단계에서 발생했다. `vod-scout.exe`는 `16,279,040` bytes, SHA-256 `a26e472265e52bd48d02bab6fbee357efa99764dcc56d16f82aa705626fd9fba`, PE `0.5.0`; NSIS는 `595,405,262` bytes, SHA-256 `75d46c747eca1969c46f85160caf4cfb315b6e2485f9d62f54cbde38be1593ff`, PE `0.5.0`이다. Runtime manifest schema 6의 `51/51` runtime 및 `1/1` license hash, security `6/6`, `npm audit --omit=dev` 0 vulnerabilities는 `PASS`이며 `cargo-audit`는 unavailable/not project gate다.
+
+### Known issues
+
+- local signing environment와 Windows Sandbox가 없어 설치·updater signature·공개 Release는 `HOLD`/`BLOCKED`다. 1~8시간·사람 기준 내용 품질·GPU memory는 `HOLD`이고 G7 병렬은 disabled다.
+
+## Wave 5 official yt-dlp nightly provenance validation - 2026-08-20
+
+### Changed
+
+- `yt-dlp nightly 2026.08.18.122307`을 공식 `yt-dlp/yt-dlp-nightly-builds` release asset으로 고정했다. Windows asset SHA-256은 `652e154bce7170070d0f26415c9a3c35c121f5a7903cb8cde6d31c4577517fb9`이며, source commit `yt-dlp/yt-dlp@5d5b634d8e6b41dc2891847a5ea7a5a3f569a28c`, SHA2-256SUMS, Unlicense와 exact `THIRD_PARTY_LICENSES.txt` URL·SHA-256 provenance를 manifest와 준비 스크립트에 기록했다. Official README 기준 Windows PyInstaller 실행 파일은 `GPL-3.0-or-later` combined work이고 yt-dlp source는 Unlicense이며, 전체 third-party 고지를 동봉한다.
+
+### Validation
+
+- 같은 restricted env·cookies 없음·`youtube:skip=translated_subs`로 nightly 제품 metadata probe를 1회 실행해 exact `298+251`을 확인했다. 이어 같은 transfer argv에 `--test`만 추가한 first-byte control을 1회 실행해 `source.f298.mp4`와 `source.f251.webm` 각 10,241 bytes, Korean automatic caption VTT 10,241 bytes 저장까지 도달했다. `--test`의 잘린 입력을 FFmpeg가 처리하지 못해 전체 rc `1`이 되었지만 first-byte 도달은 `PASS`로 분리했다.
+- `npm.cmd run check:yt-dlp`는 pinned/latest `2026.08.18.122307`, `latestNightlyVerified=true`, binary/checksum/LICENSE/THIRD_PARTY_LICENSES 해시와 source commit을 모두 `PASS`로 보고했다.
+
+### Known issues
+
+- stable `2026.07.04`의 `298+251`은 `ANDR-V` client로 선택되어 첫 media transfer에서 HTTP 403을 냈고, nightly `2026.08.18.122307`은 `android_vr` 제거 후 `visionos` client를 선택해 동일 restricted first-byte control에서 HTTP 403 없이 두 media stream과 Korean automatic-caption bytes에 도달했다. 이 stable ANDR-V → nightly visionos 차이는 first transfer의 확인된 원인·수정이며, 전체 product transfer 완료나 full ordinary YouTube E2E 성공을 뜻하지 않는다. full ordinary YouTube E2E는 `HOLD`다.
+
+## Wave 4 resource/package validation - 2026-08-20
+
+### Changed
+
+- 승인된 30초 보존 프로브에서 FFmpeg `29.755s/0.094s/22,716,416/20,803,584/4,393,690/960,590`, GPU Whisper `2.710s/2.438s/273,334,272/1,148,428,288/4,395,267/48`, CPU Whisper `8.110s/14.953s/324,505,600/837,447,680/4,396,535/69`(elapsed/CPU/peak WS/peak private/temp peak/final job), wrapper rc `0`을 수집했다. 임계값은 만들지 않고 `MEASURED_NO_THRESHOLD`로 기록했으며 두 경로 모두 non-empty SRT와 backend 로그를 남겼다. GPU per-process memory는 sample 없음으로 `UNAVAILABLE`/`HOLD`다.
+- 공식 manifest 핀 도구를 Windows Node에서 재준비하고 release runtime manifest의 51개 파일·해시를 재검증했다. Linux Node의 `tar.exe` 경로 실패와 Windows 재준비 성공 로그를 task TEMP에 보존했다.
+- 불완전한 `node_modules`의 `tauri.cmd`를 lockfile v3 기준 `npm.cmd ci`로 task worktree 안에서만 복원했다. 이후 단일 Windows `npm.cmd run tauri:build`가 release·NSIS 생성까지 도달했다.
+
+### Known issues
+
+- NSIS 본문 생성은 `PASS`지만 updater private key가 없어 signing은 `HOLD`다. 1~8시간 실입력은 승인된 안전한 로컬 증거가 없어 `HOLD`이며 G7 병렬은 disabled/`HOLD`다.
+
+## Wave 3 validation correction - 2026-08-20
+
+### Fixed
+
+- Production-protocol release build에 `custom-protocol` feature를 명시해 실제 앱 프로토콜로 검증할 수 있게 했다.
+- 실제 whisper.cpp GPU 로그의 `loaded CUDA backend`를 positive CUDA backend evidence로 인정하고 회귀 테스트를 추가했다.
+
+### Known issues
+
+- 첫 valid production-app no-cancel YouTube flow는 metadata probe 성공 뒤 transfer HTTP 403으로 중단됐다. pinned yt-dlp/Deno control은 HTTP 206과 Korean automatic-caption save에 성공했으므로 product 403 원인은 미확정 상태로 유지한다. full command/stderr evidence는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-e0b0c58-20260820\product-yt-dlp-command.txt`와 `...\data-release-real\jobs\bfb8c79b-181a-4533-b4fd-ef5a0da29b75\tool-logs\yt-dlp.stderr.log`다.
+- Release-app GPU checkpoint success는 확인했지만 player-ready 검사 실패로 screenshot과 전체 화면 흐름은 `HOLD`다. task-local missing-cuBLAS injection은 integrity guard에서 중단되어 자동 GPU→CPU fallback 성공은 확인하지 못했다.
+- Intact-resource process-only `CUDA_VISIBLE_DEVICES=-1` fallback 시도는 child command environment allowlist로 변수가 제거되어 GPU 성공으로 끝났다(`cpuFallback=PENDING`). 추가 fallback 시도는 하지 않았고 자동 전환은 `HOLD`다.
+- Raw Whisper evidence remains stored, while candidate/UI display now masks only a sparse very-short low-information result using known media duration and speech coverage; a whole ~2-second short utterance remains visible. The regression test covers both cases without token-specific logic.
+
+## 0.5.0 local candidate - 2026-08-18
+
+상태: **G1~G7 구현·자동 검증 PASS · G8 NSIS/PE/hash/격리 앱 실행 PASS · 실제 입력/장치/UI/자원·장시간·서명/공개 패키지 HOLD**
+
+### Added
+
+- G1~G4의 자막 provenance·GPU/CPU 대체·음성 인식 품질·자원 제한 상태를 작업 데이터에 기록한다.
+- G5 후보 `8/20/30`개 설정, 후보 pool/evidence 분리, 품질 경고와 후보 개정·판정 보존을 통합했다.
+- G6 여러 영상의 독립 작업·순차 대기열·실행권·`INTERRUPTED` 복구·작업별 삭제 경계를 통합했다.
+
+### Changed
+
+- 로컬 소스·package lock·Cargo lock·Tauri 설정·release notes·installer workflow/helper 기대 버전을 `0.5.0`으로 맞췄다.
+- G7은 측정되지 않은 병렬 처리를 fail-closed하고 순차 처리로 고정한다. 실제 측정 전 선택 항목은 제공하지 않는다.
+
+### Fixed
+
+- YouTube 일반 VOD의 한국어 자막 선택 순서를 한국어 자동 자막 우선으로 바꾸고, 자동 자막이 없거나 사용할 수 없을 때만 제작자 한국어 자막을 사용하도록 맞췄다. 자동 번역·다른 언어·`live_chat`은 계속 제외하며, 제공되지 않은 트랙 식별자를 새로 만들지 않는다.
+- whisper.cpp v1.9.1 GPU archive에 빠진 `cublas64_11.dll`·`cublasLt64_11.dll`을 공식 NVIDIA CUDA cuBLAS redistributable `11.11.3.6`에서 SHA-256 검증 후 private GPU runtime에 포함하고 CUDA Toolkit license notice를 함께 패키징했다. 직접 GPU·CPU 음성 인식 결과는 PASS이며 자동 GPU→CPU 제품 전환과 Windows 화면은 아직 HOLD다.
+- 후보 pool과 화면 목록의 동기화가 후보 수 변경·정렬·수동 재음성 인식 뒤에도 기존 판정을 잃지 않도록 했다.
+- 대기열 저장 실패·복구·실행권·실패 작업의 다음 작업 진행·실행 중 삭제 순서를 닫아 두었다.
+- 404가 된 FFmpeg autobuild 핀을 공식 `autobuild-2026-08-17-13-05` 자산 URL·archive·SHA-256으로 교정했다.
+- 검증 스크립트가 음성 중심 후보의 `chatScore: null`을 실패시키고 화면 문구와 반복 `bootstrap` 조회를 취소 완료로 오인하던 문제를 고쳤다. 저장된 작업 스냅샷 기반 취소 폴링, 선택적 `--require-chat-score`, 오류 증거 보존, 앱 경로·스크린샷·자식 프로세스 정리를 추가했다.
+
+### Security
+
+- 새 외부 AI·유료 API·API 키 저장·원본 미디어 전송 경로를 추가하지 않았다.
+- archive/media-tool/경로·자식 프로세스·체크포인트 경계 자동 테스트를 통과했다.
+
+### Known issues
+
+- 실제 YouTube/reference-video, Windows UI, resource/long-run, parallel measurement는 실행하지 않아 `HOLD`다. 직접 GPU·CPU CLI는 `PASS`이며 자동 GPU→CPU 제품 전환은 `HOLD`다.
+- 승인 URL의 기존 재개 흐름에서 YouTube HTTP 403이 발생했고, 이번 재검증 상한에 따라 같은 E2E는 재시도하지 않았다. 고정 yt-dlp/Deno의 signed URL 범위 요청과 자동 자막 저장 control은 HTTP `206`으로 성공했지만 기존 앱 403은 재현하지 못했으므로 원인은 미확정이며 제품 경로 403 수정은 검증되지 않았다. 새 ordinary no-cancel 제품 E2E는 acquisition 전 로컬 CDP/Tauri IPC 평가에서 실패해 앱 흐름 검증이 `BLOCKED`다. 제작자 자막 부재는 `HOLD`나 릴리스 차단 사유가 아니다. 직접 GPU·CPU CLI는 PASS지만 자동 GPU→CPU 제품 전환·Windows 화면·resource/long-run은 `HOLD`다.
+- 로컬 NSIS installer와 핵심 EXE의 크기·SHA-256·PE 버전, fresh 격리 데이터 경로 앱 실행은 `PASS`다. updater 개인키 부재로 `.sig`와 공개 v0.5.0 자산은 `HOLD`다.
+- 자동 검증: npm 49, Rust 128 passed·1 ignored, fixture 6, security 6, archive/media-tool 11 passed. `npm audit`의 개발 의존성 high 1건은 제품 경로 취약점으로 단정하지 않는다.
+
 ## 0.4.0 - 2026-08-08
 
 ### Added

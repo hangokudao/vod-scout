@@ -1,10 +1,13 @@
 [package]
 name = "vod-scout"
-version = "0.4.0"
+version = "0.5.0-rc.1"
 description = "Windows-first local VOD highlight scouting agent"
 authors = ["VOD Scout contributors"]
 license = "Apache-2.0"
 edition = "2021"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
 
 [lib]
 name = "vod_scout_lib"
