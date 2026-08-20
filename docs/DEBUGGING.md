@@ -4,6 +4,11 @@
 
 현재 자막 선택 계약은 일반 YouTube VOD의 한국어 자동 자막 우선, 자동 자막이 없거나 사용할 수 없을 때만 제작자 한국어 자막, 두 경로가 없거나 검증할 수 없는 구간은 로컬 Whisper 순서다. 자동 번역·다른 언어·`live_chat`은 제외한다.
 
+## 2026-08-20 · CDP page target startup race
+
+- 증상·원인: E2E 시작 후 67ms 시점에 한 번만 수행한 `VOD Scout` page target 조회가 실패했고, 실패 증거의 `lastSnapshot`은 `null`이었다.
+- 수정·회귀: `scripts/e2e-local-cdp.mjs`가 정확히 10초 동안 250ms 간격으로 target을 조회하고, 끝내 찾지 못하면 주 오류에 마지막 target의 title/url과 마지막 조회 오류를 포함한다. `scripts/e2e-local-cdp.test.mjs`는 지연 등록·bounded timeout·오류 진단·10초/250ms 상수를 확인했으며 실제 E2E와 전체 빌드는 실행하지 않았다.
+
 ## 2026-08-20 · 기존 검토 화면 후보 재인식 E2E 회귀
 
 - 증상·원인: 검토 준비 화면에 진입한 뒤 후보의 `다시 음성 인식` 버튼과 저장된 재인식 결과를 실제 UI에서 검증하는 공통 경로가 없었다. `scripts/e2e-local-cdp.mjs`는 이제 모든 `REVIEW_READY` 흐름에서 이 검사를 수행하며, `--review-existing`일 때만 `bootstrap`으로 현재 작업을 열고 `start_job`이나 분석 재시작은 하지 않도록 한다.

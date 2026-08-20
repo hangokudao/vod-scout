@@ -6,6 +6,8 @@ import { pathToFileURL } from "node:url";
 
 export const CANCEL_TIMEOUT_MS = 10_000;
 export const CANCEL_POLL_INTERVAL_MS = 200;
+export const CDP_TARGET_TIMEOUT_MS = 10_000;
+export const CDP_TARGET_POLL_INTERVAL_MS = 250;
 
 export function formatPlayerReadinessFailure({
   hasVideo = false,
@@ -27,6 +29,39 @@ export function assertCandidateSignals(snapshot, { requireChatScore = false } = 
   if (requireChatScore && !snapshot.candidates.some((candidate) => typeof candidate.chatScore === "number" && Number.isFinite(candidate.chatScore))) {
     throw new Error("채팅 전용 검사를 통과할 숫자인 chatScore가 없습니다.");
   }
+}
+
+export async function waitForCdpTarget(readTargets, {
+  timeoutMs = CDP_TARGET_TIMEOUT_MS,
+  intervalMs = CDP_TARGET_POLL_INTERVAL_MS
+} = {}) {
+  const startedAt = Date.now();
+  const deadline = startedAt + timeoutMs;
+  let lastError = null;
+  let lastTargets = [];
+  while (Date.now() <= deadline) {
+    try {
+      const targets = await readTargets();
+      lastTargets = Array.isArray(targets)
+        ? targets.map(({ type, title, url }) => ({ type, title, url }))
+        : [];
+      const target = targets?.find((item) => item.type === "page" && item.title === "VOD Scout");
+      if (target) return { target, elapsedMs: Date.now() - startedAt };
+    } catch (error) {
+      lastError = error;
+    }
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
+    await delay(Math.min(intervalMs, remainingMs));
+  }
+  const lastReadError = lastError
+    ? (lastError instanceof Error ? lastError.message : String(lastError))
+    : "없음";
+  const error = new Error(`CDP에서 VOD Scout 창을 ${timeoutMs}ms 안에 찾지 못했습니다. 마지막 대상=${JSON.stringify(lastTargets)}, 마지막 조회 오류=${lastReadError}`);
+  error.lastTargets = lastTargets;
+  error.lastReadError = lastReadError;
+  if (lastError) error.cause = lastError;
+  throw error;
 }
 
 export async function waitForCancelled(readSnapshot, {
@@ -253,11 +288,11 @@ export async function runE2E(args = process.argv.slice(2)) {
 
   try {
     log("start", { args });
-    const response = await fetch(`http://127.0.0.1:${options.port}/json`);
-    if (!response.ok) throw new Error(`CDP 대상 조회 실패: HTTP ${response.status}`);
-    const targets = await response.json();
-    const target = targets.find((item) => item.type === "page" && item.title === "VOD Scout");
-    if (!target) throw new Error("CDP에서 VOD Scout 창을 찾지 못했습니다.");
+    const { target } = await waitForCdpTarget(async () => {
+      const response = await fetch(`http://127.0.0.1:${options.port}/json`);
+      if (!response.ok) throw new Error(`CDP 대상 조회 실패: HTTP ${response.status}`);
+      return response.json();
+    });
 
     socket = new WebSocket(target.webSocketDebuggerUrl);
     const pending = new Map();

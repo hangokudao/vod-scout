@@ -5,9 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   assertCandidateSignals,
+  CDP_TARGET_POLL_INTERVAL_MS,
+  CDP_TARGET_TIMEOUT_MS,
   formatPlayerReadinessFailure,
   readPersistedSnapshot,
   waitForCancelled,
+  waitForCdpTarget,
   waitForRecognitionCompletion,
   waitForRecognitionDomCompletion,
   writeFailureEvidence
@@ -25,6 +28,46 @@ test("chat-only checks require at least one numeric chat score", () => {
     /숫자인 chatScore/
   );
   assert.doesNotThrow(() => assertCandidateSignals({ candidates: [{ chatScore: null }, { chatScore: 88 }] }, { requireChatScore: true }));
+});
+
+test("CDP target polling waits through a startup race until VOD Scout is available", async () => {
+  const responses = [
+    [],
+    [{ type: "page", title: "Other" }],
+    [{ type: "page", title: "VOD Scout", webSocketDebuggerUrl: "ws://127.0.0.1/devtools" }]
+  ];
+  const result = await waitForCdpTarget(async () => responses.shift(), { timeoutMs: 100, intervalMs: 1 });
+  assert.equal(result.target.title, "VOD Scout");
+});
+
+test("CDP target polling is bounded when the target never appears", async () => {
+  await assert.rejects(
+    () => waitForCdpTarget(async () => [{ type: "page", title: "Other", url: "app://other" }], { timeoutMs: 5, intervalMs: 1 }),
+    (error) => /VOD Scout 창을 5ms 안에 찾지 못했습니다/.test(error.message)
+      && error.lastTargets?.[0]?.title === "Other"
+  );
+});
+
+test("CDP timeout preserves the last target title/url and read error on the main error", async () => {
+  let reads = 0;
+  await assert.rejects(
+    () => waitForCdpTarget(async () => {
+      reads += 1;
+      if (reads === 1) return [{ type: "page", title: "Other", url: "app://other" }];
+      throw new Error("CDP socket read failed");
+    }, { timeoutMs: 20, intervalMs: 1 }),
+    (error) => error.lastTargets?.[0]?.title === "Other"
+      && error.lastTargets?.[0]?.url === "app://other"
+      && error.lastReadError === "CDP socket read failed"
+      && error.message.includes("Other")
+      && error.message.includes("app://other")
+      && error.message.includes("CDP socket read failed")
+  );
+});
+
+test("CDP target polling keeps the exact production bounds", () => {
+  assert.equal(CDP_TARGET_TIMEOUT_MS, 10_000);
+  assert.equal(CDP_TARGET_POLL_INTERVAL_MS, 250);
 });
 
 test("cancel polling uses the persisted snapshot state", async () => {

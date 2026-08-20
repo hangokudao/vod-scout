@@ -10,6 +10,7 @@
 
 ### Fixed
 
+- CDP E2E 실행기가 앱 포트가 열린 직후 page target이 아직 등록되지 않은 startup race를 최대 10초·250ms 간격으로 재시도하고, timeout 주 오류에 마지막 target의 title/url과 마지막 조회 오류를 함께 남기도록 했다. PowerShell readiness 계약과 제품 저장 범위는 변경하지 않았다.
 - 무창 E2E 실행기의 `DataDirectory`를 `%LOCALAPPDATA%\com.vodscout.app\e2e-*` 아래로 정규화해 기존 Asset Protocol 허용 범위와 맞췄다. 제품 저장 경로나 Asset Protocol 범위는 넓히지 않았고, 플레이어 준비 실패 증거에 `video`, `readyState`, `networkState`, `errorCode`를 남기도록 진단을 보강했다.
 
 ### Validation
