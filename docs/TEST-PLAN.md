@@ -1,5 +1,13 @@
 # 테스트와 완료 기준
 
+## v0.5.0-rc.1 Pre-release 최종 게이트
+
+한 번만 실행할 범위는 integration의 짧은 GPU fixture, 기본 npm·Cargo 테스트와 build, 보안 검사, `git diff --check`, unsigned EXE·NSIS 생성, 새 임시 데이터 경로의 최종 EXE 화면 스모크다.
+
+PASS 조건은 실제 GPU backend/device와 유효한 음성 인식 결과, 메인 화면, `0.5.0-rc.1`, Auto/GPU/CPU 설정 표시, 기존 설치·사용자 데이터 무변경이다. 장시간 E2E는 반복하지 않는다. 자동 GPU→CPU 전환은 `DEFERRED`이며 이번 Pre-release를 막지 않는다.
+
+updater artifact는 만들지 않는다. `.sig`, `latest.json`, updater zip이 release 디렉터리나 GitHub Pre-release 자산에 있으면 실패다. 최종 결과는 integration 실행 뒤 기록한다.
+
 ## 2026-08-21 canonical final validation
 
 ### 필수 게이트 판정

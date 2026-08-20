@@ -1,5 +1,12 @@
 # VOD Scout 빌드 명세
 
+## v0.5.0-rc.1 unsigned Pre-release 준비
+
+- 버전 정본: `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, `src/releaseNotes.ts`, installer smoke 기대 버전을 `0.5.0-rc.1`로 맞춘다.
+- GPU·Auto·CPU 기능과 GPU runtime은 변경하지 않는다. 실제 JKY `whisper.cpp-gpu` 완료 증거를 GPU 동작 근거로 인정하고, GPU 실패 뒤 CPU 자동 전환은 `DEFERRED`다.
+- `createUpdaterArtifacts=false`; 공개 자산은 unsigned NSIS installer, `SBOM.spdx.json`, `SHA256SUMS.txt`만 허용하며 `.sig`, `latest.json`, updater zip은 금지한다.
+- 최종 EXE·NSIS 크기·SHA-256, SBOM·checksums, GPU fixture, 새 임시 데이터 경로 실행 스모크는 integration 최종 검증 뒤 기록한다. 현재 값은 `PENDING`이다.
+
 ## 2026-08-21 canonical final validation
 
 - validation-fixes `ae25f1342ae25f1ee7a2eb6dc6a694d4aedf14d8`와 integration `53172fab00d61a398333e0cee18652fa0d1b5387`를 기준으로 문서만 갱신한다. 두 worktree는 시작 시 clean이며 docs-only 변경 뒤에도 clean으로 복원한다.

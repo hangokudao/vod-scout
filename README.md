@@ -10,9 +10,9 @@
 
 Windows 코드 서명 인증서가 없어 처음 설치할 때 SmartScreen 경고가 표시될 수 있습니다. 설치 파일 크기·SHA-256·updater 서명은 [v0.4.0 릴리스 기록](docs/V0.4.0-RELEASE.md)과 [빌드 명세](BUILD-MANIFEST.md)를 따릅니다.
 
-## v0.5.0 로컬 후보
+## v0.5.0-rc.1 공개 시험판
 
-현재 소스와 로컬 패키지 기준 버전은 **v0.5.0 후보**입니다. 아직 공개 v0.5.0 Release나 다운로드 링크가 없으므로 위 v0.4.0 공개 파일을 유지합니다. v0.5.0 공개 링크·Release 자산은 패키지·서명·Windows 설치 검증 뒤에 결정합니다 (**HOLD**).
+현재 소스와 패키지 기준 버전은 **v0.5.0-rc.1**입니다. GPU·Auto·CPU 모드와 GPU runtime을 유지한 unsigned GitHub Pre-release이며, 설치할 때 Windows SmartScreen 경고가 표시될 수 있습니다. GPU 실패 후 CPU 자동 전환은 실제 실패 조건에서 검증하지 않아 `DEFERRED`입니다. 공개 전까지 위 v0.4.0 안정 버전 다운로드를 유지합니다.
 
 ## 0.4.0에서 되는 것
 

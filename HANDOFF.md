@@ -1,6 +1,14 @@
 # VOD Scout 인계서
 
-현재 게이트: **v0.5.0 canonical final · player-ready 평가 수정 PASS · ZJ 선택 후보 재인식 완료 증거 HOLD · JKY full E2E PASS · exact automatic GPU→CPU fallback/설치/updater 서명/GitHub HOLD · overall HOLD · G7 disabled**
+현재 게이트: **v0.5.0-rc.1 unsigned Pre-release 준비 · JKY GPU E2E PASS · ZJ 기존 화면 증거 인정 · 자동 GPU→CPU 전환 DEFERRED · 최종 통합 검증·패키지·공개 대기 · G7 disabled**
+
+## v0.5.0-rc.1 공개 결정 (2026-08-21)
+
+- 이번 사용자 결정은 아래 과거 v0.5.0 공개 게이트보다 우선한다. Auto/GPU/CPU 모드와 GPU runtime은 유지하며 CPU-only 변경이나 GPU UI 숨김은 하지 않는다.
+- 기존 JKY 전체 E2E의 실제 backend `whisper.cpp-gpu` 완료 결과와 ZJMp 기존 후보 화면·원본 미리보기 증거를 사용자 흐름 증거로 인정하고 장시간 E2E는 반복하지 않는다.
+- 실제 GPU 실패 뒤 CPU 자동 전환은 `DEFERRED`로 공개를 막지 않는다. unsigned 설치 파일과 Windows SmartScreen 경고를 알려진 한계로 허용한다.
+- `bundle.createUpdaterArtifacts=false`로 rc.1 updater artifact 생성만 중단한다. `.sig`, `latest.json`, updater zip은 생성·배포하지 않는다.
+- 최종 integration 테스트·GPU fixture·unsigned 패키지·새 임시 데이터 경로 화면 스모크·GitHub 공개 결과와 해시는 아직 `PENDING`이며 확인 전 값을 만들지 않는다.
 
 ## Canonical final handoff (2026-08-21)
 

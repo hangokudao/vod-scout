@@ -4,6 +4,13 @@
 
 현재 자막 선택 계약은 일반 YouTube VOD의 한국어 자동 자막 우선, 자동 자막이 없거나 사용할 수 없을 때만 제작자 한국어 자막, 두 경로가 없거나 검증할 수 없는 구간은 로컬 Whisper 순서다. 자동 번역·다른 언어·`live_chat`은 제외한다.
 
+## 2026-08-21 · v0.5.0-rc.1 unsigned Pre-release 전환
+
+- 과거 package build가 updater 개인키 부재로 NSIS 본문 생성 뒤 실패한 원인은 `bundle.createUpdaterArtifacts=true`였다. 이번 rc.1은 updater 배포 대상이 아니므로 이 값만 `false`로 바꾸고 GPU·Auto·CPU 및 updater 기능 코드는 변경하지 않는다.
+- unsigned release asset helper는 exact rc.1 NSIS installer와 SBOM만 복사해 `SHA256SUMS.txt`를 만들며 `.sig`, `latest.json`, updater zip을 거부한다.
+- GPU 실패 뒤 CPU 자동 전환 미검증은 수정하지 않고 `DEFERRED`로 공개 문서에 남긴다. 실제 JKY `whisper.cpp-gpu` 결과는 GPU 동작 증거로 유지한다.
+- 최종 패키지·GPU fixture·새 임시 데이터 경로 화면 스모크 결과는 아직 `PENDING`이다.
+
 ## 2026-08-21 · canonical final validation
 
 - player-ready 평가는 수정 후 PASS다. ZJ integration job `9b6de644-e40f-4130-bffb-301eab4a03a6`는 `REVIEW_READY`, download `100%`, 후보 `20`, `18/18` units, GPU `12/12`, `previewPlayerReady=true`, `bodyVerified=true`를 기록했다. 그러나 `candidateRevision=0`, `recognitionRuns=[]`라 선택 후보 재인식 완료를 증명하지 못해 ZJ 현재 상태만 `HOLD`다. snapshot은 `C:\Users\myhan\AppData\Local\com.vodscout.app\e2e-requested-data-zjmp-integration\jobs\9b6de644-e40f-4130-bffb-301eab4a03a6\snapshot.json`, screenshot은 `C:\Users\myhan\AppData\Local\Temp\vod-scout-zjmp-integration-screen-m3unDv\review.png`다.

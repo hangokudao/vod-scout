@@ -2,23 +2,23 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "vod-scout@0.5.0",
-  "documentNamespace": "http://spdx.org/spdxdocs/vod-scout-0.5.0-10b83f74-7172-4cb6-84f3-9f12dc76fb24",
+  "name": "vod-scout@0.5.0-rc.1",
+  "documentNamespace": "http://spdx.org/spdxdocs/vod-scout-0.5.0-rc.1-b8e90fc5-f983-4a2a-b3bd-25bcc8d78512",
   "creationInfo": {
-    "created": "2026-08-19T20:08:51.959Z",
+    "created": "2026-08-20T17:03:06.390Z",
     "creators": [
       "Tool: npm/cli-11.16.0",
       "Tool: VOD Scout scripts/generate-sbom.mjs (Cargo.lock augmentation)"
     ]
   },
   "documentDescribes": [
-    "SPDXRef-Package-vod-scout-0.5.0"
+    "SPDXRef-Package-vod-scout-0.5.0-rc.1"
   ],
   "packages": [
     {
       "name": "vod-scout",
-      "SPDXID": "SPDXRef-Package-vod-scout-0.5.0",
-      "versionInfo": "0.5.0",
+      "SPDXID": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
+      "versionInfo": "0.5.0-rc.1",
       "packageFileName": "",
       "primaryPackagePurpose": "APPLICATION",
       "downloadLocation": "NOASSERTION",
@@ -29,7 +29,7 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:npm/vod-scout@0.5.0"
+          "referenceLocator": "pkg:npm/vod-scout@0.5.0-rc.1"
         }
       ]
     },
@@ -12739,8 +12739,8 @@
     },
     {
       "name": "vod-scout",
-      "SPDXID": "SPDXRef-Cargo-vod-scout-0.5.0-389",
-      "versionInfo": "0.5.0",
+      "SPDXID": "SPDXRef-Cargo-vod-scout-0.5.0-rc.1-389",
+      "versionInfo": "0.5.0-rc.1",
       "primaryPackagePurpose": "LIBRARY",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
@@ -12749,7 +12749,7 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:cargo/vod-scout@0.5.0"
+          "referenceLocator": "pkg:cargo/vod-scout@0.5.0-rc.1"
         }
       ]
     },
@@ -14781,92 +14781,92 @@
   "relationships": [
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DESCRIBES"
     },
     {
       "spdxElementId": "SPDXRef-Package-tauri-apps.api-2.11.1",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Package-tauri-apps.plugin-dialog-2.7.2",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Package-tauri-apps.plugin-process-2.3.1",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Package-tauri-apps.plugin-updater-2.10.1",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Package-lucide-react-1.28.0",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Package-react-19.2.8",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Package-react-dom-19.2.8",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Package-tauri-apps.cli-2.11.4",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEV_DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Package-testing-library.jest-dom-6.9.1",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEV_DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Package-testing-library.react-16.3.2",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEV_DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Package-types.react-19.2.18",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEV_DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Package-types.react-dom-19.2.4",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEV_DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Package-vitejs.plugin-react-5.2.0",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEV_DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Package-jsdom-27.4.0",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEV_DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Package-typescript-5.9.3",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEV_DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Package-vite-8.2.0",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEV_DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Package-vitest-4.1.10",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEV_DEPENDENCY_OF"
     },
     {
@@ -16151,2412 +16151,2412 @@
     },
     {
       "spdxElementId": "SPDXRef-Cargo-adler2-2.0.1-0",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-aho-corasick-1.1.4-1",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-alloc-no-stdlib-2.0.4-2",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-alloc-stdlib-0.2.4-3",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-android-system-properties-0.1.5-4",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-anyhow-1.0.104-5",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-arbitrary-1.4.2-6",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-atk-0.18.2-7",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-atk-sys-0.18.2-8",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-atomic-waker-1.1.2-9",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-autocfg-1.5.1-10",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-base64-0.21.7-11",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-base64-0.22.1-12",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-bit-set-0.8.0-13",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-bit-vec-0.8.0-14",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-bitflags-1.3.2-15",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-bitflags-2.13.1-16",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-block-buffer-0.10.4-17",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-block2-0.6.2-18",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-brotli-8.0.4-19",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-brotli-decompressor-5.0.3-20",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-bs58-0.5.1-21",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-bumpalo-3.20.3-22",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-bytemuck-1.25.2-23",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-byteorder-1.5.0-24",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-bytes-1.12.1-25",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-cairo-rs-0.18.5-26",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-cairo-sys-rs-0.18.2-27",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-camino-1.2.5-28",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-cargo-platform-0.1.9-29",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-cargo-metadata-0.19.2-30",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-cargo-toml-0.22.3-31",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-cc-1.4.0-32",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-cesu8-1.1.0-33",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-cfb-0.7.3-34",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-cfg-expr-0.15.8-35",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-cfg-if-1.0.4-36",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-chrono-0.4.45-37",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-combine-4.6.7-38",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-cookie-0.18.1-39",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-core-foundation-0.10.1-40",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-core-foundation-sys-0.8.7-41",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-core-graphics-0.25.0-42",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-core-graphics-types-0.2.0-43",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-cpufeatures-0.2.17-44",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-crc32fast-1.5.0-45",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-crossbeam-channel-0.5.16-46",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-crossbeam-utils-0.8.22-47",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-crypto-common-0.1.7-48",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-cssparser-0.36.0-49",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-cssparser-macros-0.6.1-50",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-ctor-0.8.0-51",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-ctor-proc-macro-0.0.7-52",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-darling-0.23.0-53",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-darling-core-0.23.0-54",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-darling-macro-0.23.0-55",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-dbus-0.9.12-56",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-deranged-0.5.8-57",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-derive-arbitrary-1.4.2-58",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-derive-more-2.1.1-59",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-derive-more-impl-2.1.1-60",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-digest-0.10.7-61",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-dirs-6.0.0-62",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-dirs-sys-0.5.0-63",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-dispatch2-0.3.1-64",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-displaydoc-0.2.7-65",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-dlopen2-0.8.2-66",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-dlopen2-derive-0.4.3-67",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-dom-query-0.27.0-68",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-dpi-0.1.2-69",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-dtoa-1.0.11-70",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-dtoa-short-0.3.5-71",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-dtor-0.3.0-72",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-dtor-proc-macro-0.0.6-73",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-dunce-1.0.5-74",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-dyn-clone-1.0.20-75",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-embed-resource-3.0.11-76",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-embed-plist-1.2.2-77",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-encoding-rs-0.8.35-78",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-equivalent-1.0.2-79",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-erased-serde-0.4.10-80",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-errno-0.3.14-81",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-fastrand-2.5.0-82",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-fdeflate-0.3.7-83",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-field-offset-0.3.6-84",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-filetime-0.2.29-85",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-find-msvc-tools-0.1.9-86",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-flate2-1.1.9-87",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-fnv-1.0.7-88",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-foldhash-0.2.0-89",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-foreign-types-0.5.0-90",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-foreign-types-macros-0.2.4-91",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-foreign-types-shared-0.3.1-92",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-form-urlencoded-1.2.2-93",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-futures-channel-0.3.33-94",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-futures-core-0.3.33-95",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-futures-executor-0.3.33-96",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-futures-io-0.3.33-97",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-futures-macro-0.3.33-98",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-futures-sink-0.3.33-99",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-futures-task-0.3.33-100",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-futures-util-0.3.33-101",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-gdk-0.18.2-102",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-gdk-pixbuf-0.18.5-103",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-gdk-pixbuf-sys-0.18.0-104",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-gdk-sys-0.18.2-105",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-gdkwayland-sys-0.18.2-106",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-gdkx11-0.18.2-107",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-gdkx11-sys-0.18.2-108",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-generic-array-0.14.7-109",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-getrandom-0.2.17-110",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-getrandom-0.3.4-111",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-getrandom-0.4.3-112",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-gio-0.18.4-113",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-gio-sys-0.18.1-114",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-glib-0.18.5-115",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-glib-macros-0.18.5-116",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-glib-sys-0.18.1-117",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-glob-0.3.4-118",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-gobject-sys-0.18.0-119",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-gtk-0.18.2-120",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-gtk-sys-0.18.2-121",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-gtk3-macros-0.18.2-122",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-hashbrown-0.12.3-123",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-hashbrown-0.17.1-124",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-heck-0.4.1-125",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-heck-0.5.0-126",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-hex-0.4.3-127",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-hound-3.5.1-128",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-html5ever-0.38.0-129",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-http-1.5.0-130",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-http-body-1.1.0-131",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-http-body-util-0.1.4-132",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-http-range-0.1.5-133",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-httparse-1.10.1-134",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-hyper-1.11.0-135",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-hyper-rustls-0.27.9-136",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-hyper-util-0.1.20-137",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-iana-time-zone-0.1.65-138",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-iana-time-zone-haiku-0.1.2-139",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-ico-0.5.0-140",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-icu-collections-2.2.0-141",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-icu-locale-core-2.2.0-142",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-icu-normalizer-2.2.0-143",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-icu-normalizer-data-2.2.0-144",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-icu-properties-2.2.0-145",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-icu-properties-data-2.2.0-146",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-icu-provider-2.2.0-147",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-ident-case-1.0.1-148",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-idna-1.1.0-149",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-idna-adapter-1.2.2-150",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-indexmap-1.9.3-151",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-indexmap-2.14.0-152",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-infer-0.19.0-153",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-ipnet-2.12.0-154",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-is-docker-0.2.0-155",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-is-wsl-0.4.0-156",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-itoa-1.0.18-157",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-javascriptcore-rs-1.1.2-158",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-javascriptcore-rs-sys-1.1.1-159",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-jni-0.21.1-160",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-jni-0.22.4-161",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-jni-macros-0.22.4-162",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-jni-sys-0.3.1-163",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-jni-sys-0.4.1-164",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-jni-sys-macros-0.4.1-165",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-js-sys-0.3.103-166",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-json-patch-3.0.1-167",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-jsonptr-0.6.3-168",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-keyboard-types-0.7.0-169",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-libappindicator-0.9.0-170",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-libappindicator-sys-0.9.0-171",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-libc-0.2.189-172",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-libdbus-sys-0.2.7-173",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-libloading-0.7.4-174",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-libredox-0.1.18-175",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-linux-raw-sys-0.12.1-176",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-litemap-0.8.2-177",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-lock-api-0.4.14-178",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-log-0.4.33-179",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-markup5ever-0.38.0-180",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-memchr-2.8.3-181",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-memoffset-0.9.1-182",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-mime-0.3.17-183",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-minisign-verify-0.2.5-184",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-miniz-oxide-0.8.9-185",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-mio-1.2.2-186",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-muda-0.19.3-187",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-ndk-0.9.0-188",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-ndk-sys-0.6.0+11769913-189",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-new-debug-unreachable-1.0.6-190",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-num-conv-0.2.2-191",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-num-traits-0.2.19-192",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-num-enum-0.7.6-193",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-num-enum-derive-0.7.6-194",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-objc2-0.6.4-195",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-objc2-app-kit-0.3.2-196",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-objc2-cloud-kit-0.3.2-197",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-objc2-core-data-0.3.2-198",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-objc2-core-foundation-0.3.2-199",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-objc2-core-graphics-0.3.2-200",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-objc2-core-image-0.3.2-201",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-objc2-core-location-0.3.2-202",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-objc2-core-text-0.3.2-203",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-objc2-encode-4.1.0-204",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-objc2-exception-helper-0.1.1-205",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-objc2-foundation-0.3.2-206",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-objc2-io-surface-0.3.2-207",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-objc2-osa-kit-0.3.2-208",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-objc2-quartz-core-0.3.2-209",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-objc2-ui-kit-0.3.2-210",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-objc2-user-notifications-0.3.2-211",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-objc2-web-kit-0.3.2-212",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-once-cell-1.21.4-213",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-open-5.4.0-214",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-openssl-probe-0.2.1-215",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-option-ext-0.2.0-216",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-os-pipe-1.2.3-217",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-osakit-0.3.1-218",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-pango-0.18.3-219",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-pango-sys-0.18.0-220",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-parking-lot-0.12.5-221",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-parking-lot-core-0.9.12-222",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-percent-encoding-2.3.2-223",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-phf-0.13.1-224",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-phf-codegen-0.13.1-225",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-phf-generator-0.13.1-226",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-phf-macros-0.13.1-227",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-phf-shared-0.13.1-228",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-pin-project-lite-0.2.17-229",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-pkg-config-0.3.33-230",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-plist-1.10.0-231",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-png-0.17.16-232",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-png-0.18.1-233",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-potential-utf-0.1.5-234",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-powerfmt-0.2.0-235",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-precomputed-hash-0.1.1-236",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-proc-macro-crate-1.3.1-237",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-proc-macro-crate-2.0.2-238",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-proc-macro-crate-3.5.0-239",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-proc-macro-error-1.0.4-240",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-proc-macro-error-attr-1.0.4-241",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-proc-macro2-1.0.107-242",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-quick-xml-0.41.0-243",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-quote-1.0.47-244",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-r-efi-5.3.0-245",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-r-efi-6.0.0-246",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-raw-window-handle-0.6.2-247",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-redox-syscall-0.5.18-248",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-redox-users-0.5.2-249",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-ref-cast-1.0.26-250",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-ref-cast-impl-1.0.26-251",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-regex-1.13.1-252",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-regex-automata-0.4.16-253",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-regex-syntax-0.8.11-254",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-reqwest-0.13.4-255",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-rfd-0.16.0-256",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-ring-0.17.14-257",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-rustc-hash-2.1.3-258",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-rustc-version-0.4.1-259",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-rustix-1.1.4-260",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-rustls-0.23.43-261",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-rustls-native-certs-0.8.4-262",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-rustls-pki-types-1.15.1-263",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-rustls-platform-verifier-0.7.0-264",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-rustls-platform-verifier-android-0.1.1-265",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-rustls-webpki-0.103.13-266",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-rustversion-1.0.23-267",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-same-file-1.0.6-268",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-schannel-0.1.29-269",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-schemars-0.8.22-270",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-schemars-0.9.0-271",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-schemars-1.2.2-272",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-schemars-derive-0.8.22-273",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-scopeguard-1.2.0-274",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-security-framework-3.7.0-275",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-security-framework-sys-2.17.0-276",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-selectors-0.36.1-277",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-semver-1.0.28-278",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-serde-1.0.229-279",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-serde-untagged-0.1.9-280",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-serde-core-1.0.229-281",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-serde-derive-1.0.229-282",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-serde-derive-internals-0.29.1-283",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-serde-json-1.0.151-284",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-serde-repr-0.1.21-285",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-serde-spanned-0.6.9-286",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-serde-spanned-1.1.1-287",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-serde-with-3.21.0-288",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-serde-with-macros-3.21.0-289",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-serialize-to-javascript-0.1.2-290",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-serialize-to-javascript-impl-0.1.2-291",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-servo-arc-0.4.3-292",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-sha2-0.10.9-293",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-shared-child-1.1.1-294",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-shlex-2.0.1-295",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-sigchld-0.2.4-296",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-signal-hook-0.3.18-297",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-signal-hook-registry-1.4.8-298",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-simd-adler32-0.3.10-299",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-simd-cesu8-1.2.0-300",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-simdutf8-0.1.5-301",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-siphasher-1.0.3-302",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-slab-0.4.12-303",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-smallvec-1.15.2-304",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-socket2-0.6.5-305",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-softbuffer-0.4.8-306",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-soup3-0.5.0-307",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-soup3-sys-0.5.0-308",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-stable-deref-trait-1.2.1-309",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-string-cache-0.9.0-310",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-string-cache-codegen-0.6.1-311",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-strsim-0.11.1-312",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-subtle-2.6.1-313",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-swift-rs-1.0.7-314",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-syn-1.0.109-315",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-syn-2.0.119-316",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-syn-3.0.3-317",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-sync-wrapper-1.0.2-318",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-synstructure-0.13.2-319",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-system-deps-6.2.2-320",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tao-0.35.3-321",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tao-macros-0.1.4-322",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tar-0.4.46-323",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-target-lexicon-0.12.16-324",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tauri-2.11.5-325",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tauri-build-2.6.3-326",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tauri-codegen-2.6.3-327",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tauri-macros-2.6.3-328",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tauri-plugin-2.6.3-329",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tauri-plugin-dialog-2.7.2-330",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tauri-plugin-fs-2.5.1-331",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tauri-plugin-process-2.3.1-332",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tauri-plugin-shell-2.3.5-333",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tauri-plugin-updater-2.10.1-334",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tauri-runtime-2.11.3-335",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tauri-runtime-wry-2.11.4-336",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tauri-utils-2.9.3-337",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tauri-winres-0.3.6-338",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tempfile-3.27.0-339",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tendril-0.5.1-340",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-thiserror-1.0.69-341",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-thiserror-2.0.19-342",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-thiserror-impl-1.0.69-343",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-thiserror-impl-2.0.19-344",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-time-0.3.55-345",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-time-core-0.1.9-346",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-time-macros-0.2.32-347",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tinystr-0.8.3-348",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tinyvec-1.12.0-349",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tinyvec-macros-0.1.1-350",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tokio-1.53.1-351",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tokio-rustls-0.26.4-352",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tokio-util-0.7.19-353",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-toml-0.8.2-354",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-toml-0.9.12+spec-1.1.0-355",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-toml-1.1.4+spec-1.1.0-356",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-toml-datetime-0.6.3-357",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-toml-datetime-0.7.5+spec-1.1.0-358",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-toml-datetime-1.1.1+spec-1.1.0-359",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-toml-edit-0.19.15-360",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-toml-edit-0.20.2-361",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-toml-edit-0.25.13+spec-1.1.0-362",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-toml-parser-1.1.3+spec-1.1.0-363",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-toml-writer-1.1.2+spec-1.1.0-364",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tower-0.5.3-365",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tower-http-0.6.11-366",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tower-layer-0.3.3-367",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tower-service-0.3.3-368",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tracing-0.1.44-369",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tracing-core-0.1.36-370",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-tray-icon-0.24.2-371",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-try-lock-0.2.5-372",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-typeid-1.0.3-373",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-typenum-1.20.1-374",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-unic-char-property-0.9.0-375",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-unic-char-range-0.9.0-376",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-unic-common-0.9.0-377",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-unic-ucd-ident-0.9.0-378",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-unic-ucd-version-0.9.0-379",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-unicode-ident-1.0.24-380",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-unicode-segmentation-1.13.3-381",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-untrusted-0.9.0-382",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-url-2.5.8-383",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-urlpattern-0.3.0-384",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-utf8-iter-1.0.4-385",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-uuid-1.24.0-386",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-version-compare-0.2.1-387",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-version-check-0.9.5-388",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
-      "spdxElementId": "SPDXRef-Cargo-vod-scout-0.5.0-389",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "spdxElementId": "SPDXRef-Cargo-vod-scout-0.5.0-rc.1-389",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-vswhom-0.1.0-390",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-vswhom-sys-0.1.3-391",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-walkdir-2.5.0-392",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-want-0.3.1-393",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-wasi-0.11.1+wasi-snapshot-preview1-394",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-wasip2-1.0.4+wasi-0.2.12-395",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-wasm-bindgen-0.2.126-396",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-wasm-bindgen-futures-0.4.76-397",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-wasm-bindgen-macro-0.2.126-398",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-wasm-bindgen-macro-support-0.2.126-399",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-wasm-bindgen-shared-0.2.126-400",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-wasm-streams-0.5.0-401",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-web-sys-0.3.103-402",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-web-atoms-0.2.5-403",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-webkit2gtk-2.0.2-404",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-webkit2gtk-sys-2.0.2-405",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-webpki-root-certs-1.0.9-406",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-webview2-com-0.38.2-407",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-webview2-com-macros-0.8.1-408",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-webview2-com-sys-0.38.2-409",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-winapi-0.3.9-410",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-winapi-i686-pc-windows-gnu-0.4.0-411",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-winapi-util-0.1.11-412",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-winapi-x86-64-pc-windows-gnu-0.4.0-413",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-window-vibrancy-0.6.0-414",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-0.61.3-415",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-collections-0.2.0-416",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-core-0.61.2-417",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-core-0.62.2-418",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-future-0.2.1-419",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-implement-0.60.2-420",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-interface-0.59.3-421",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-link-0.1.3-422",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-link-0.2.1-423",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-numerics-0.2.0-424",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-result-0.3.4-425",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-result-0.4.1-426",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-strings-0.4.2-427",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-strings-0.5.1-428",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-sys-0.45.0-429",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-sys-0.52.0-430",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-sys-0.59.0-431",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-sys-0.60.2-432",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-sys-0.61.2-433",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-targets-0.42.2-434",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-targets-0.52.6-435",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-targets-0.53.5-436",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-threading-0.1.0-437",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-version-0.1.7-438",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-aarch64-gnullvm-0.42.2-439",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-aarch64-gnullvm-0.52.6-440",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-aarch64-gnullvm-0.53.1-441",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-aarch64-msvc-0.42.2-442",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-aarch64-msvc-0.52.6-443",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-aarch64-msvc-0.53.1-444",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-i686-gnu-0.42.2-445",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-i686-gnu-0.52.6-446",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-i686-gnu-0.53.1-447",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-i686-gnullvm-0.52.6-448",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-i686-gnullvm-0.53.1-449",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-i686-msvc-0.42.2-450",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-i686-msvc-0.52.6-451",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-i686-msvc-0.53.1-452",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-x86-64-gnu-0.42.2-453",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-x86-64-gnu-0.52.6-454",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-x86-64-gnu-0.53.1-455",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-x86-64-gnullvm-0.42.2-456",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-x86-64-gnullvm-0.52.6-457",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-x86-64-gnullvm-0.53.1-458",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-x86-64-msvc-0.42.2-459",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-x86-64-msvc-0.52.6-460",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-windows-x86-64-msvc-0.53.1-461",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-winnow-0.5.40-462",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-winnow-0.7.15-463",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-winnow-1.0.4-464",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-winreg-0.55.0-465",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-wit-bindgen-0.57.1-466",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-writeable-0.6.3-467",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-wry-0.55.1-468",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-x11-2.21.0-469",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-x11-dl-2.21.0-470",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-xattr-1.6.1-471",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-yoke-0.8.3-472",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-yoke-derive-0.8.2-473",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-zerofrom-0.1.8-474",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-zerofrom-derive-0.1.7-475",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-zeroize-1.9.0-476",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-zerotrie-0.2.4-477",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-zerovec-0.11.6-478",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-zerovec-derive-0.11.3-479",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-zip-4.6.1-480",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     },
     {
       "spdxElementId": "SPDXRef-Cargo-zmij-1.0.23-481",
-      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0",
+      "relatedSpdxElement": "SPDXRef-Package-vod-scout-0.5.0-rc.1",
       "relationshipType": "DEPENDENCY_OF"
     }
   ]

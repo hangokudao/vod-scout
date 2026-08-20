@@ -1,5 +1,5 @@
 export const CURRENT_RELEASE_NOTES = {
-  version: "0.5.0",
+  version: "0.5.0-rc.1",
   added: [
     "긴 영상을 구간별로 처리하고 중단 지점부터 이어서 분석",
     "YouTube 전송 전에 선택 영상 크기와 필요한 저장 공간 확인",
@@ -20,7 +20,8 @@ export const CURRENT_RELEASE_NOTES = {
     "새 외부 AI·유료 API 전송과 API 키 저장 경로를 추가하지 않음"
   ],
   knownIssues: [
-    "Windows Authenticode 인증서가 없어 첫 설치에서 SmartScreen 경고가 표시될 수 있음",
+    "GPU 실패 후 CPU 자동 전환은 아직 실제 실패 조건에서 검증하지 않음",
+    "이 시험 공개판은 서명되지 않아 설치할 때 Windows SmartScreen 경고가 표시될 수 있음",
     "YouTube가 일시적으로 봇 확인이나 403을 반환할 수 있음"
   ]
 } as const;

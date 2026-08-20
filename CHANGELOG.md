@@ -2,6 +2,23 @@
 
 이 문서는 사용자에게 영향을 주는 업데이트를 기록한다. 각 릴리스는 기능 추가뿐 아니라 버그 수정, 보안 수정, 알려진 문제를 함께 적는다.
 
+## 0.5.0-rc.1 - 2026-08-21
+
+### Changed
+
+- GPU runtime과 `자동(GPU 우선)`·GPU·CPU 모드를 유지한 unsigned GitHub Pre-release로 버전 정본을 `0.5.0-rc.1`에 맞췄다.
+- 이 시험판은 updater artifact를 생성하지 않는다. `.sig`, `latest.json`, updater zip 없이 unsigned NSIS installer, SBOM, SHA-256 목록만 배포한다.
+
+### Validation
+
+- 기존 JKY 전체 E2E에서 실제 backend `whisper.cpp-gpu`와 완료된 유효 결과를 확인했다. ZJMp 기존 후보 화면·원본 미리보기 증거도 이번 사용자 흐름 증거로 인정하며 장시간 E2E는 반복하지 않는다.
+- 최종 integration 테스트·짧은 GPU fixture·unsigned package·새 임시 데이터 경로 화면 스모크 결과는 아직 `PENDING`이다.
+
+### Known issues
+
+- GPU 실패 뒤 CPU 자동 전환은 실제 실패 조건에서 검증하지 않아 `DEFERRED`다. PASS로 기록하지 않는다.
+- Authenticode 코드 서명이 없어 Windows SmartScreen 경고가 표시될 수 있다.
+
 ## Wave 5 canonical final validation - 2026-08-21
 
 ### Changed
