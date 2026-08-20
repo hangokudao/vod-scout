@@ -10,8 +10,9 @@
 
 ### Validation
 
-- ZJ release-app job `6251521b-6749-4415-9bf1-7eac826bae0f` (`ZJMpYThMksM&t=2017s`)는 download `100%`, `REVIEW_READY`, 후보 `20`, `18/18` units, GPU `12/12` completed까지 PASS했다. 이 흐름의 첫 실패 필수 게이트는 `scripts/e2e-local-cdp.mjs:279` player-ready 검사였고, 그 뒤 screenshot·preview·후보 재인식·전체 UI 게이트는 `HOLD`/`BLOCKED`다. 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-v050-public-gate-20260820\evidence-zjmp-retry\e2e-failure-2026-08-19T19-24-56-054Z-17056.json` 및 같은 basename의 `.log`다.
-- 이어진 JKY job `c8f80e03-33d7-4c3b-af5f-6f498be31f72` (`JKYmw9-xMIo&t=8463s`)도 download `100%`, `REVIEW_READY`, 후보 `20`, `22/22` units, GPU `16/16` completed 뒤 같은 player-ready 게이트에서 실패했다. 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-v050-public-gate-20260820\evidence-jky\e2e-failure-2026-08-19T19-39-18-521Z-24076.json` 및 `.log`다.
+- player-ready 평가 수정 후 ZJ integration job `9b6de644-e40f-4130-bffb-301eab4a03a6` (`ZJMpYThMksM&t=2017s`)는 download `100%`, `REVIEW_READY`, 후보 `20`, `18/18` units, GPU `12/12`, `previewPlayerReady=true`, `bodyVerified=true`를 확인했다. 다만 `candidateRevision=0`, `recognitionRuns=[]`라 선택 후보 재인식 완료를 증명하지 못해 ZJ 현재 게이트만 `HOLD`다. snapshot은 `C:\Users\myhan\AppData\Local\com.vodscout.app\e2e-requested-data-zjmp-integration\jobs\9b6de644-e40f-4130-bffb-301eab4a03a6\snapshot.json`, screenshot은 `C:\Users\myhan\AppData\Local\Temp\vod-scout-zjmp-integration-screen-m3unDv\review.png`다.
+- JKY full E2E job `ee834a3d-fde9-49c9-8cf8-ced9654e1c45` (`JKYmw9-xMIo&t=8463s`)는 download `100%`, `REVIEW_READY`, 후보 `20`, `22/22` units, GPU `16/16`, candidate revision `1`, 선택 후보 재인식 `28ba3f98-8727-4517-868b-2a42f9091f51` `COMPLETED`, result revision `1`, `failureReason=null`, 실제 backend `whisper.cpp-gpu`를 기록해 current full E2E `PASS`다. snapshot/data root는 `C:\Users\myhan\AppData\Local\com.vodscout.app\e2e-requested-data-jky\jobs\ee834a3d-fde9-49c9-8cf8-ced9654e1c45`, screenshot은 `C:\Users\myhan\AppData\Local\Temp\vod-scout-jky-full-20260820-231751\review.png`다.
+- exact automatic GPU→CPU fallback은 직접 증명되지 않아 `HOLD`다. signing·install·GitHub publication도 `HOLD`이며, overall release judgment는 `HOLD` 하나로 유지한다.
 - provenance 이후 최종 자동 검증은 npm 49, Rust 본체 `128 passed·1 ignored`, fixture-worker `6`, `npm.cmd run test:security` `6`, standalone Node `archive-safety 6·prepare-media-tools 3·sample-disk-usage 3` passed이며 build와 `git diff --check`도 `PASS`다. 전체 로그는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-final-post-provenance-vxCIf4`에 보존했다.
 
 ### Package gate
@@ -20,7 +21,7 @@
 
 ### Known issues
 
-- ZJ가 첫 실패 필수 게이트이며 자동 GPU→CPU 제품 전환·설치·updater 서명·공개 Release는 `HOLD` 또는 `BLOCKED`다. 이 canonical docs 작업에서는 GitHub publication, push, PR, tag, Release, remote merge를 하지 않았다.
+- ZJ는 선택 후보 재인식 증거 부족으로 `HOLD`이고, exact automatic GPU→CPU fallback·설치·updater 서명·공개 Release도 `HOLD`다. 이 canonical docs 작업에서는 GitHub publication, push, PR, tag, Release, remote merge를 하지 않았다.
 
 ## Wave 5 release-app product validation - 2026-08-20
 

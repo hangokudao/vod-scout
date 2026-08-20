@@ -1,15 +1,14 @@
 # VOD Scout 인계서
 
-현재 게이트: **v0.5.0 canonical final · yt-dlp 2026.08.19.233000 provenance/check PASS · ZJ first failed required gate = player-ready at e2e-local-cdp.mjs:279 · screenshot/preview/후보 재인식/자동 GPU→CPU/설치/updater 서명/공개 Release HOLD 또는 BLOCKED · G7 disabled**
+현재 게이트: **v0.5.0 canonical final · player-ready 평가 수정 PASS · ZJ 선택 후보 재인식 완료 증거 HOLD · JKY full E2E PASS · exact automatic GPU→CPU fallback/설치/updater 서명/GitHub HOLD · overall HOLD · G7 disabled**
 
 ## Canonical final handoff (2026-08-21)
 
-- 기준 HEAD는 validation-fixes `f3e0d439e3631ec8e57f2ea0ac7ea48c157f4d70`, integration `f95a50a84b645be65b65d548f0da9b02ce23ac69`이며 docs-only 변경 뒤 두 worktree를 clean으로 유지한다.
-- ZJ `6251521b-6749-4415-9bf1-7eac826bae0f`가 첫 실패 필수 게이트다. download `100%`, `REVIEW_READY`, 후보 `20`, `18/18` units, GPU `12/12` completed 뒤 `scripts/e2e-local-cdp.mjs:279` player-ready에서 실패했다. 따라서 screenshot·preview·후보 재인식·전체 UI는 `HOLD`/`BLOCKED`로 닫고, 증거 JSON/log는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-v050-public-gate-20260820\evidence-zjmp-retry\e2e-failure-2026-08-19T19-24-56-054Z-17056`다.
-- JKY도 download `100%`, `REVIEW_READY`, 후보 `20`, `22/22` units, GPU `16/16` completed 뒤 같은 player-ready에서 실패했다. 증거 basename은 `C:\Users\myhan\AppData\Local\Temp\vod-scout-v050-public-gate-20260820\evidence-jky\e2e-failure-2026-08-19T19-39-18-521Z-24076`다.
+- 기준 HEAD는 validation-fixes `ae25f1342ae25f1ee7a2eb6dc6a694d4aedf14d8`, integration `53172fab00d61a398333e0cee18652fa0d1b5387`이며 docs-only 변경 뒤 두 worktree를 clean으로 유지한다.
+- player-ready 평가는 수정 후 PASS다. ZJ integration job `9b6de644-e40f-4130-bffb-301eab4a03a6`는 `REVIEW_READY`, download `100%`, 후보 `20`, `18/18` units, GPU `12/12`, `previewPlayerReady=true`, `bodyVerified=true`를 확인했지만 `candidateRevision=0`, `recognitionRuns=[]`라 선택 후보 재인식 완료 증거가 없어 ZJ 현재 상태는 `HOLD`다. snapshot은 `C:\Users\myhan\AppData\Local\com.vodscout.app\e2e-requested-data-zjmp-integration\jobs\9b6de644-e40f-4130-bffb-301eab4a03a6\snapshot.json`, screenshot은 `C:\Users\myhan\AppData\Local\Temp\vod-scout-zjmp-integration-screen-m3unDv\review.png`다.
+- JKY full E2E job `ee834a3d-fde9-49c9-8cf8-ced9654e1c45`는 `REVIEW_READY`, download `100%`, 후보 `20`, `22/22` units, GPU `16/16`, candidate revision `1`, recognition run `28ba3f98-8727-4517-868b-2a42f9091f51` `COMPLETED`, result revision `1`, `failureReason=null`, 실제 backend `whisper.cpp-gpu`로 `PASS`다. snapshot/data root는 `C:\Users\myhan\AppData\Local\com.vodscout.app\e2e-requested-data-jky\jobs\ee834a3d-fde9-49c9-8cf8-ced9654e1c45`, screenshot은 `C:\Users\myhan\AppData\Local\Temp\vod-scout-jky-full-20260820-231751\review.png`다.
 - 최신 yt-dlp provenance는 `2026.08.19.233000`, asset SHA/digest `02bcc69a2a65a2af5da81a79356763522b611edc028c476e78c282735e28d442`, checksum `6b2471fa596aaa588446fb0dfcf6025f8533d9dc931fa034b21c40c431473ce6`, source commit `594bd50c2c78ac432f81600d309fdc4e0a92d82c`로 단일 check PASS다.
-- 최종 자동 검증은 npm `49`, Rust `128 passed·1 ignored`, fixture `6`, security `6`, standalone Node `6/3/3`, build·diff check `PASS`다. 로그는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-final-post-provenance-vxCIf4`에 보존했다.
-- package 증거는 EXE `16,279,040` bytes/SHA `4bcac97a30edb54be83b81711524ad4335cce5bdc315a44ff77d53121f52ec74`, NSIS `595,368,676` bytes/SHA `7c9e013794886fc220d82e1503d97277e5d79afca2b97f6ec7d367eab3041d3e`, PE `0.5.0`, Authenticode `NotSigned`다. 서명 키 부재로 signing/updater/public Release는 `HOLD`이며, 다음 작업은 서명·설치·E2E 재실행이 승인되고 별도 증거가 준비될 때까지 보류한다.
+- exact automatic GPU→CPU fallback·설치·updater 서명·GitHub publication은 `HOLD`이며 overall release judgment도 `HOLD`다. 최종 자동 검증 로그는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-final-post-provenance-vxCIf4`에 보존했다.
 - 이 인계에는 GitHub publication, push, PR, tag, Release, remote merge가 없다. `main`과 사용자 설치·작업 데이터는 변경하지 않았다.
 
 ## Wave 5 release-app 검증 게이트 (2026-08-20)

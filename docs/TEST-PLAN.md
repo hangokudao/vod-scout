@@ -6,18 +6,18 @@
 
 | 순서 | 게이트 | 결과 |
 |---|---|---|
-| 1 | ZJ `6251521b-6749-4415-9bf1-7eac826bae0f` acquisition/analysis → `REVIEW_READY` | download `100%`, 후보 `20`, `18/18` units, GPU `12/12` completed `PASS` |
-| 2 | ZJ player-ready (`scripts/e2e-local-cdp.mjs:279`) | 첫 실패 필수 게이트; screenshot·preview·후보 재인식·전체 UI `HOLD`/`BLOCKED` |
-| 3 | JKY `c8f80e03-33d7-4c3b-af5f-6f498be31f72` same flow | download `100%`, `REVIEW_READY`, 후보 `20`, `22/22` units, GPU `16/16` completed 후 같은 player-ready 실패 |
+| 1 | ZJ `9b6de644-e40f-4130-bffb-301eab4a03a6` acquisition/analysis → `REVIEW_READY` | download `100%`, 후보 `20`, `18/18` units, GPU `12/12`, `previewPlayerReady=true`, `bodyVerified=true` `PASS` |
+| 2 | ZJ 선택 후보 재인식 | `candidateRevision=0`, `recognitionRuns=[]`; 완료 증거 부족으로 현재 ZJ만 `HOLD` |
+| 3 | JKY `ee834a3d-fde9-49c9-8cf8-ced9654e1c45` full E2E | download `100%`, `REVIEW_READY`, 후보 `20`, `22/22` units, GPU `16/16`, recognition `28ba3f98-8727-4517-868b-2a42f9091f51` `COMPLETED`, revision `1`, `PASS` |
 
-ZJ failure evidence는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-v050-public-gate-20260820\evidence-zjmp-retry\e2e-failure-2026-08-19T19-24-56-054Z-17056.json`/`.log`, JKY evidence는 `...\evidence-jky\e2e-failure-2026-08-19T19-39-18-521Z-24076.json`/`.log`다. ZJ가 첫 실패 필수 게이트이며, 이 기록은 HTTP 403의 제품 원인을 확정하지 않는다.
+player-ready 평가는 수정 후 PASS다. ZJ snapshot은 `C:\Users\myhan\AppData\Local\com.vodscout.app\e2e-requested-data-zjmp-integration\jobs\9b6de644-e40f-4130-bffb-301eab4a03a6\snapshot.json`, screenshot은 `C:\Users\myhan\AppData\Local\Temp\vod-scout-zjmp-integration-screen-m3unDv\review.png`다. JKY snapshot/data root는 `C:\Users\myhan\AppData\Local\com.vodscout.app\e2e-requested-data-jky\jobs\ee834a3d-fde9-49c9-8cf8-ced9654e1c45`, screenshot은 `C:\Users\myhan\AppData\Local\Temp\vod-scout-jky-full-20260820-231751\review.png`다. 과거 player-ready 실패 JSON/log는 2026-08-20 historical section에서 보존하며, 현재 판정에 재사용하지 않는다.
 
 ### Provenance·자동 검증
 
 - Official latest yt-dlp nightly `2026.08.19.233000`: asset/digest `02bcc69a2a65a2af5da81a79356763522b611edc028c476e78c282735e28d442`, checksum file `6b2471fa596aaa588446fb0dfcf6025f8533d9dc931fa034b21c40c431473ce6`, source commit `594bd50c2c78ac432f81600d309fdc4e0a92d82c`, LICENSE `7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c`, THIRD_PARTY `472aefe951c7db35e1657c1d13fd337140511ed6f2b329205105ad441c5a02b7`; single `check:yt-dlp` was `PASS` and is not rerun in this docs-only task.
 - Final post-provenance checks: npm `49`, Rust main `128 passed·1 ignored`, fixture `6`, security `6`, standalone Node archive/media/sample `6/3/3`, build `PASS`, `git diff --check` `PASS`. Logs and exit codes: `C:\Users\myhan\AppData\Local\Temp\vod-scout-final-post-provenance-vxCIf4`.
-- Package evidence remains EXE `16,279,040` bytes/SHA `4bcac97a30edb54be83b81711524ad4335cce5bdc315a44ff77d53121f52ec74`, NSIS `595,368,676` bytes/SHA `7c9e013794886fc220d82e1503d97277e5d79afca2b97f6ec7d367eab3041d3e`, PE `0.5.0`, Authenticode `NotSigned`; signing/updater/public Release `HOLD`. No package rebuild follows this Markdown-only change.
-- No GitHub publication, push, PR, tag, Release, remote merge, install, or E2E rerun is part of this final docs task.
+- Package evidence remains EXE `16,279,040` bytes/SHA `4bcac97a30edb54be83b81711524ad4335cce5bdc315a44ff77d53121f52ec74`, NSIS `595,368,676` bytes/SHA `7c9e013794886fc220d82e1503d97277e5d79afca2b97f6ec7d367eab3041d3e`, PE `0.5.0`, Authenticode `NotSigned`; exact automatic GPU→CPU fallback, signing, install, and GitHub publication are `HOLD`, overall judgment is `HOLD`. No package rebuild follows this Markdown-only change.
+- No GitHub publication, push, PR, tag, Release, remote merge, install, or additional E2E run is part of this final docs task.
 
 ## 2026-08-20 Wave 5 release-app 실제 검증
 
