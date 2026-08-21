@@ -241,6 +241,8 @@ import {
 import { checkForAppUpdate, installPendingUpdate, type AppUpdateInfo } from "./updater";
 import { CURRENT_RELEASE_NOTES } from "./releaseNotes";
 
+const UPDATER_ENABLED = false;
+
 const PIPELINE = [
   { label: "미디어 확인", statuses: ["ACQUIRING", "PROBING"], icon: FileVideo2 },
   { label: "오디오·음성 인식", statuses: ["EXTRACTING_AUDIO", "TRANSCRIBING"], icon: Mic2 },
@@ -1732,6 +1734,7 @@ function App() {
           </div>
 
           <div className="settings-section">
+            {UPDATER_ENABLED ? <>
             <div className="settings-title-row"><div><h3>자동 업데이트</h3><p>GitHub Releases의 서명된 안정 버전만 설치합니다.</p></div><button className="button ghost compact" disabled={updateChecking || updateInstalling} onClick={() => void refreshUpdate(true)}><RefreshCw size={14} /> {updateChecking ? "확인 중…" : "업데이트 확인"}</button></div>
             <div className={`update-status ${updateStatus.kind}`} role="status">
               <span className="update-status-label">
@@ -1751,6 +1754,14 @@ function App() {
             </div> : null}
             {updateError ? <p className="settings-error">연결 오류 상세: {updateError}</p> : null}
             {updateInstallError ? <p className="settings-error">{updateInstallError}</p> : null}
+            </> : <>
+              <div className="settings-title-row"><div><h3>자동 업데이트</h3><p>v0.5.0에서는 자동 업데이트를 사용하지 않습니다.</p></div></div>
+              <div className="update-status waiting" role="status">
+                <span className="update-status-label"><AlertTriangle size={14} /> 비활성화됨</span>
+                <p>새 버전은 GitHub Release에서 직접 확인해 주세요.</p>
+                <dl><div><dt>현재 버전</dt><dd>v{runtime?.appVersion ?? "-"}</dd></div></dl>
+              </div>
+            </>}
           </div>
 
           <div className="settings-section release-notes">

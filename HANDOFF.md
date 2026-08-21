@@ -2,13 +2,13 @@
 
 현재 작업: **공개된 v0.5.0-rc.1 자산 유지 · YouTube 자막 우선 정책 수정과 관련 자동 테스트 완료 · 정식 v0.5.0 통합·패키지·공개 진행 · 자동 GPU→CPU 전환 DEFERRED · G7 disabled**
 
-## Unreleased · YouTube 자막 우선 정책 수정 (2026-08-21)
+## v0.5.0 정식 Release · YouTube 자막 우선 정책 수정 (2026-08-21)
 
 - 시작·재개·재시도마다 한국어 자동 생성 자막 전체를 먼저 확인하고, 유효 구간이 0개면 제작자 한국어 자막 전체를 확인한다. 사용할 자막이 있으면 그 자막만 사용하고 Whisper를 실행하지 않으며, 둘 다 없을 때만 미디어 처리 전 `NEEDS_INPUT`에서 `Whisper 설정 후 진행` 또는 `취소`를 기다린다.
 - YouTube 누적 VTT의 반복 행과 0.01초 빈 전환 구간을 정리한다. `UNVERIFIED`·시간 맞춤 미확인·일부 손상은 경고로만 남기고 유효한 나머지 자막을 유지한다. 후보 화면에는 자막 출처를 표시하고 `다시 음성 인식`을 비활성화한다.
 - 로컬 파일과 자막 없는 YouTube 작업은 명시적 승인 뒤에만 Whisper를 실행한다. 승인과 Auto/GPU/CPU·품질·CPU 설정·분석 범위를 작업별로 유지하고, 대기열 이동 뒤에도 작업 ID로 승인·취소한다. 저장된 GPU/CPU 시도 상태가 `STARTED` 이상이면 자동 중복 실행하지 않으며, 이전 정책 작업과 자막 schema 2·미디어 checkpoint schema 6보다 오래된 결과는 자동 변경하거나 새 정책 결과로 재사용하지 않는다.
 - 읽기 전용 결함 작업의 2,943개 자막과 잘못된 `EmptyText` 591개를 확인했으며 원본 사용자 데이터는 변경하지 않았다. 프런트엔드 `54/54`와 TypeScript·Vite build는 통과했다. 전체 Cargo는 정책 회귀를 포함해 `136 passed·1 flaky·1 ignored`다. flaky 1개는 테스트 준비 단계에서 `cmd`의 `ping` 자식 프로세스를 발견하지 못한 Windows 환경 의존 fixture이며 실제 제품의 자식 프로세스 잔류 증거는 없어 Cargo 게이트는 `PASS_WITH_KNOWN_TEST_LIMITATION`이다. 해당 테스트는 수정하거나 다시 실행하지 않았다.
-- 정책 변경은 `codex/v050-validation-fixes`에 커밋했고 기존 `codex/v050-integration`에 반영 중이다. 기존 설치, 공개 `v0.5.0-rc.1` 자산, `main`, `codex/v050-transcript-quality`는 변경하지 않았다.
+- 정책 변경은 `codex/v050-validation-fixes`의 `ca8e657`에 커밋했고 기존 `codex/v050-integration`의 `08c090d`에 반영했다. 기존 설치, 공개 `v0.5.0-rc.1` 자산, `main`, `codex/v050-transcript-quality`는 변경하지 않았다.
 
 ## v0.5.0-rc.1 공개 결정 (2026-08-21)
 
