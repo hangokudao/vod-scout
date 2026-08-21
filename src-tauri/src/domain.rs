@@ -4,6 +4,8 @@ use crate::resource::{ResourceLimitFailure, ResourcePolicy, ResourceStage, Stage
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+pub const TRANSCRIPT_POLICY_VERSION: u8 = 2;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum JobStatus {
@@ -56,6 +58,7 @@ impl JobStatus {
         matches!(
             (self, next),
             (Self::Created, Self::Acquiring)
+                | (Self::Acquiring, Self::NeedsInput)
                 | (Self::Acquiring, Self::Probing)
                 | (Self::Probing, Self::ExtractingAudio)
                 | (Self::Probing, Self::Transcribing)
@@ -92,6 +95,7 @@ impl JobStatus {
                 | (Self::Failed, Self::Fusing)
                 | (Self::Failed, Self::Ranking)
                 | (Self::NeedsInput, Self::Acquiring)
+                | (Self::NeedsInput, Self::Cancelled)
         )
     }
 }
@@ -371,6 +375,10 @@ pub struct JobSnapshot {
     #[serde(default = "legacy_whisper_settings")]
     pub whisper: WhisperSettings,
     #[serde(default)]
+    pub whisper_approved: bool,
+    #[serde(default = "legacy_transcript_policy_version")]
+    pub transcript_policy_version: u8,
+    #[serde(default)]
     pub whisper_runtime: WhisperRuntimeState,
     #[serde(default)]
     pub recognition_runs: Vec<CandidateRecognitionRun>,
@@ -394,6 +402,8 @@ fn legacy_whisper_settings() -> WhisperSettings {
         cpu_threads: None,
     }
 }
+
+fn legacy_transcript_policy_version() -> u8 { 1 }
 
 impl JobSnapshot {
     pub fn new(
@@ -436,6 +446,8 @@ impl JobSnapshot {
             activity: Vec::new(),
             captions: None,
             whisper: WhisperSettings::default(),
+            whisper_approved: false,
+            transcript_policy_version: TRANSCRIPT_POLICY_VERSION,
             whisper_runtime: WhisperRuntimeState::default(),
             recognition_runs: Vec::new(),
             resource_policy: ResourcePolicy::default(),
@@ -594,6 +606,8 @@ mod tests {
             "errorDetail",
             "captions",
             "whisper",
+            "whisperApproved",
+            "transcriptPolicyVersion",
             "whisperRuntime",
         ] {
             object.remove(field);
@@ -601,6 +615,8 @@ mod tests {
         let loaded: JobSnapshot = serde_json::from_value(legacy).unwrap();
         assert_eq!(loaded.analysis_mode, AnalysisMode::Full);
         assert_eq!(loaded.whisper, legacy_whisper_settings());
+        assert!(!loaded.whisper_approved);
+        assert_eq!(loaded.transcript_policy_version, 1);
         assert_eq!(loaded.whisper_runtime, WhisperRuntimeState::default());
         assert!(loaded.recognition_runs.is_empty());
     }

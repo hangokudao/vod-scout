@@ -98,7 +98,7 @@ export function statusLabel(status: JobStatus): string {
     ACQUIRING: "입력 준비",
     PROBING: "미디어 확인",
     EXTRACTING_AUDIO: "오디오 준비",
-    TRANSCRIBING: "전사",
+    TRANSCRIBING: "음성 인식",
     AUDIO_SIGNALS: "오디오 신호",
     CHAT_SIGNALS: "채팅 신호",
     FUSING: "신호 결합",

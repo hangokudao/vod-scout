@@ -47,7 +47,7 @@ const QUICK_CHAT_SAMPLE_SECONDS: f64 = 15.0;
 const CHAT_FRAME_SIDE: usize = 64;
 const CONTEXT_PADDING_SECONDS: f64 = 15.0;
 /// Media checkpoint schema for P0 compatibility fields (fingerprint/tools/ranker).
-const MEDIA_CHECKPOINT_SCHEMA: u8 = 5;
+const MEDIA_CHECKPOINT_SCHEMA: u8 = 6;
 /// Candidate scoring contract recorded in checkpoints and provenance.
 const RANKER_VERSION: &str = "rules-v0.4.0-p0";
 const TRANSCRIPTION_LANGUAGE: &str = "ko";
@@ -273,6 +273,8 @@ struct MediaCheckpoint {
     #[serde(default)]
     whisper_settings: WhisperSettings,
     #[serde(default)]
+    whisper_approved: bool,
+    #[serde(default)]
     whisper_units: Vec<WhisperUnitState>,
 }
 
@@ -314,6 +316,7 @@ impl MediaCheckpoint {
             chat_motion_completed: false,
             chat_motion: Vec::new(),
             whisper_settings: WhisperSettings::default(),
+            whisper_approved: false,
             whisper_units: Vec::new(),
         }
     }
@@ -423,6 +426,26 @@ fn caption_plan_for_duration(
         duration_seconds,
         provenance.verification_state,
     );
+    let mut validation = validation;
+    for diagnostic in &provenance.diagnostics {
+        if !validation.diagnostics.contains(diagnostic) {
+            validation.diagnostics.push(diagnostic.clone());
+        }
+    }
+    if provenance.verification_state == VerificationState::Failed
+        && !validation
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.kind == captions::CaptionDiagnosticKind::ProvenanceInvalid)
+    {
+        validation.diagnostics.push(captions::CaptionDiagnostic {
+            kind: captions::CaptionDiagnosticKind::ProvenanceInvalid,
+            interval_index: None,
+            start_seconds: None,
+            end_seconds: None,
+            detail: "자막 provenance 검증이 실패했습니다.".into(),
+        });
+    }
     captions::plan_fallbacks(&validation, duration_seconds)
 }
 
@@ -1138,6 +1161,8 @@ fn run<R: tauri::Runtime>(
         source_kind,
         source_url,
         whisper_settings,
+        whisper_approved,
+        use_youtube_captions,
     ) = {
         let guard = state
             .job
@@ -1162,8 +1187,20 @@ fn run<R: tauri::Runtime>(
             job.source_kind,
             job.source_label.clone(),
             job.whisper.clone().normalized(),
+            job.whisper_approved,
+            job.captions.as_ref().is_some_and(|captions| {
+                captions.source.is_some()
+                    && !captions.local_whisper_fallback
+                    && captions.quality != "failed"
+            }),
         )
     };
+
+    if source_kind == SourceKind::Local && !whisper_approved {
+        return Err(PipelineError::Message(
+            "로컬 파일은 사용자가 Whisper를 승인한 뒤에만 분석할 수 있습니다.".into(),
+        ));
+    }
 
     let source = PathBuf::from(&source_path);
     if !source.is_file() {
@@ -1195,7 +1232,7 @@ fn run<R: tauri::Runtime>(
     let runtime_sha256 = runtime_hashes().map_err(PipelineError::Message)?;
 
     let checkpoint_path = job_dir.join("media-checkpoint.json");
-    let mut caption_artifacts = if source_kind == SourceKind::Youtube {
+    let mut caption_artifacts = if source_kind == SourceKind::Youtube && use_youtube_captions {
         captions::read_provenance_with_diagnostics(&job_dir).map_err(PipelineError::Message)?
     } else {
         None
@@ -1227,6 +1264,11 @@ fn run<R: tauri::Runtime>(
         caption_provenance,
         &whisper_settings,
     )?;
+    if checkpoint.as_ref().is_some_and(|checkpoint| {
+        !checkpoint_whisper_approval_matches(checkpoint, whisper_approved)
+    }) {
+        checkpoint = None;
+    }
     // load_checkpoint returns None for missing, corrupt, or incompatible (schema/fingerprint/tools/ranker).
     // In those cases we rebuild a fresh media checkpoint and must recompute intermediates only.
     let mut media_intermediates_rebuilt = false;
@@ -1294,6 +1336,7 @@ fn run<R: tauri::Runtime>(
     let mut checkpoint = checkpoint.expect("checkpoint initialized");
     checkpoint.schema_version = MEDIA_CHECKPOINT_SCHEMA;
     checkpoint.whisper_settings = whisper_settings.clone();
+    checkpoint.whisper_approved = whisper_approved;
     let chunk_count = checkpoint.planned_chunks.len().max(1) as u32;
     let total_units = chunk_count + 6;
 
@@ -1373,17 +1416,14 @@ fn run<R: tauri::Runtime>(
         caption_artifacts.as_ref(),
         checkpoint.duration_seconds,
     );
+    if source_kind == SourceKind::Youtube && caption_plan.full_whisper && !whisper_approved {
+        return Err(PipelineError::Message(
+            "사용 가능한 한국어 자막이 없습니다. Whisper 사용 여부를 먼저 선택해 주세요.".into(),
+        ));
+    }
     if let Some((provenance, _)) = caption_artifacts.as_ref() {
         let failed_provenance = provenance.verification_state == VerificationState::Failed;
-        let quality = if failed_provenance {
-            "failed"
-        } else if caption_plan.full_whisper {
-            "unverified"
-        } else if caption_plan.fallback.is_empty() {
-            "trusted"
-        } else {
-            "mixed"
-        };
+        let quality = if failed_provenance || caption_plan.full_whisper { "failed" } else { "usable" };
         let mut caption_diagnostics = provenance.diagnostics.clone();
         for diagnostic in &caption_plan.diagnostics {
             if !caption_diagnostics.contains(diagnostic) {
@@ -1395,9 +1435,9 @@ fn run<R: tauri::Runtime>(
                 source: Some(provenance.source),
                 language: (!failed_provenance).then(|| provenance.language.clone()),
                 quality: quality.into(),
-                fallback_intervals: caption_plan.fallback.len() as u32,
-                local_whisper_fallback: caption_plan.full_whisper || !caption_plan.fallback.is_empty(),
-                diagnostics: caption_diagnostics
+                fallback_intervals: 0,
+                local_whisper_fallback: caption_plan.full_whisper && whisper_approved,
+                diagnostics: captions::summarize_diagnostics(&caption_diagnostics)
                     .iter()
                     .map(|diagnostic| crate::domain::CaptionDiagnosticSummary {
                         kind: format!("{:?}", diagnostic.kind),
@@ -1424,14 +1464,14 @@ fn run<R: tauri::Runtime>(
                 source: None,
                 language: Some(TRANSCRIPTION_LANGUAGE.into()),
                 quality: "unavailable".into(),
-                fallback_intervals: 1,
-                local_whisper_fallback: true,
+                fallback_intervals: 0,
+                local_whisper_fallback: whisper_approved,
                 diagnostics: vec![crate::domain::CaptionDiagnosticSummary {
                     kind: "CaptionUnavailable".into(),
                     interval_index: None,
                     start_seconds: None,
                     end_seconds: None,
-                    detail: "한국어 자막을 사용할 수 없어 로컬 Whisper로 전체 구간을 확인합니다.".into(),
+                    detail: "사용 가능한 한국어 자막이 없습니다.".into(),
                 }],
                 provenance: None,
             });
@@ -1565,9 +1605,20 @@ fn run<R: tauri::Runtime>(
                 });
                 checkpoint.whisper_units.len() - 1
             });
-            if !whisper::should_try_cpu(&checkpoint.whisper_units[state_index]) {
+            let persisted_unit = &checkpoint.whisper_units[state_index];
+            if !whisper::should_try_cpu(persisted_unit) {
                 return Err(PipelineError::Message(
-                    "이 구간의 CPU 음성 인식이 이미 실패해 자동 재시도하지 않습니다.".into(),
+                    "이 구간의 CPU 음성 인식이 이미 시작됐거나 완료·실패해 자동 재실행하지 않습니다.".into(),
+                ));
+            }
+            if !matches!(whisper_settings.device_mode, WhisperDeviceMode::Cpu)
+                && matches!(
+                    persisted_unit.gpu.status,
+                    WhisperAttemptStatus::Started | WhisperAttemptStatus::Completed
+                )
+            {
+                return Err(PipelineError::Message(
+                    "이 구간의 GPU 음성 인식이 이미 시작됐거나 완료돼 자동으로 GPU 또는 CPU를 다시 실행하지 않습니다.".into(),
                 ));
             }
             let gpu_allowed = whisper::should_try_gpu(
@@ -2587,7 +2638,7 @@ fn checkpoint_is_compatible_with_caption(
     expected_runtime: &HashMap<String, String>,
     expected_caption: Option<&CaptionProvenance>,
 ) -> bool {
-    if !(4..=MEDIA_CHECKPOINT_SCHEMA).contains(&checkpoint.schema_version) {
+    if checkpoint.schema_version != MEDIA_CHECKPOINT_SCHEMA {
         return false;
     }
     let caption_matches = match expected_caption {
@@ -2673,6 +2724,13 @@ fn checkpoint_is_compatible_with_whisper(
         return *expected_whisper == legacy_cpu_whisper_settings();
     }
     checkpoint.whisper_settings == expected_whisper.clone().normalized()
+}
+
+fn checkpoint_whisper_approval_matches(
+    checkpoint: &MediaCheckpoint,
+    expected_approval: bool,
+) -> bool {
+    checkpoint.whisper_approved == expected_approval
 }
 
 fn legacy_cpu_whisper_settings() -> WhisperSettings {
@@ -3493,7 +3551,7 @@ mod tests {
     }
 
     #[test]
-    fn caption_partition_owns_cross_chunk_interval_once_and_covers_each_boundary() {
+    fn caption_partition_owns_cross_chunk_interval_once_without_whisper_gaps() {
         let validation = captions::validate_intervals(
             vec![CaptionInterval {
                 start_seconds: 9.0,
@@ -3520,8 +3578,8 @@ mod tests {
         assert_eq!(first_trusted[0].start_seconds, 9.0);
         assert_eq!(first_trusted[0].end_seconds, 11.0);
         assert!(second_trusted.is_empty());
-        assert!(first_fallback.iter().any(|range| *range == (0.0, 9.0)));
-        assert!(second_fallback.iter().any(|range| *range == (11.0, 20.0)));
+        assert!(first_fallback.is_empty());
+        assert!(second_fallback.is_empty());
     }
 
     #[test]
@@ -4445,6 +4503,35 @@ mod tests {
     }
 
     #[test]
+    fn failed_caption_provenance_never_supplies_transcript_segments() {
+        let provenance = CaptionProvenance {
+            schema_version: captions::CAPTION_SCHEMA_VERSION,
+            source_url: "video".into(),
+            source: captions::CaptionSource::Automatic,
+            language: "ko".into(),
+            track_id: "ko-auto".into(),
+            revision: "r1".into(),
+            original_file: "captions/ko.vtt".into(),
+            sha256: "metadata-hash".into(),
+            verification_state: VerificationState::Failed,
+            diagnostics: Vec::new(),
+            content_sha256: "content-hash".into(),
+        };
+        let bytes = "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n정상처럼 보이는 문장\n"
+            .as_bytes()
+            .to_vec();
+
+        let plan = caption_plan_for_duration(Some(&(provenance, bytes)), 10.0);
+
+        assert!(plan.full_whisper);
+        assert!(plan.trusted.is_empty());
+        assert!(plan
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.kind == captions::CaptionDiagnosticKind::ProvenanceInvalid));
+    }
+
+    #[test]
     fn discarded_incompatible_checkpoint_restarts_media_when_job_units_advanced() {
         // P0 F1: schema-3 / fingerprint-mismatched live is discarded → fresh CP with
         // completed_chunks=0. An interrupted job snapshot with completed_units > 2 must
@@ -4599,7 +4686,7 @@ mod tests {
     }
 
     #[test]
-    fn load_legacy_schema4_resumes_completed_cpu_chunks() {
+    fn old_media_checkpoints_are_not_reused_after_caption_policy_change() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("media-checkpoint.json");
         let runtime = HashMap::from([("ffmpeg/ffmpeg.exe".into(), "aaa".into())]);
@@ -4628,7 +4715,7 @@ mod tests {
         save_checkpoint(&path, &schema4).unwrap();
 
         let legacy_cpu = legacy_cpu_whisper_settings();
-        let loaded = load_checkpoint_with_caption(
+        assert!(load_checkpoint_with_caption(
             &path,
             "source.mp4",
             AnalysisMode::Full,
@@ -4640,9 +4727,8 @@ mod tests {
             None,
             &legacy_cpu,
         )
-        .unwrap();
-        let loaded = loaded.expect("schema4 legacy CPU checkpoint remains resumable");
-        assert_eq!(loaded.completed_chunks, 2);
+        .unwrap()
+        .is_none());
 
         let auto = WhisperSettings::default();
         assert!(load_checkpoint_with_caption(
@@ -4681,7 +4767,7 @@ mod tests {
         let mut schema5 = schema4.clone();
         schema5.schema_version = 5;
         schema5.whisper_settings = auto.clone();
-        assert!(checkpoint_is_compatible_with_whisper(
+        assert!(!checkpoint_is_compatible_with_whisper(
             &schema5,
             "source.mp4",
             AnalysisMode::Full,
@@ -4693,8 +4779,27 @@ mod tests {
             None,
             &auto,
         ));
+
+        let mut schema6 = schema5.clone();
+        schema6.schema_version = MEDIA_CHECKPOINT_SCHEMA;
+        assert!(checkpoint_whisper_approval_matches(&schema6, false));
+        assert!(!checkpoint_whisper_approval_matches(&schema6, true));
+        schema6.whisper_approved = true;
+        assert!(checkpoint_whisper_approval_matches(&schema6, true));
+        assert!(checkpoint_is_compatible_with_whisper(
+            &schema6,
+            "source.mp4",
+            AnalysisMode::Full,
+            0,
+            None,
+            "fp",
+            2048,
+            &runtime,
+            None,
+            &auto,
+        ));
         assert!(!checkpoint_is_compatible_with_whisper(
-            &schema5,
+            &schema6,
             "source.mp4",
             AnalysisMode::Full,
             0,

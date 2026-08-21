@@ -5,8 +5,8 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * Prepare the v0.5.0-rc.1 unsigned GitHub Pre-release assets:
- * - VOD.Scout_0.5.0-rc.1_x64-setup.exe
+ * Prepare the v0.5.0 unsigned GitHub Release assets:
+ * - VOD.Scout_0.5.0_x64-setup.exe
  * - SBOM.spdx.json
  * - SHA256SUMS.txt
  *
@@ -14,8 +14,9 @@ import { fileURLToPath } from "node:url";
  * signatures, or latest.json. Bundle lookup is exact and version-scoped.
  */
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const version = "0.5.0-rc.1";
-const bundleDir = join(projectRoot, "src-tauri", "target", "release", "bundle", "nsis");
+const version = "0.5.0";
+const cargoTargetDir = resolve(projectRoot, process.env.CARGO_TARGET_DIR ?? join("src-tauri", "target"));
+const bundleDir = join(cargoTargetDir, "release", "bundle", "nsis");
 const releaseDir = join(projectRoot, "release", `v${version}`);
 const publicInstallerName = `VOD.Scout_${version}_x64-setup.exe`;
 const installerCandidates = [publicInstallerName, `VOD Scout_${version}_x64-setup.exe`];
@@ -67,7 +68,7 @@ for (const name of checksumFiles) sums.push(`${await sha256(join(releaseDir, nam
 await writeFile(join(releaseDir, "SHA256SUMS.txt"), `${sums.join("\n")}\n`, "utf8");
 
 process.stdout.write(
-  `unsigned pre-release assets prepared in ${releaseDir}\n${[
+  `unsigned release assets prepared in ${releaseDir}\n${[
     ...checksumFiles,
     "SHA256SUMS.txt"
   ].map((name) => basename(name)).join("\n")}\n`

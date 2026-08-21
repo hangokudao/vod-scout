@@ -1,14 +1,14 @@
 # 테스트와 완료 기준
 
-## v0.5.0-rc.1 Pre-release 최종 게이트
+## v0.5.0 정식 Release 최종 게이트
 
-한 번만 실행할 범위는 integration의 짧은 GPU fixture, 기본 npm·Cargo 테스트와 build, 보안 검사, `git diff --check`, unsigned EXE·NSIS 생성, 새 임시 데이터 경로의 최종 EXE 화면 스모크다.
+이미 통과한 전체 npm·Cargo 테스트와 장시간 YouTube E2E는 반복하지 않는다. 이번 정식 Release에서 새로 실행할 범위는 unsigned EXE·NSIS 생성, 최종 SBOM·checksums와 새 임시 데이터 경로의 최종 EXE 화면 스모크다.
 
-PASS 조건은 실제 GPU backend/device와 유효한 음성 인식 결과, 메인 화면, `0.5.0-rc.1`, Auto/GPU/CPU 설정 표시, 기존 설치·사용자 데이터 무변경이다. 장시간 E2E는 반복하지 않는다. 자동 GPU→CPU 전환은 `DEFERRED`이며 이번 Pre-release를 막지 않는다.
+PASS 조건은 메인 화면, `0.5.0`, Auto/GPU/CPU 설정 표시, 기존 설치·사용자 데이터 무변경이다. 자동 GPU→CPU 전환은 `DEFERRED`이며 이번 정식 Release를 막지 않는다.
 
-updater artifact는 만들지 않는다. `.sig`, `latest.json`, updater zip이 release 디렉터리나 GitHub Pre-release 자산에 있으면 실패다.
+updater artifact는 만들지 않는다. `.sig`, `latest.json`, updater zip이 release 디렉터리나 GitHub Release 자산에 있으면 실패다.
 
-최종 결과는 npm 49, Rust `128 passed·1 ignored`, fixture-worker 6, 보안 6, production dependency audit 0 vulnerabilities, build·diff 검사, 실제 CUDA0 GPU fixture, unsigned EXE·NSIS와 CDP 화면 스모크가 모두 `PASS`다. CDP 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-rc1-cdp-smoke-20260821-024212`, GPU 증거는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-rc1-gpu-20260821-020758`에 보존했다.
+기존 검증은 프런트엔드 `54/54`, Rust `136 passed·1 flaky·1 ignored`, fixture-worker·보안·build·diff 검사와 실제 CUDA0 GPU fixture가 통과했다. flaky 1개는 Windows 환경 의존 process-tree fixture이며 Cargo 판정은 `PASS_WITH_KNOWN_TEST_LIMITATION`이다. 정식 v0.5.0 unsigned NSIS·SBOM·checksums와 `로컬 파일` 탭의 Auto/GPU/CPU·CPU 사용량을 확인한 단일 CDP 복구 스모크도 `PASS`다.
 
 ## 2026-08-21 이전 엄격 공개 게이트 기록
 

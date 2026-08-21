@@ -42,6 +42,16 @@ enum AcquisitionError {
     Message(String),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AcquisitionOutcome {
+    ReadyForAnalysis,
+    NeedsWhisperApproval,
+}
+
+fn needs_whisper_approval(usable_caption_count: usize, whisper_approved: bool) -> bool {
+    usable_caption_count == 0 && !whisper_approved
+}
+
 impl From<std::io::Error> for AcquisitionError {
     fn from(error: std::io::Error) -> Self {
         Self::Message(error.to_string())
@@ -162,7 +172,8 @@ pub(crate) fn run_youtube_pipeline<R: tauri::Runtime>(
     job_id: String,
 ) {
     match acquire(&app, &state, &job_id) {
-        Ok(()) => media::run_media_pipeline(app, state, job_id),
+        Ok(AcquisitionOutcome::ReadyForAnalysis) => media::run_media_pipeline(app, state, job_id),
+        Ok(AcquisitionOutcome::NeedsWhisperApproval) => finish(&app, &state),
         Err(AcquisitionError::Cancelled) => {
             let _ = mutate_job(&app, &state, |job| {
                 if job.status != JobStatus::Cancelling && job.status.is_active() {
@@ -217,8 +228,8 @@ fn acquire<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     state: &Arc<AppState>,
     job_id: &str,
-) -> Result<(), AcquisitionError> {
-    let (source_url, completed_units) = {
+) -> Result<AcquisitionOutcome, AcquisitionError> {
+    let (source_url, completed_units, whisper_approved) = {
         let guard = state
             .job
             .lock()
@@ -231,7 +242,7 @@ fn acquire<R: tauri::Runtime>(
                 "실행할 작업이 현재 작업과 다릅니다.".into(),
             ));
         }
-        (job.source_label.clone(), job.completed_units)
+        (job.source_label.clone(), job.completed_units, job.whisper_approved)
     };
     validate_youtube_url(&source_url).map_err(AcquisitionError::Message)?;
 
@@ -243,47 +254,138 @@ fn acquire<R: tauri::Runtime>(
     fs::create_dir_all(&log_dir)?;
     let checkpoint_path = job_dir.join("acquisition.json");
 
-    let checkpoint = load_checkpoint(&checkpoint_path, &source_url)?;
-    let mut caption_track = None;
-    let mut caption_path = None;
-    let mut caption_provenance_reused = false;
-    let (media_path, title) = if let Some(checkpoint) = checkpoint {
-        (PathBuf::from(checkpoint.media_path), checkpoint.title)
-    } else if let Some(path) = find_downloaded_media(&download_dir)? {
+    let mut existing_media = load_checkpoint(&checkpoint_path, &source_url)?
+        .and_then(|checkpoint| {
+            let path = PathBuf::from(checkpoint.media_path);
+            path.is_file().then_some((path, checkpoint.title))
+        });
+    if existing_media.is_none() {
+        existing_media = find_downloaded_media(&download_dir)?.map(|path| (path, None));
+    }
+    if let Some((path, title)) = existing_media.as_ref() {
         save_checkpoint(
             &checkpoint_path,
             &AcquisitionCheckpoint {
                 schema_version: 1,
                 source_url: source_url.clone(),
                 media_path: path.display().to_string(),
-                title: None,
+                title: title.clone(),
             },
         )?;
-        (path, None)
-    } else {
-        mutate_job(app, state, |job| {
-            job.download_percent = Some(0);
-            job.current_stage_label = "YouTube 정보 확인".into();
-            job.push_activity(
-                "download",
-                "YouTube 영상 정보를 확인하고 저장 공간을 점검한 뒤 최대 720p로 다운로드합니다.",
-            );
-            Ok(())
-        })
-        .map_err(AcquisitionError::Message)?;
+    }
 
-        // Metadata-only size lookup, exact format pin, and multi-phase free-space plan MUST pass
-        // before any media transfer child.
-        let format_plan = ensure_download_disk_space(
+    mutate_job(app, state, |job| {
+        job.download_percent = Some(if existing_media.is_some() { 100 } else { 0 });
+        job.current_stage_label = "YouTube 자막 확인".into();
+        job.push_activity(
+            "captions",
+            "영상 처리 전에 한국어 자동 자막과 제작자 자막을 순서대로 확인합니다.",
+        );
+        Ok(())
+    })
+    .map_err(AcquisitionError::Message)?;
+
+    let format_plan = if existing_media.is_some() {
+        probe_download_metadata(
+            &tools,
+            &source_url,
+            &download_dir,
+            &log_dir,
+            &state.cancel_requested,
+        )?
+    } else {
+        ensure_download_disk_space(
             &tools,
             &source_url,
             &download_dir,
             &job_dir,
             &log_dir,
             &state.cancel_requested,
-        )?;
-        caption_track = format_plan.caption_track.clone();
+        )?
+    };
 
+    let mut usable_caption_count = 0usize;
+    let mut unavailable_caption_plan = None;
+    let mut caption_download_error = None;
+    for track in &format_plan.caption_tracks {
+        let downloaded_path = match run_caption_yt_dlp(
+            state,
+            &tools,
+            &source_url,
+            &download_dir,
+            &log_dir,
+            track,
+        ) {
+            Ok(path) => path,
+            Err(AcquisitionError::Cancelled) => return Err(AcquisitionError::Cancelled),
+            Err(error) => {
+                caption_download_error = Some(error);
+                continue;
+            }
+        };
+        let Some(path) = downloaded_path.filter(|path| path.is_file()) else {
+            continue;
+        };
+        let bytes = fs::read(&path)?;
+        let validation = captions::validate_intervals(
+            captions::parse_caption_text(&String::from_utf8_lossy(&bytes)),
+            format_plan.duration_seconds,
+            VerificationState::Unverified,
+        );
+        let plan = captions::plan_fallbacks(&validation, format_plan.duration_seconds);
+        usable_caption_count = plan.trusted.len();
+        if usable_caption_count > 0 {
+            let provenance = captions::persist_provenance(
+                &job_dir,
+                &source_url,
+                track,
+                &bytes,
+                VerificationState::Unverified,
+                validation.diagnostics,
+            )
+            .map_err(AcquisitionError::Message)?;
+            update_caption_summary(app, state, Some(&provenance), &plan, whisper_approved)
+                .map_err(AcquisitionError::Message)?;
+            break;
+        }
+        unavailable_caption_plan = Some(plan);
+    }
+    if usable_caption_count == 0 {
+        if let Some(error) = caption_download_error {
+            return Err(error);
+        }
+        let plan = unavailable_caption_plan.unwrap_or_else(|| {
+            captions::plan_fallbacks(
+                &captions::validate_intervals(
+                    Vec::new(),
+                    format_plan.duration_seconds,
+                    VerificationState::Failed,
+                ),
+                format_plan.duration_seconds,
+            )
+        });
+        update_caption_summary(app, state, None, &plan, whisper_approved)
+            .map_err(AcquisitionError::Message)?;
+        if needs_whisper_approval(usable_caption_count, whisper_approved) {
+            mutate_job(app, state, |job| {
+                job.transition(JobStatus::NeedsInput)?;
+                job.current_stage_label = "Whisper 사용 여부 확인".into();
+                job.error_message = None;
+                job.error_detail = None;
+                job.push_activity(
+                    "needs-input",
+                    "사용 가능한 한국어 자막이 없습니다. 사용자 선택 전에는 영상 다운로드와 Whisper를 시작하지 않습니다.",
+                );
+                Ok(())
+            })
+            .map_err(AcquisitionError::Message)?;
+            return Ok(AcquisitionOutcome::NeedsWhisperApproval);
+        }
+    }
+
+    let (media_path, title) = if let Some(existing) = existing_media {
+        existing
+    } else {
         let outcome = run_yt_dlp(
             app,
             state,
@@ -292,9 +394,7 @@ fn acquire<R: tauri::Runtime>(
             &download_dir,
             &log_dir,
             &format_plan.format_selector,
-            format_plan.caption_track.as_ref(),
         )?;
-        caption_path = outcome.caption_path.clone();
         let path = outcome
             .media_path
             .filter(|path| path.is_file())
@@ -316,58 +416,8 @@ fn acquire<R: tauri::Runtime>(
         (path, outcome.title)
     };
 
-    if caption_track.is_none() {
-        if let Some((provenance, _)) = captions::read_provenance(&job_dir).ok().flatten() {
-            caption_track = Some(CaptionTrack {
-                track_id: provenance.track_id,
-                language: provenance.language,
-                source: provenance.source,
-                url: None,
-                revision: provenance.revision,
-            });
-            caption_path = Some(job_dir.join(provenance.original_file));
-            caption_provenance_reused = true;
-        }
-    }
-
     if state.cancel_requested.load(Ordering::SeqCst) {
         return Err(AcquisitionError::Cancelled);
-    }
-    if !caption_provenance_reused {
-        if let (Some(track), Some(path)) = (caption_track.as_ref(), caption_path.as_ref()) {
-            if path.is_file() {
-                let bytes = fs::read(path)?;
-                let provenance = captions::persist_provenance(
-                    &job_dir,
-                    &source_url,
-                    track,
-                    &bytes,
-                    VerificationState::Unverified,
-                    Vec::new(),
-                )
-                .map_err(AcquisitionError::Message)?;
-                mutate_job(app, state, |job| {
-                    job.captions = Some(crate::domain::CaptionSummary {
-                        source: Some(provenance.source),
-                        language: Some(provenance.language.clone()),
-                        quality: "unverified".into(),
-                        fallback_intervals: 0,
-                        local_whisper_fallback: true,
-                        diagnostics: Vec::new(),
-                        provenance: Some(crate::domain::CaptionProvenanceSummary {
-                            original_file: provenance.original_file.clone(),
-                            language: Some(provenance.language.clone()),
-                            track_id: provenance.track_id.clone(),
-                            sha256: provenance.sha256.clone(),
-                            revision: provenance.revision.clone(),
-                            verification_state: provenance.verification_state,
-                        }),
-                    });
-                    Ok(())
-                })
-                .map_err(AcquisitionError::Message)?;
-            }
-        }
     }
     let label = title
         .as_deref()
@@ -387,13 +437,48 @@ fn acquire<R: tauri::Runtime>(
         Ok(())
     })
     .map_err(AcquisitionError::Message)?;
+    Ok(AcquisitionOutcome::ReadyForAnalysis)
+}
+
+fn update_caption_summary<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    state: &Arc<AppState>,
+    provenance: Option<&captions::CaptionProvenance>,
+    plan: &captions::CaptionPlan,
+    whisper_approved: bool,
+) -> Result<(), String> {
+    let diagnostics = captions::summarize_diagnostics(&plan.diagnostics);
+    mutate_job(app, state, |job| {
+        job.captions = Some(crate::domain::CaptionSummary {
+            source: provenance.map(|value| value.source),
+            language: provenance.map(|value| value.language.clone()),
+            quality: if plan.full_whisper { "failed" } else { "usable" }.into(),
+            fallback_intervals: 0,
+            local_whisper_fallback: plan.full_whisper && whisper_approved,
+            diagnostics: diagnostics.iter().map(|diagnostic| crate::domain::CaptionDiagnosticSummary {
+                kind: format!("{:?}", diagnostic.kind),
+                interval_index: diagnostic.interval_index,
+                start_seconds: diagnostic.start_seconds,
+                end_seconds: diagnostic.end_seconds,
+                detail: diagnostic.detail.clone(),
+            }).collect(),
+            provenance: provenance.map(|value| crate::domain::CaptionProvenanceSummary {
+                original_file: value.original_file.clone(),
+                language: Some(value.language.clone()),
+                track_id: value.track_id.clone(),
+                sha256: value.sha256.clone(),
+                revision: value.revision.clone(),
+                verification_state: value.verification_state,
+            }),
+        });
+        Ok(())
+    })?;
     Ok(())
 }
 
 struct DownloadOutcome {
     media_path: Option<PathBuf>,
     title: Option<String>,
-    caption_path: Option<PathBuf>,
 }
 
 fn overflow_plan_error() -> String {
@@ -457,7 +542,7 @@ pub(crate) struct SelectedFormatPlan {
     pub format_ids: Vec<String>,
     pub stream_sizes: Vec<u64>,
     pub duration_seconds: f64,
-    pub caption_track: Option<CaptionTrack>,
+    pub caption_tracks: Vec<CaptionTrack>,
 }
 
 /// Checked sum of selected stream sizes (each must be > 0).
@@ -682,7 +767,7 @@ pub(crate) fn selected_format_plan_from_info(info: &Value) -> Result<SelectedFor
         format_ids,
         stream_sizes,
         duration_seconds,
-        caption_track: captions::select_track(info),
+        caption_tracks: captions::select_tracks(info),
     })
 }
 
@@ -935,8 +1020,6 @@ fn probe_download_metadata(
             "--format",
             YT_DLP_FORMAT_PROBE,
             "--dump-single-json",
-            "--write-subs",
-            "--write-auto-subs",
         ])
         .args(youtube_extractor_args())
         .arg("--ffmpeg-location")
@@ -1219,6 +1302,135 @@ fn probe_download_metadata(
     Ok(plan)
 }
 
+fn run_caption_yt_dlp(
+    state: &Arc<AppState>,
+    tools: &DownloadTools,
+    source_url: &str,
+    download_dir: &Path,
+    log_dir: &Path,
+    caption_track: &CaptionTrack,
+) -> Result<Option<PathBuf>, AcquisitionError> {
+    clear_caption_files(download_dir, &caption_track.language);
+    let mut command = Command::new(&tools.yt_dlp);
+    command
+        .args([
+            "--ignore-config",
+            "--no-playlist",
+            "--skip-download",
+            "--no-progress",
+            "--socket-timeout",
+            "30",
+            "--match-filter",
+            "!is_live",
+            "--windows-filenames",
+            "--output",
+            "source.%(ext)s",
+        ])
+        .args(youtube_extractor_args())
+        .args(caption_download_args(Some(caption_track)))
+        .arg("--paths")
+        .arg(format!("home:{}", download_dir.display()))
+        .arg("--cache-dir")
+        .arg(download_dir.join("cache"))
+        .arg("--ffmpeg-location")
+        .arg(&tools.ffmpeg_dir)
+        .arg("--js-runtimes")
+        .arg(format!("deno:{}", tools.deno.display()))
+        .arg(source_url)
+        .current_dir(download_dir)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .env("NO_COLOR", "1");
+    crate::media::restrict_command_environment(&mut command);
+    command.env("NO_COLOR", "1");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    let mut child = command
+        .spawn()
+        .map_err(|error| AcquisitionError::Message(format!("YouTube 자막 확인 실행 실패: {error}")))?;
+    #[cfg(windows)]
+    let job_guard = match KillOnCloseJob::attach(&child) {
+        Ok(job) => Some(job),
+        Err(error) => {
+            terminate_child_tree(&mut child, None);
+            return Err(AcquisitionError::Message(format!(
+                "YouTube 자막 확인에 강제 종료 보호를 설정하지 못했습니다: {error}"
+            )));
+        }
+    };
+    let stdout = child.stdout.take().ok_or_else(|| {
+        AcquisitionError::Message("YouTube 자막 확인 표준 출력을 연결하지 못했습니다.".into())
+    })?;
+    let stderr = child.stderr.take().ok_or_else(|| {
+        AcquisitionError::Message("YouTube 자막 확인 진단 출력을 연결하지 못했습니다.".into())
+    })?;
+    let (sender, receiver) = mpsc::channel();
+    let stdout_reader = spawn_reader(stdout, OutputKind::Stdout, sender.clone());
+    let stderr_reader = spawn_reader(stderr, OutputKind::Stderr, sender);
+    let source_label = match caption_track.source {
+        captions::CaptionSource::Automatic => "automatic",
+        captions::CaptionSource::Creator => "creator",
+    };
+    let mut stdout_log = BufWriter::new(File::create(
+        log_dir.join(format!("yt-dlp-captions-{source_label}.stdout.log")),
+    )?);
+    let mut stderr_log = BufWriter::new(File::create(
+        log_dir.join(format!("yt-dlp-captions-{source_label}.stderr.log")),
+    )?);
+    let mut stderr_tail = VecDeque::new();
+
+    let mut drain = |receiver: &mpsc::Receiver<OutputLine>| -> Result<(), AcquisitionError> {
+        while let Ok(line) = receiver.try_recv() {
+            match line.kind {
+                OutputKind::Stdout => writeln!(stdout_log, "{}", line.text)?,
+                OutputKind::Stderr => {
+                    writeln!(stderr_log, "{}", line.text)?;
+                    if !line.text.trim().is_empty() {
+                        stderr_tail.push_back(line.text);
+                        while stderr_tail.len() > 30 {
+                            stderr_tail.pop_front();
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    };
+    let status = loop {
+        drain(&receiver)?;
+        if state.cancel_requested.load(Ordering::SeqCst) {
+            #[cfg(windows)]
+            terminate_child_tree(&mut child, job_guard.as_ref());
+            #[cfg(not(windows))]
+            terminate_child_tree(&mut child);
+            drop(stdout_reader);
+            drop(stderr_reader);
+            return Err(AcquisitionError::Cancelled);
+        }
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        thread::sleep(Duration::from_millis(100));
+    };
+    let _ = stdout_reader.join();
+    let _ = stderr_reader.join();
+    drain(&receiver)?;
+    drop(drain);
+    stdout_log.flush()?;
+    stderr_log.flush()?;
+    if !status.success() {
+        return Err(AcquisitionError::Message(friendly_download_error(
+            status,
+            &stderr_tail.into_iter().collect::<Vec<_>>().join("\n"),
+        )));
+    }
+    Ok(find_caption_file(download_dir, caption_track))
+}
+
 fn run_yt_dlp<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     state: &Arc<AppState>,
@@ -1227,14 +1439,10 @@ fn run_yt_dlp<R: tauri::Runtime>(
     download_dir: &Path,
     log_dir: &Path,
     format_selector: &str,
-    caption_track: Option<&CaptionTrack>,
 ) -> Result<DownloadOutcome, AcquisitionError> {
     // Fail closed if selector was not pre-validated (should already be pinned from probe).
     for id in format_selector.split('+') {
         validate_format_id(id).map_err(AcquisitionError::Message)?;
-    }
-    if let Some(track) = caption_track {
-        clear_caption_files(download_dir, &track.language);
     }
     let mut command = Command::new(&tools.yt_dlp);
     command
@@ -1269,7 +1477,6 @@ fn run_yt_dlp<R: tauri::Runtime>(
             "source.%(ext)s",
         ])
         .args(youtube_extractor_args())
-        .args(caption_download_args(caption_track))
         .arg("--paths")
         .arg(format!("home:{}", download_dir.display()))
         .arg("--paths")
@@ -1372,11 +1579,9 @@ fn run_yt_dlp<R: tauri::Runtime>(
             &stderr_tail.into_iter().collect::<Vec<_>>().join("\n"),
         )));
     }
-    let caption_path = caption_track.and_then(|track| find_caption_file(download_dir, track));
     Ok(DownloadOutcome {
         media_path,
         title,
-        caption_path,
     })
 }
 
@@ -1649,6 +1854,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn youtube_without_usable_captions_waits_for_explicit_whisper_approval() {
+        assert!(needs_whisper_approval(0, false));
+        assert!(!needs_whisper_approval(1, false));
+        assert!(!needs_whisper_approval(0, true));
+    }
+
+    #[test]
     fn validates_only_supported_youtube_video_urls() {
         for valid in [
             "https://www.youtube.com/watch?v=BaW_jenozKc",
@@ -1811,7 +2023,12 @@ mod tests {
             "requested_formats": [
                 {"format_id": "298", "filesize": 100u64, "filesize_approx": 150u64},
                 {"format_id": "251", "filesize": 40u64, "filesize_approx": 999u64}
-            ]
+            ],
+            "automatic_captions": {
+                "ko-orig": [{"url": "automatic-orig", "vss_id": "ko-auto-orig"}],
+                "ko": [{"url": "automatic", "vss_id": "ko-auto"}]
+            },
+            "subtitles": {"ko": [{"url": "creator", "vss_id": "ko-creator"}]}
         });
         let plan = selected_format_plan_from_info(&multi).unwrap();
         // Exact filesize only — approx is ignored.
@@ -1819,6 +2036,20 @@ mod tests {
         assert_eq!(plan.format_ids, vec!["298".to_string(), "251".to_string()]);
         assert_eq!(plan.format_selector, "298+251");
         assert_eq!(plan.duration_seconds, 120.0);
+        assert_eq!(plan.caption_tracks.len(), 3);
+        assert_eq!(
+            plan.caption_tracks[0].source,
+            captions::CaptionSource::Automatic
+        );
+        assert_eq!(
+            plan.caption_tracks[1].source,
+            captions::CaptionSource::Automatic
+        );
+        assert_eq!(plan.caption_tracks[1].track_id, "ko-auto-orig");
+        assert_eq!(
+            plan.caption_tracks[2].source,
+            captions::CaptionSource::Creator
+        );
 
         let approx_only = serde_json::json!({
             "duration": 10.0,
@@ -1867,7 +2098,7 @@ mod tests {
             format_ids: vec!["298".into(), "251".into()],
             stream_sizes: vec![10, 20],
             duration_seconds: 30.0,
-            caption_track: None,
+            caption_tracks: Vec::new(),
         };
         let log = build_minimal_metadata_log(
             Some(&plan),

@@ -217,6 +217,8 @@ export interface JobSnapshot {
   activity: ActivityEvent[];
   captions: CaptionSummary | null;
   whisper: WhisperSettings;
+  whisperApproved: boolean;
+  transcriptPolicyVersion: number;
   whisperRuntime: WhisperRuntimeState;
   recognitionRuns?: CandidateRecognitionRun[];
   resourcePolicy: ResourcePolicy;
@@ -257,5 +259,6 @@ export interface CreateJobInput {
   analysisStartSeconds: number | null;
   analysisEndSeconds: number | null;
   whisper: WhisperSettings;
+  whisperApproved: boolean;
   candidateCount: CandidateCount;
 }

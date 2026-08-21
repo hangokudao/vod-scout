@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   release:
-    if: ${{ !contains(github.ref_name, '-') }}
+    if: ${{ !contains(github.ref_name, '-') && github.ref_name != 'v0.5.0' }}
     runs-on: windows-2025
     env:
       RUSTFLAGS: "--remap-path-prefix=${{ github.workspace }}=/src --remap-path-prefix=C:\\Users\\runneradmin\\.cargo\\registry\\src=/cargo/registry/src"

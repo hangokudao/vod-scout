@@ -192,12 +192,12 @@ impl WhisperUnitState {
 
 pub fn should_try_gpu(settings: &WhisperSettings, unit: &WhisperUnitState) -> bool {
     !matches!(settings.device_mode, WhisperDeviceMode::Cpu)
-        && unit.gpu.status != WhisperAttemptStatus::Failed
-        && unit.cpu_fallback.status != WhisperAttemptStatus::Failed
+        && unit.gpu.status == WhisperAttemptStatus::Pending
+        && unit.cpu_fallback.status == WhisperAttemptStatus::Pending
 }
 
 pub fn should_try_cpu(unit: &WhisperUnitState) -> bool {
-    unit.cpu_fallback.status != WhisperAttemptStatus::Failed
+    unit.cpu_fallback.status == WhisperAttemptStatus::Pending
 }
 
 #[cfg(test)]
@@ -246,16 +246,22 @@ mod tests {
     }
 
     #[test]
-    fn recorded_gpu_or_cpu_failures_close_the_retry_gate() {
+    fn every_persisted_gpu_or_cpu_attempt_closes_its_retry_gate() {
         let settings = WhisperSettings::default();
-        let mut unit = WhisperUnitState::legacy_cpu(0, 0);
-        assert!(should_try_gpu(&settings, &unit));
-        unit.gpu.status = WhisperAttemptStatus::Failed;
-        assert!(!should_try_gpu(&settings, &unit));
-        assert!(should_try_cpu(&unit));
-        unit.cpu_fallback.status = WhisperAttemptStatus::Failed;
-        assert!(!should_try_cpu(&unit));
-        assert!(!should_try_gpu(&settings, &unit));
+        for status in [
+            WhisperAttemptStatus::Started,
+            WhisperAttemptStatus::Completed,
+            WhisperAttemptStatus::Failed,
+        ] {
+            let mut gpu = WhisperUnitState::legacy_cpu(0, 0);
+            gpu.gpu.status = status;
+            assert!(!should_try_gpu(&settings, &gpu));
+
+            let mut cpu = WhisperUnitState::legacy_cpu(0, 0);
+            cpu.cpu_fallback.status = status;
+            assert!(!should_try_cpu(&cpu));
+            assert!(!should_try_gpu(&settings, &cpu));
+        }
     }
 
     #[test]

@@ -98,9 +98,9 @@ const stageForUnit = (unit: number): [JobStatus, string, string] => {
     ["ACQUIRING", "입력 준비", "입력 소스를 작업 공간에 등록했습니다."],
     ["PROBING", "미디어 확인", "컨테이너와 재생 시간을 확인했습니다."],
     ["EXTRACTING_AUDIO", "오디오 준비", "분석용 오디오 청크를 준비했습니다."],
-    ["TRANSCRIBING", "전사 1/3", "첫 번째 전사 청크를 처리했습니다."],
-    ["TRANSCRIBING", "전사 2/3", "두 번째 전사 청크를 처리했습니다."],
-    ["TRANSCRIBING", "전사 3/3", "마지막 전사 청크를 처리했습니다."],
+    ["TRANSCRIBING", "음성 인식 1/3", "첫 번째 음성 인식 구간을 처리했습니다."],
+    ["TRANSCRIBING", "음성 인식 2/3", "두 번째 음성 인식 구간을 처리했습니다."],
+    ["TRANSCRIBING", "음성 인식 3/3", "마지막 음성 인식 구간을 처리했습니다."],
     ["AUDIO_SIGNALS", "오디오 신호", "말 밀도와 반응 신호를 계산했습니다."],
     ["CHAT_SIGNALS", "채팅 신호", "채팅 영역의 활동량을 계산했습니다."],
     ["FUSING", "신호 결합 1/2", "겹치는 반응 구간을 하나로 묶었습니다."],
@@ -203,6 +203,12 @@ export async function getRuntimeInfo(): Promise<RuntimeInfo> {
 
 export async function createJob(input: CreateJobInput): Promise<JobSnapshot> {
   if (tauriAvailable) return invoke("create_job", { input });
+  if (input.sourceKind === "youtube" && input.whisperApproved) {
+    throw new Error("YouTube 작업은 한국어 자막을 확인한 뒤 NEEDS_INPUT 상태에서만 Whisper를 승인할 수 있습니다.");
+  }
+  if (input.sourceKind === "local" && !input.whisperApproved) {
+    throw new Error("로컬 파일은 Whisper 설정을 확인하고 사용을 승인한 뒤에만 분석할 수 있습니다.");
+  }
   const now = new Date().toISOString();
   mockJob = {
     schemaVersion: 5,
@@ -233,6 +239,8 @@ export async function createJob(input: CreateJobInput): Promise<JobSnapshot> {
     activity: [{ sequence: 1, timestamp: now, kind: "job", message: "새 분석 작업을 만들었습니다." }],
     captions: null,
     whisper: input.whisper,
+    whisperApproved: input.whisperApproved,
+    transcriptPolicyVersion: 2,
     whisperRuntime: {
       status: "untested",
       unitIndex: null,
@@ -269,6 +277,15 @@ export async function createJob(input: CreateJobInput): Promise<JobSnapshot> {
 export async function startJob(jobId: string): Promise<JobSnapshot> {
   if (tauriAvailable) return invoke("start_job", { jobId });
   if (!mockJob || mockJob.id !== jobId) throw new Error("현재 작업을 찾을 수 없습니다.");
+  if (mockJob.sourceKind !== "demo" && mockJob.transcriptPolicyVersion !== 2) {
+    throw new Error("이전 자막·Whisper 정책으로 만든 작업입니다. 새 작업에서 명시적으로 다시 분석해 주세요.");
+  }
+  if (mockJob.sourceKind === "local" && !mockJob.whisperApproved) {
+    throw new Error("로컬 파일은 Whisper 설정을 확인하고 사용을 승인한 뒤에만 분석할 수 있습니다.");
+  }
+  if (mockJob.sourceKind === "youtube" && mockJob.status === "NEEDS_INPUT" && !mockJob.whisperApproved) {
+    throw new Error("Whisper 설정을 확인하고 사용을 승인하거나 작업을 취소해 주세요.");
+  }
   if (mockTimer) window.clearInterval(mockTimer);
   mockJob.status = mockJob.completedUnits ? stageForUnit(mockJob.completedUnits)[0] : "ACQUIRING";
   mockJob.errorMessage = null;
@@ -281,7 +298,7 @@ export async function startJob(jobId: string): Promise<JobSnapshot> {
     const next = mockJob.completedUnits + 1;
     if (mockJob.scenario === "fail" && next === 5) {
       mockJob.status = "FAILED";
-      mockJob.errorMessage = "전사 도구가 응답하지 않았습니다.";
+      mockJob.errorMessage = "음성 인식 도구가 응답하지 않았습니다.";
       mockJob.errorDetail = "브라우저 fixture: unit 5 controlled failure";
       addMockActivity("error", "분석 단계에서 복구 가능한 오류가 발생했습니다.");
       mockJob.scenario = "normal";
@@ -343,6 +360,19 @@ export async function startJob(jobId: string): Promise<JobSnapshot> {
   return structuredClone(mockJob);
 }
 
+export async function approveWhisper(jobId: string, whisper: JobSnapshot["whisper"]): Promise<JobSnapshot> {
+  if (tauriAvailable) return invoke("approve_whisper", { jobId, whisper });
+  if (!mockJob || mockJob.id !== jobId || mockJob.sourceKind !== "youtube" || mockJob.status !== "NEEDS_INPUT") {
+    throw new Error("한국어 자막이 없어 사용자 선택을 기다리는 YouTube 작업에서만 Whisper를 승인할 수 있습니다.");
+  }
+  mockJob.whisper = whisper;
+  mockJob.whisperApproved = true;
+  mockJob.currentStageLabel = "Whisper 승인 완료";
+  addMockActivity("approval", "사용자가 Whisper 설정을 확인하고 음성 인식을 승인했습니다.");
+  notifyMock();
+  return structuredClone(mockJob);
+}
+
 export async function cancelJob(jobId: string): Promise<JobSnapshot> {
   if (tauriAvailable) return invoke("cancel_job", { jobId });
   if (!mockJob || mockJob.id !== jobId) throw new Error("현재 작업을 찾을 수 없습니다.");
@@ -374,6 +404,9 @@ export async function rerunCandidateTranscription(jobId: string, candidateId: st
   if (tauriAvailable) return invoke("rerun_candidate_transcription", { jobId, candidateId });
   if (!mockJob || mockJob.id !== jobId || mockJob.status !== "REVIEW_READY") {
     throw new Error("검토 준비가 끝난 현재 작업에서만 다시 음성 인식을 실행할 수 있습니다.");
+  }
+  if ((mockJob.sourceKind !== "demo" && !mockJob.whisperApproved) || (mockJob.sourceKind === "youtube" && mockJob.captions?.source && !mockJob.captions.localWhisperFallback)) {
+    throw new Error("YouTube 자막을 사용하는 작업입니다.");
   }
   const candidate = mockJob.candidates.find((item) => item.id === candidateId);
   if (!candidate) throw new Error("선택한 후보를 찾을 수 없습니다.");
@@ -474,7 +507,7 @@ export async function getJobStorageInfo(jobId: string): Promise<JobStorageInfo> 
 }
 
 export async function confirmJobDeletion(sizeLabel: string): Promise<boolean> {
-  const message = `현재 작업과 저장된 영상·전사·미리보기 ${sizeLabel}를 삭제합니다. 로컬에서 직접 선택한 원본 파일은 삭제하지 않습니다.`;
+  const message = `현재 작업과 저장된 영상·음성 인식 결과·미리보기 ${sizeLabel}를 삭제합니다. 로컬에서 직접 선택한 원본 파일은 삭제하지 않습니다.`;
   if (tauriAvailable) {
     return confirm(message, { title: "작업 삭제", kind: "warning" });
   }

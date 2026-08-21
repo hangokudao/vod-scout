@@ -11,7 +11,7 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 use url::Url;
 
-pub const CAPTION_SCHEMA_VERSION: u8 = 1;
+pub const CAPTION_SCHEMA_VERSION: u8 = 2;
 const MAX_LANGUAGE_TAG_LENGTH: usize = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,7 +29,7 @@ pub enum VerificationState {
     Failed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum CaptionDiagnosticKind {
     StartAfterEnd,
@@ -119,12 +119,28 @@ pub struct CaptionPlan {
 /// `automatic_captions`). Translations, other languages, and live chat are
 /// rejected before the priority comparison.
 pub fn select_track(info: &Value) -> Option<CaptionTrack> {
-    select_track_group(info.get("automatic_captions"), CaptionSource::Automatic)
-        .or_else(|| select_track_group(info.get("subtitles"), CaptionSource::Creator))
+    select_tracks(info).into_iter().next()
 }
 
-fn select_track_group(value: Option<&Value>, source: CaptionSource) -> Option<CaptionTrack> {
-    let object = value?.as_object()?;
+/// Return every Korean automatic track before every creator track. The
+/// acquisition stage advances to creator tracks only after every automatic
+/// track contains no usable intervals.
+pub fn select_tracks(info: &Value) -> Vec<CaptionTrack> {
+    let mut tracks = select_track_group(
+        info.get("automatic_captions"),
+        CaptionSource::Automatic,
+    );
+    tracks.extend(select_track_group(
+        info.get("subtitles"),
+        CaptionSource::Creator,
+    ));
+    tracks
+}
+
+fn select_track_group(value: Option<&Value>, source: CaptionSource) -> Vec<CaptionTrack> {
+    let Some(object) = value.and_then(Value::as_object) else {
+        return Vec::new();
+    };
     let mut candidates = object
         .iter()
         .filter_map(|(language, formats)| {
@@ -171,7 +187,7 @@ fn select_track_group(value: Option<&Value>, source: CaptionSource) -> Option<Ca
             .cmp(&right.language)
             .then_with(|| left.track_id.cmp(&right.track_id))
     });
-    candidates.into_iter().next()
+    candidates
 }
 
 fn is_korean_language(language: &str) -> bool {
@@ -229,7 +245,7 @@ fn is_rejected_text(value: &str) -> bool {
 /// Parse WebVTT or SRT into original-video absolute seconds.
 pub fn parse_caption_text(text: &str) -> Vec<CaptionInterval> {
     let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
-    let mut intervals = Vec::new();
+    let mut parsed = Vec::new();
     for block in normalized.split("\n\n") {
         let mut lines = block.lines().map(str::trim);
         let first = lines.next().unwrap_or_default();
@@ -241,7 +257,7 @@ pub fn parse_caption_text(text: &str) -> Vec<CaptionInterval> {
         let Some((start, end)) = range.split_once(" --> ") else {
             continue;
         };
-        let body = lines.collect::<Vec<_>>().join(" ").trim().to_string();
+        let body = lines.collect::<Vec<_>>();
         let Some(start_seconds) = parse_caption_time(start) else {
             continue;
         };
@@ -249,13 +265,70 @@ pub fn parse_caption_text(text: &str) -> Vec<CaptionInterval> {
         else {
             continue;
         };
+        parsed.push((
+            start_seconds,
+            end_seconds,
+            body.iter().any(|line| line.contains("<c>")),
+            body.into_iter()
+                .map(strip_vtt_tags)
+                .map(|line| normalize_caption_whitespace(&line))
+                .filter(|line| !line.is_empty())
+                .collect::<Vec<_>>(),
+        ));
+    }
+
+    // YouTube automatic VTT uses two rolling rows plus 0.01-second clearing
+    // cues. A normal creator VTT can also contain two independent lines, so
+    // enable rolling-row cleanup only when the document actually contains the
+    // short clearing-cue pattern.
+    let short_cue_count = parsed
+        .iter()
+        .filter(|(start, end, _, _)| end - start <= 0.011)
+        .count();
+    let rolling_vtt = short_cue_count >= 2
+        && parsed
+            .iter()
+            .any(|(_, _, has_internal_timing, _)| *has_internal_timing);
+    let mut previous_row: Option<String> = None;
+    let mut intervals = Vec::new();
+    for (start_seconds, end_seconds, has_internal_timing, mut rows) in parsed {
+        if rolling_vtt {
+            if end_seconds - start_seconds <= 0.011 {
+                continue;
+            }
+            let last_raw_row = rows.last().cloned();
+            if let Some(previous) = previous_row.as_ref() {
+                if rows.first().is_some_and(|row| row == previous) {
+                    rows.remove(0);
+                } else if rows.len() == 1 {
+                    if let Some(suffix) = rows[0].strip_prefix(previous) {
+                        rows[0] = suffix.trim().to_string();
+                    }
+                }
+            }
+            if let Some(last) = last_raw_row.or(previous_row.clone()) {
+                previous_row = Some(last);
+            }
+        }
+        let text = normalize_caption_whitespace(&rows.join(" "));
+        if text.is_empty() {
+            continue;
+        }
+        // Inline <timestamp><c>text</c> spans belong to the outer cue. Tags are
+        // removed only after their text has been retained, so the original
+        // outer time range and every timed word remain represented.
+        let _ = has_internal_timing;
         intervals.push(CaptionInterval {
             start_seconds,
             end_seconds,
-            text: strip_vtt_tags(&body),
+            text,
         });
     }
     intervals
+}
+
+fn normalize_caption_whitespace(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn strip_vtt_tags(value: &str) -> String {
@@ -471,8 +544,6 @@ pub fn plan_fallbacks(validation: &CaptionValidation, duration_seconds: f64) -> 
                 diagnostic.kind,
                 CaptionDiagnosticKind::StartAfterEnd
                     | CaptionDiagnosticKind::OutOfRange
-                    | CaptionDiagnosticKind::Overlap
-                    | CaptionDiagnosticKind::Duplicate
                     | CaptionDiagnosticKind::EmptyText
                     | CaptionDiagnosticKind::QualityWarning
             )
@@ -483,19 +554,24 @@ pub fn plan_fallbacks(validation: &CaptionValidation, duration_seconds: f64) -> 
         .diagnostics
         .iter()
         .any(|diagnostic| diagnostic.kind == CaptionDiagnosticKind::ProvenanceInvalid);
-    let full_whisper = validation.intervals.is_empty()
-        || validation.verification_state != VerificationState::Verified
-        || provenance_invalid;
+    let trusted = validation
+        .intervals
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| !invalid_indices.contains(index))
+        .map(|(_, interval)| interval.clone())
+        .collect::<Vec<_>>();
+    let full_whisper = trusted.is_empty() || provenance_invalid;
     if full_whisper {
         return CaptionPlan {
             trusted: Vec::new(),
             fallback: vec![FallbackInterval {
                 start_seconds: 0.0,
                 end_seconds: duration_seconds.max(0.0),
-                reason: if validation.intervals.is_empty() {
+                reason: if trusted.is_empty() {
                     "caption_unavailable".into()
                 } else {
-                    "caption_unverified".into()
+                    "caption_provenance_invalid".into()
                 },
             }],
             diagnostics: validation.diagnostics.clone(),
@@ -504,72 +580,34 @@ pub fn plan_fallbacks(validation: &CaptionValidation, duration_seconds: f64) -> 
         };
     }
 
-    let mut trusted = Vec::new();
-    let mut fallback = Vec::new();
-    for (index, interval) in validation.intervals.iter().enumerate() {
-        if invalid_indices.contains(&index) {
-            let start = interval.start_seconds.min(interval.end_seconds).max(0.0);
-            let end = interval.start_seconds.max(interval.end_seconds).min(duration_seconds);
-            fallback.push(FallbackInterval {
-                start_seconds: start,
-                end_seconds: end,
-                reason: "caption_interval_invalid".into(),
-            });
-        } else {
-            trusted.push(interval.clone());
-        }
-    }
-    let mut all = trusted.clone();
-    all.sort_by(|left, right| left.start_seconds.total_cmp(&right.start_seconds));
-    let mut cursor = 0.0;
-    for interval in all {
-        if interval.start_seconds > cursor {
-            fallback.push(FallbackInterval {
-                start_seconds: cursor,
-                end_seconds: interval.start_seconds.min(duration_seconds),
-                reason: "caption_gap".into(),
-            });
-        }
-        cursor = cursor.max(interval.end_seconds);
-    }
-    if cursor < duration_seconds {
-        fallback.push(FallbackInterval {
-            start_seconds: cursor,
-            end_seconds: duration_seconds,
-            reason: "caption_gap".into(),
-        });
-    }
     CaptionPlan {
         trusted,
-        fallback: merge_fallbacks(fallback),
+        // A usable YouTube caption track is authoritative for the whole job.
+        // Missing, damaged, or unverified portions stay warnings and never
+        // trigger automatic Whisper supplementation.
+        fallback: Vec::new(),
         diagnostics: validation.diagnostics.clone(),
         verification_state: validation.verification_state,
         full_whisper: false,
     }
 }
 
-fn merge_fallbacks(mut intervals: Vec<FallbackInterval>) -> Vec<FallbackInterval> {
-    intervals.retain(|interval| {
-        interval.start_seconds.is_finite()
-            && interval.end_seconds.is_finite()
-            && interval.start_seconds < interval.end_seconds
-    });
-    intervals.sort_by(|left, right| {
-        left.start_seconds
-            .total_cmp(&right.start_seconds)
-            .then_with(|| left.end_seconds.total_cmp(&right.end_seconds))
-    });
-    let mut merged: Vec<FallbackInterval> = Vec::new();
-    for interval in intervals {
-        if let Some(last) = merged.last_mut() {
-            if interval.start_seconds <= last.end_seconds {
-                last.end_seconds = last.end_seconds.max(interval.end_seconds);
-                continue;
-            }
-        }
-        merged.push(interval);
+pub fn summarize_diagnostics(diagnostics: &[CaptionDiagnostic]) -> Vec<CaptionDiagnostic> {
+    let mut grouped = std::collections::BTreeMap::<CaptionDiagnosticKind, Vec<&CaptionDiagnostic>>::new();
+    for diagnostic in diagnostics {
+        grouped.entry(diagnostic.kind).or_default().push(diagnostic);
     }
-    merged
+    grouped
+        .into_iter()
+        .map(|(_, group)| {
+            let representative = group[0];
+            let mut summary = representative.clone();
+            if group.len() > 1 {
+                summary.detail = format!("{}개 · 대표: {}", group.len(), representative.detail);
+            }
+            summary
+        })
+        .collect()
 }
 
 pub fn sha256_bytes(bytes: &[u8]) -> String {
@@ -669,9 +707,8 @@ fn safe_caption_path(job_dir: &Path, original_file: &str) -> Result<PathBuf, Str
     Ok(job_dir.join(relative))
 }
 
-/// Read provenance without turning a damaged caption artifact into an acquisition failure.
-/// Invalid metadata or a mismatched file is returned as a failed artifact so the media
-/// pipeline can use full local Whisper and retain a visible diagnostic.
+/// Read provenance without treating damaged metadata or mismatched bytes as usable
+/// captions. The media policy decides separately whether an approved Whisper run exists.
 pub fn read_provenance_with_diagnostics(
     job_dir: &Path,
 ) -> Result<Option<(CaptionProvenance, Vec<u8>)>, String> {
@@ -830,6 +867,13 @@ mod tests {
         assert_eq!(track.source, CaptionSource::Automatic);
         assert_eq!(track.track_id, "ko-auto");
         assert_eq!(track.url.as_deref(), Some("automatic"));
+        assert_eq!(
+            select_tracks(&info)
+                .into_iter()
+                .map(|track| track.source)
+                .collect::<Vec<_>>(),
+            vec![CaptionSource::Automatic, CaptionSource::Creator]
+        );
     }
 
     #[test]
@@ -886,6 +930,83 @@ mod tests {
     }
 
     #[test]
+    fn cleans_youtube_rolling_vtt_without_empty_transition_errors() {
+        let parsed = parse_caption_text(
+            "WEBVTT\nKind: captions\nLanguage: ko\n\n\
+             01:00:13.829 --> 01:00:13.839 align:start position:0%\n한\n \n\n\
+             01:00:13.839 --> 01:00:16.309 align:start position:0%\n한\n미역국<01:00:14.359><c> 끓여</c><01:00:14.720><c> 줄까</c>\n\n\
+             01:00:16.309 --> 01:00:16.319 align:start position:0%\n미역국 끓여 줄까\n \n\n\
+             01:00:16.319 --> 01:00:19.230 align:start position:0%\n미역국 끓여 줄까\n친구가<01:00:17.240><c> 미역국</c><01:00:17.799><c> 끓여줄게.</c>\n\n\
+             01:00:19.230 --> 01:00:19.240 align:start position:0%\n \n \n",
+        );
+        assert_eq!(
+            parsed,
+            vec![
+                interval(3600.0 + 13.839, 3600.0 + 16.309, "한 미역국 끓여 줄까"),
+                interval(3600.0 + 16.319, 3600.0 + 19.230, "친구가 미역국 끓여줄게."),
+            ]
+        );
+        let validation = validate_intervals(parsed, 4000.0, VerificationState::Unverified);
+        assert_eq!(
+            validation
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.kind == CaptionDiagnosticKind::EmptyText)
+                .count(),
+            0
+        );
+    }
+
+    #[test]
+    fn keeps_every_automatic_track_before_every_creator_track() {
+        let info = serde_json::json!({
+            "subtitles": {
+                "ko": [{"url": "creator-ko", "vss_id": "creator-ko"}],
+                "ko-orig": [{"url": "creator-orig", "vss_id": "creator-orig"}]
+            },
+            "automatic_captions": {
+                "ko-orig": [{"url": "automatic-orig", "vss_id": "automatic-orig"}],
+                "ko": [{"url": "automatic-ko", "vss_id": "automatic-ko"}]
+            }
+        });
+        let tracks = select_tracks(&info);
+        assert_eq!(
+            tracks
+                .iter()
+                .map(|track| (track.source, track.track_id.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                (CaptionSource::Automatic, "automatic-ko"),
+                (CaptionSource::Automatic, "automatic-orig"),
+                (CaptionSource::Creator, "creator-ko"),
+                (CaptionSource::Creator, "creator-orig"),
+            ]
+        );
+    }
+
+    #[test]
+    fn removes_only_the_repeated_prefix_from_single_row_rolling_cues() {
+        let parsed = parse_caption_text(
+            "WEBVTT\n\n\
+             00:00:01.000 --> 00:00:01.010\n<c>미역국</c>\n\n\
+             00:00:01.010 --> 00:00:03.000\n미역국<00:00:02.000><c> 끓여줄까</c>\n\n\
+             00:00:03.000 --> 00:00:03.010\n<c>미역국 끓여줄까</c>\n",
+        );
+        assert_eq!(parsed, vec![interval(1.01, 3.0, "미역국 끓여줄까")]);
+    }
+
+    #[test]
+    fn short_transition_cues_never_displace_the_long_outer_cue() {
+        let parsed = parse_caption_text(
+            "WEBVTT\n\n\
+             00:00:01.000 --> 00:00:01.010\n<c>안녕</c>\n\n\
+             00:00:01.010 --> 00:00:03.000\n안녕<00:00:02.000><c> 반가워</c>\n\n\
+             00:00:03.000 --> 00:00:03.010\n<c>안녕 반가워</c>\n",
+        );
+        assert_eq!(parsed, vec![interval(1.01, 3.0, "안녕 반가워")]);
+    }
+
+    #[test]
     fn records_inverted_out_of_range_overlap_duplicate_gaps_and_unverified_offset() {
         let validation = validate_intervals(
             vec![
@@ -911,7 +1032,7 @@ mod tests {
     }
 
     #[test]
-    fn verified_plan_separates_trusted_intervals_from_non_overlapping_whisper_fallbacks() {
+    fn usable_caption_never_creates_whisper_gap_fallbacks() {
         let validation = validate_intervals(
             vec![interval(2.0, 4.0, "trusted"), interval(6.0, 7.0, "trusted")],
             10.0,
@@ -920,16 +1041,11 @@ mod tests {
         let plan = plan_fallbacks(&validation, 10.0);
         assert!(!plan.full_whisper);
         assert_eq!(plan.trusted.len(), 2);
-        assert_eq!(plan.fallback[0].start_seconds, 0.0);
-        assert_eq!(plan.fallback[0].end_seconds, 2.0);
-        assert_eq!(plan.fallback[1].start_seconds, 4.0);
-        assert_eq!(plan.fallback[1].end_seconds, 6.0);
-        assert_eq!(plan.fallback[2].start_seconds, 7.0);
-        assert_eq!(plan.fallback[2].end_seconds, 10.0);
+        assert!(plan.fallback.is_empty());
     }
 
     #[test]
-    fn verified_caption_falls_back_only_for_invalid_intervals_and_keeps_unrelated_cues() {
+    fn overlap_warning_does_not_discard_other_usable_cues_or_start_whisper() {
         let validation = validate_intervals(
             vec![
                 interval(2.0, 5.0, "one"),
@@ -941,11 +1057,8 @@ mod tests {
         );
         let plan = plan_fallbacks(&validation, 10.0);
         assert!(!plan.full_whisper);
-        assert_eq!(plan.trusted, vec![interval(8.0, 9.0, "trusted")]);
-        assert!(plan
-            .fallback
-            .iter()
-            .any(|range| range.start_seconds <= 2.0 && range.end_seconds >= 6.0));
+        assert_eq!(plan.trusted.len(), 3);
+        assert!(plan.fallback.is_empty());
         assert!(plan
             .diagnostics
             .iter()
@@ -953,7 +1066,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_index_set_covers_both_overlap_duplicate_sides_and_other_bad_cues() {
+    fn damaged_cues_are_dropped_individually_without_whisper_supplementation() {
         let validation = validate_intervals(
             vec![
                 interval(1.0, 4.0, "overlap"),
@@ -971,9 +1084,9 @@ mod tests {
         );
         let plan = plan_fallbacks(&validation, 14.0);
         assert!(!plan.full_whisper);
-        assert_eq!(plan.trusted, vec![interval(12.0, 13.0, "trusted")]);
-        assert!(plan.fallback.iter().any(|range| range.start_seconds <= 1.0));
-        assert!(plan.fallback.iter().any(|range| range.end_seconds >= 11.0));
+        assert_eq!(plan.trusted.len(), 5);
+        assert!(plan.trusted.iter().any(|interval| interval.text == "trusted"));
+        assert!(plan.fallback.is_empty());
     }
 
     #[test]
@@ -1010,28 +1123,52 @@ mod tests {
         assert!(validation.diagnostics.len() <= 7);
 
         let plan = plan_fallbacks(&validation, 20_010.0);
-        assert_eq!(plan.trusted.len(), 10_000);
-        assert!(plan
-            .fallback
-            .iter()
-            .any(|range| range.start_seconds <= 0.0 && range.end_seconds >= 1.5));
-        assert!(plan
-            .fallback
-            .iter()
-            .any(|range| range.start_seconds <= 2.0 && range.end_seconds >= 3.0));
+        assert_eq!(plan.trusted.len(), 10_004);
+        assert!(plan.fallback.is_empty());
     }
 
     #[test]
-    fn unverified_or_missing_caption_plans_full_whisper() {
+    fn unverified_usable_caption_is_kept_and_missing_caption_needs_whisper_decision() {
         let validation = validate_intervals(
             vec![interval(1.0, 2.0, "x")],
             10.0,
             VerificationState::Unverified,
         );
         let plan = plan_fallbacks(&validation, 10.0);
-        assert!(plan.full_whisper);
-        assert_eq!(plan.fallback.len(), 1);
-        assert_eq!(plan.fallback[0].end_seconds, 10.0);
+        assert!(!plan.full_whisper);
+        assert_eq!(plan.trusted, vec![interval(1.0, 2.0, "x")]);
+        assert!(plan.fallback.is_empty());
+
+        let missing = plan_fallbacks(
+            &validate_intervals(Vec::new(), 10.0, VerificationState::Failed),
+            10.0,
+        );
+        assert!(missing.full_whisper);
+        assert_eq!(missing.fallback.len(), 1);
+        assert_eq!(missing.fallback[0].end_seconds, 10.0);
+    }
+
+    #[test]
+    fn repeated_diagnostics_are_summarized_by_kind() {
+        let diagnostics = vec![
+            CaptionDiagnostic {
+                kind: CaptionDiagnosticKind::EmptyText,
+                interval_index: Some(1),
+                start_seconds: Some(1.0),
+                end_seconds: Some(1.01),
+                detail: "비어 있음".into(),
+            },
+            CaptionDiagnostic {
+                kind: CaptionDiagnosticKind::EmptyText,
+                interval_index: Some(2),
+                start_seconds: Some(2.0),
+                end_seconds: Some(2.01),
+                detail: "비어 있음".into(),
+            },
+        ];
+        let summary = summarize_diagnostics(&diagnostics);
+        assert_eq!(summary.len(), 1);
+        assert!(summary[0].detail.starts_with("2개 · 대표:"));
     }
 
     #[test]

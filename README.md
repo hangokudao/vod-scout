@@ -4,19 +4,19 @@
 
 ## Windows 설치 파일
 
-현재 공개 다운로드는 v0.4.0입니다. [**VOD Scout v0.4.0 다운로드 (.exe)**](https://github.com/hangokudao/vod-scout/releases/download/v0.4.0/VOD.Scout_0.4.0_x64-setup.exe)
+현재 공개 다운로드는 v0.5.0입니다. [**VOD Scout v0.5.0 다운로드 (.exe)**](https://github.com/hangokudao/vod-scout/releases/download/v0.5.0/VOD.Scout_0.5.0_x64-setup.exe)
 
-[변경 내용·SHA-256·서명 파일 보기](https://github.com/hangokudao/vod-scout/releases/tag/v0.4.0)
+[변경 내용·SHA-256 보기](https://github.com/hangokudao/vod-scout/releases/tag/v0.5.0)
 
-Windows 코드 서명 인증서가 없어 처음 설치할 때 SmartScreen 경고가 표시될 수 있습니다. 설치 파일 크기·SHA-256·updater 서명은 [v0.4.0 릴리스 기록](docs/V0.4.0-RELEASE.md)과 [빌드 명세](BUILD-MANIFEST.md)를 따릅니다.
+Windows 코드 서명 인증서가 없어 처음 설치할 때 SmartScreen 경고가 표시될 수 있습니다. v0.5.0은 자동 업데이트 자산을 제공하지 않으며, 설치 파일 크기와 SHA-256은 [v0.5.0 릴리스 기록](docs/V0.5.0-RELEASE.md)과 [빌드 명세](BUILD-MANIFEST.md)를 따릅니다.
 
-## v0.5.0-rc.1 공개 시험판
+## v0.5.0 정식 릴리스
 
-현재 소스와 패키지 기준 버전은 **v0.5.0-rc.1**입니다. GPU·Auto·CPU 모드와 GPU runtime을 유지한 unsigned GitHub Pre-release이며, 설치할 때 Windows SmartScreen 경고가 표시될 수 있습니다. GPU 실패 후 CPU 자동 전환은 실제 실패 조건에서 검증하지 않아 `DEFERRED`입니다. 공개 전까지 위 v0.4.0 안정 버전 다운로드를 유지합니다.
+현재 소스와 패키지 기준 버전은 **v0.5.0**입니다. GPU·Auto·CPU 모드와 GPU runtime을 유지한 정식 GitHub Release이며, 설치 파일은 코드 서명되지 않아 Windows SmartScreen 경고가 표시될 수 있습니다. GPU 실패 후 CPU 자동 전환은 실제 실패 조건에서 검증하지 않아 `DEFERRED`이고, updater 자산은 제공하지 않습니다.
 
-## 0.4.0에서 되는 것
+## 0.5.0에서 되는 것
 
-`로컬 영상 또는 YouTube URL → 로컬 영상 확보 → ffprobe → 10분 오디오 청크 → 한국어 Whisper 음성 인식 → 오디오·발화·채팅 움직임 점수 → 겹치지 않는 후보 → 앱 내 영상 검토`
+`로컬 영상 또는 YouTube URL → YouTube 한국어 자막 우선 확인 → 필요한 경우에만 승인 후 Whisper 음성 인식 → 오디오·대화·채팅 움직임 점수 → 겹치지 않는 후보 → 앱 내 영상 검토`
 
 v0.3.4 기능에 더해 긴 영상 처리의 재개 정확성, 후보 범위, 취소 정리와 YouTube 저장 공간 확인을 보완합니다. 승인된 약 8시간 53분 입력으로 전체 다운로드·분석과 후보 생성을 확인했지만, 모든 장시간 영상에서 같은 처리 시간을 보장하지는 않습니다.
 
@@ -48,7 +48,7 @@ v0.3.4 기능에 더해 긴 영상 처리의 재개 정확성, 후보 범위, �
 - 후보 앞뒤 영상 구간과 음성 인식 문장을 원본 타임코드로 확인하고 바로 이동
 - 실제 미디어와 별개인 결정론적 실패/충돌/무응답 데모
 
-채팅 글자를 읽는 OCR, GPU 음성 인식, LLM 재순위, 완성 쇼츠 렌더링은 아직 구현하지 않았습니다. 채팅 움직임은 화면 오른쪽 영역의 변화량이지 채팅 내용 분석이 아닙니다. 비공개·멤버십·로그인 필요 영상과 진행 중인 라이브는 지원하지 않습니다.
+채팅 글자를 읽는 OCR, LLM 재순위, 완성 쇼츠 렌더링은 아직 구현하지 않았습니다. 채팅 움직임은 화면 오른쪽 영역의 변화량이지 채팅 내용 분석이 아닙니다. 비공개·멤버십·로그인 필요 영상과 진행 중인 라이브는 지원하지 않습니다.
 
 ## 설치 안내
 
@@ -57,7 +57,7 @@ v0.3.4 기능에 더해 긴 영상 처리의 재개 정확성, 후보 범위, �
 - Windows 10/11 x64
 - 설치 파일 코드 서명 없음: SmartScreen 경고가 표시될 수 있음
 - 모델과 도구를 포함해 설치 파일이 큼
-- CPU 음성 인식이므로 영상 길이와 PC 성능에 따라 상당한 시간이 걸릴 수 있음
+- GPU 또는 CPU 음성 인식은 영상 길이와 PC 성능에 따라 상당한 시간이 걸릴 수 있음
 
 정확한 파일 크기·SHA-256과 검증 결과는 [빌드 명세](BUILD-MANIFEST.md)에 기록합니다.
 
