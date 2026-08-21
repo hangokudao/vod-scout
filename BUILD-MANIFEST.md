@@ -1,15 +1,13 @@
 # VOD Scout 빌드 명세
 
-## v0.5.0-rc.1 unsigned Pre-release 최종 후보
+## v0.5.0 unsigned 정식 Release 최종 후보
 
-- 버전 정본: `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, `src/releaseNotes.ts`, installer smoke 기대 버전이 `0.5.0-rc.1`로 일치한다.
-- GPU·Auto·CPU 기능과 GPU runtime은 변경하지 않는다. 실제 JKY `whisper.cpp-gpu` 완료 증거를 GPU 동작 근거로 인정하고, GPU 실패 뒤 CPU 자동 전환은 `DEFERRED`다.
-- `createUpdaterArtifacts=false`; 공개 자산은 unsigned NSIS installer, `SBOM.spdx.json`, `SHA256SUMS.txt`만 허용하며 `.sig`, `latest.json`, updater zip은 금지한다.
-- 최종 검증은 npm `49`, Rust 본체 `128 passed·1 ignored`, fixture-worker `6`, 보안 `6`, production dependency audit 취약점 `0`, build와 `git diff --check`가 `PASS`다.
-- 짧은 GPU fixture는 GTX 1060 3GB의 CUDA0 backend, `use gpu = 1`, `gpu_device = 0`과 유효한 47-byte SRT를 확인했다. SRT SHA-256은 `74e9f3ff2da6c73ad7d9bb45ee7f1a5be4a7a8cb29c1c2a33920af9be4ed882c`, 증거 경로는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-rc1-gpu-20260821-020758`이다.
-- 최종 EXE는 `16,279,040` bytes/SHA-256 `922a5f2a6e9a68485fdbdbfdbc3f16f26bab246fa4e884bfd01dcda99f6c706a`, unsigned NSIS는 `595,322,815` bytes/SHA-256 `ab231a9619cbbd5c1d5c6e132262202e21cecd8db3ccdce255242e1ab51e3558`이며 둘 다 `0.5.0-rc.1`, Authenticode `NotSigned`다.
-- 최종 SBOM은 `618,021` bytes/SHA-256 `71f87ef95a3061a0879ecafad77162a74f9e7538d968a8188566f23521bb7c67`, `SHA256SUMS.txt`는 `182` bytes/SHA-256 `32dc5bcee73ed0db4c748ba3addfd6856d9da0e0d6d88beb5c878cda68311553`다. updater `.sig`, `latest.json`, updater zip은 `0`개다.
-- CDP 화면 스모크는 visible·비최소화 창을 포커스 없이 화면 밖으로 이동해 메인 화면, `0.5.0-rc.1`, Auto/GPU/CPU, 속도 단계와 CPU 사용량을 확인했다. 스크린샷은 `102,626` bytes/SHA-256 `599c7132e57d0baeae12c84f8222ef6d9c669aae930aed4efcee7f2f25153f0d`, 증거 경로는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-rc1-cdp-smoke-20260821-024212`이며 이번 재검증 전후 기존 데이터 지문은 일치한다.
+- 버전 정본: `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, `src/releaseNotes.ts`, EXE와 NSIS가 `0.5.0`으로 일치한다.
+- GPU·Auto·CPU 기능과 GPU runtime은 유지한다. Cargo 결과는 `136 passed·1 flaky·1 ignored`이며 판정은 `PASS_WITH_KNOWN_TEST_LIMITATION`; GPU 실패 뒤 CPU 자동 전환은 `DEFERRED`다.
+- `createUpdaterArtifacts=false`; 공개 자산은 unsigned NSIS installer, `SBOM.spdx.json`, `SHA256SUMS.txt`, Release notes만 허용하며 `.sig`, `latest.json`, updater zip은 생성하지 않았다.
+- 최종 EXE는 `16,313,856` bytes/SHA-256 `ccf1e0022abaf64c158c9b28ad900afb95a96643f3dc53f021a54cb1f3d37cf6`다. 공개용 unsigned NSIS `VOD.Scout_0.5.0_x64-setup.exe`는 `595,413,873` bytes/SHA-256 `abd3c2ea3b49673b438880363995bd750ef36d788a35bd907f6255f10b1f4221`, PE `0.5.0`, Authenticode `NotSigned`다.
+- 최종 `SBOM.spdx.json`은 SPDX-2.3, `656` packages, `615,471` bytes/SHA-256 `50cffc7ba05f33c0a55262296a0c346898a06c4193c255d3b99783ace20f2639`다. `SHA256SUMS.txt`는 `177` bytes/SHA-256 `c86eb05fb3257f26b25d2be5d2066805a526ad14cb6704be427855481ad1e62e`이며 installer·SBOM 해시와 일치한다.
+- CDP 화면 스모크는 새 임시 데이터·WebView 경로에서 `로컬 파일` 탭을 선택한 뒤 메인 화면, `0.5.0`, Auto/GPU/CPU, 속도 단계와 CPU 사용량을 확인했다. 스크린샷은 `105,842` bytes/SHA-256 `6e48040201047e21b67defd1963819dc266d9dc92f0726f736cf1e8881f80691`, 증거 경로는 `C:\Users\myhan\AppData\Local\Temp\vod-scout-v050-cdp-smoke-retry-20260822-022500-fbf8d7b`이며 기존 설치·사용자 데이터 지문은 전후 일치한다.
 
 ## 2026-08-21 이전 엄격 공개 게이트 기록
 

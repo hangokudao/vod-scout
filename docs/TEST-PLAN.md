@@ -8,7 +8,7 @@ PASS 조건은 메인 화면, `0.5.0`, Auto/GPU/CPU 설정 표시, 기존 설치
 
 updater artifact는 만들지 않는다. `.sig`, `latest.json`, updater zip이 release 디렉터리나 GitHub Release 자산에 있으면 실패다.
 
-기존 검증은 프런트엔드 `54/54`, Rust `136 passed·1 flaky·1 ignored`, fixture-worker·보안·build·diff 검사와 실제 CUDA0 GPU fixture가 통과했다. flaky 1개는 Windows 환경 의존 process-tree fixture이며 Cargo 판정은 `PASS_WITH_KNOWN_TEST_LIMITATION`이다. 새 패키지와 단일 CDP 화면 스모크 결과는 최종 자산을 만든 뒤 기록한다.
+기존 검증은 프런트엔드 `54/54`, Rust `136 passed·1 flaky·1 ignored`, fixture-worker·보안·build·diff 검사와 실제 CUDA0 GPU fixture가 통과했다. flaky 1개는 Windows 환경 의존 process-tree fixture이며 Cargo 판정은 `PASS_WITH_KNOWN_TEST_LIMITATION`이다. 정식 v0.5.0 unsigned NSIS·SBOM·checksums와 `로컬 파일` 탭의 Auto/GPU/CPU·CPU 사용량을 확인한 단일 CDP 복구 스모크도 `PASS`다.
 
 ## 2026-08-21 이전 엄격 공개 게이트 기록
 
