@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import {
   bootstrap,
+  approveWhisper,
   cancelJob,
   chooseLocalVideo,
   confirmJobDeletion,
@@ -96,11 +97,30 @@ function captionSummaryLabel(captions: CaptionSummary | null | undefined): strin
   if (!captions) return null;
   const source = captions.provenance?.verificationState === "FAILED"
     ? "출처 알 수 없는 자막"
-    : captions.source === "creator" ? "제작자 한국어 자막" : captions.source === "automatic" ? "한국어 자동 자막" : "자막 없음";
-  const quality = captions.quality === "failed" ? "검증 실패" : captions.quality === "trusted" ? "검증된 구간" : captions.quality === "mixed" ? "일부 구간 대체" : "검증 전";
+    : captions.source === "creator" ? "제작자 자막" : captions.source === "automatic" ? "YouTube 자동 자막" : "자막 없음";
+  const quality = captions.quality === "failed" ? "사용 불가" : captions.quality === "usable" ? "사용 중" : "확인 중";
   if (captions.quality === "failed") return `${source} · ${quality}`;
-  if (captions.fallbackIntervals > 0) return `${source} · Whisper 대체 ${captions.fallbackIntervals}구간`;
   return `${source} · ${quality}`;
+}
+
+export function whisperSettingsForJob(job: JobSnapshot | null | undefined) {
+  return {
+    deviceMode: job?.whisper?.deviceMode ?? ("auto" as WhisperDeviceMode),
+    profile: job?.whisper?.profile ?? ("balanced" as WhisperProfile),
+    cpuThreads: job?.whisper?.cpuThreads == null ? "auto" : String(job.whisper.cpuThreads)
+  };
+}
+
+export function usesYoutubeCaptions(job: JobSnapshot | null | undefined): boolean {
+  return !!job
+    && job.sourceKind === "youtube"
+    && !!job.captions?.source
+    && !job.captions.localWhisperFallback
+    && job.captions.quality !== "failed";
+}
+
+export function usesCurrentTranscriptPolicy(job: JobSnapshot | null | undefined): boolean {
+  return !job || job.sourceKind === "demo" || job.transcriptPolicyVersion >= 2;
 }
 
 function captionDiagnosticLabel(kind: string): string {
@@ -584,10 +604,11 @@ function App() {
           setStoredJobs(queued);
           setQueue(queueSnapshot);
           if (restored) {
+            const persisted = whisperSettingsForJob(restored);
             setJob(restored);
-            setWhisperDevice(restored.whisper?.deviceMode ?? "auto");
-            setWhisperProfile(restored.whisper?.profile ?? "balanced");
-            setCpuThreads(restored.whisper?.cpuThreads == null ? "auto" : String(restored.whisper.cpuThreads));
+            setWhisperDevice(persisted.deviceMode);
+            setWhisperProfile(persisted.profile);
+            setCpuThreads(persisted.cpuThreads);
             setCandidateCountValue(restored.candidateCount ?? 20);
             setNewJobMode(false);
           }
@@ -603,6 +624,14 @@ function App() {
       unsubscribe?.();
     };
   }, []);
+
+  useEffect(() => {
+    if (!job) return;
+    const persisted = whisperSettingsForJob(job);
+    setWhisperDevice(persisted.deviceMode);
+    setWhisperProfile(persisted.profile);
+    setCpuThreads(persisted.cpuThreads);
+  }, [job?.id]);
 
   useEffect(() => {
     if (loading || !isDesktopRuntime) return;
@@ -655,8 +684,9 @@ function App() {
     return () => { disposed = true; };
   }, [job?.id, job?.status, job?.completedUnits]);
 
-  const active = job ? ACTIVE_STATUSES.includes(job.status) : false;
-  const resumable = job ? RESUMABLE_STATUSES.includes(job.status) : false;
+  const currentTranscriptPolicy = usesCurrentTranscriptPolicy(job);
+  const active = job ? currentTranscriptPolicy && ACTIVE_STATUSES.includes(job.status) : false;
+  const resumable = job ? currentTranscriptPolicy && RESUMABLE_STATUSES.includes(job.status) : false;
   const sortedCandidates = useMemo(
     () => sortCandidates(job?.candidates ?? [], settings.sortKey),
     [job?.candidates, settings.sortKey]
@@ -684,6 +714,7 @@ function App() {
     ? [...(job.recognitionRuns ?? [])].filter((run) => run.candidateId === selected.id).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0]
     : undefined;
   const recognitionBusy = hasStartedRecognitionRun(job?.recognitionRuns);
+  const youtubeCaptionsInUse = usesYoutubeCaptions(job);
 
   useEffect(() => {
     if (!job?.id || !selected) return;
@@ -725,8 +756,10 @@ function App() {
     if (actionBusy) return "처리 중…";
     if (resumable) return job?.sourceKind === "youtube" ? "다운로드·분석 재개" : `${job?.completedUnits ?? 0}단위 다음부터 재개`;
     if (job?.status === "CREATED" && !newJobMode) return "분석 시작";
+    if (newJobMode && sourceKind === "local") return "Whisper 설정 후 진행";
+    if (newJobMode && sourceKind === "youtube") return "한국어 자막 확인";
     return "작업 만들고 시작";
-  }, [actionBusy, job?.completedUnits, job?.status, newJobMode, resumable]);
+  }, [actionBusy, job?.completedUnits, job?.status, newJobMode, resumable, sourceKind]);
 
   function messageFrom(error: unknown) {
     if (typeof error === "string") return error;
@@ -755,6 +788,7 @@ function App() {
           analysisStartSeconds: start,
           analysisEndSeconds: end,
           whisper: normalizeWhisperSettings(whisperDevice, whisperProfile, cpuThreads),
+          whisperApproved: sourceKind === "local",
           candidateCount
         });
         setJob(target);
@@ -770,8 +804,26 @@ function App() {
     }
   }
 
+  async function approveWhisperAndContinue() {
+    if (!job || job.status !== "NEEDS_INPUT" || actionBusy) return;
+    setActionBusy(true);
+    setUiError(null);
+    try {
+      const approved = await approveWhisper(
+        job.id,
+        normalizeWhisperSettings(whisperDevice, whisperProfile, cpuThreads)
+      );
+      setJob(approved);
+      setJob(await startJob(job.id));
+    } catch (error) {
+      setUiError(messageFrom(error));
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
   async function requestCancel() {
-    if (!job || (!active && !recognitionBusy && job.status !== "INTERRUPTED") || job.status === "CANCELLING") return;
+    if (!job || (!active && !recognitionBusy && !["INTERRUPTED", "NEEDS_INPUT"].includes(job.status)) || job.status === "CANCELLING") return;
     setActionBusy(true);
     setUiError(null);
     try {
@@ -921,6 +973,10 @@ function App() {
 
   function openQueuedJob(item: StoredJobInfo) {
     if (active && item.snapshot.id !== job?.id) return;
+    const persisted = whisperSettingsForJob(item.snapshot);
+    setWhisperDevice(persisted.deviceMode);
+    setWhisperProfile(persisted.profile);
+    setCpuThreads(persisted.cpuThreads);
     setJob(item.snapshot);
     setNewJobMode(false);
     setSettingsOpen(false);
@@ -1200,7 +1256,7 @@ function App() {
                 accept="video/*"
                 onChange={(event) => setSourceLabel(event.target.files?.[0]?.name ?? "")}
               />
-              <p className="field-note"><AlertTriangle size={14} /> {sourceKind === "local" ? "FFmpeg·Whisper base가 로컬에서 실행됩니다. 긴 영상은 10분 청크마다 저장됩니다." : sourceKind === "youtube" ? "공개된 단일 영상만 지원합니다. yt-dlp로 최대 720p까지 내려받은 뒤 FFmpeg·Whisper를 PC 안에서 실행합니다." : "데모는 실제 영상을 읽지 않고 취소·실패·재개 흐름을 검증합니다."}</p>
+              <p className="field-note"><AlertTriangle size={14} /> {sourceKind === "local" ? "아래 설정을 확인하고 승인한 경우에만 FFmpeg·Whisper가 로컬에서 실행됩니다." : sourceKind === "youtube" ? "영상 다운로드 전에 한국어 자막을 먼저 확인합니다. 사용할 자막이 없을 때만 Whisper 사용 여부를 묻습니다." : "데모는 실제 영상을 읽지 않고 취소·실패·재개 흐름을 검증합니다."}</p>
             </div>
 
             {sourceKind !== "demo" ? <section className="analysis-mode-panel" aria-label="분석 방식">
@@ -1219,7 +1275,7 @@ function App() {
               </div> : null}
             </section> : null}
 
-            <section className="analysis-mode-panel whisper-settings-panel" aria-label="음성 인식 설정">
+            {sourceKind === "local" ? <section className="analysis-mode-panel whisper-settings-panel" aria-label="음성 인식 설정">
               <div className="panel-heading"><span><Mic2 size={17} /> 음성 인식 장치</span><strong>{WHISPER_DEVICES.find((item) => item.value === whisperDevice)?.label}</strong></div>
               <div className="analysis-mode-options">
                 {WHISPER_DEVICES.map((item) => (
@@ -1241,7 +1297,7 @@ function App() {
                   {[1, 2, 4, 8, 16, 32].map((value) => <option key={value} value={value}>{value}개 스레드</option>)}
                 </select>
               </label>
-            </section>
+            </section> : null}
 
             <section className="analysis-mode-panel" aria-label="후보 수 설정">
               <div className="panel-heading"><span><ListChecks size={17} /> 후보 수</span><strong>{candidateCount}개</strong></div>
@@ -1285,18 +1341,18 @@ function App() {
                 <p>{job.status === "REVIEW_READY" ? `후보 ${job.candidates.length}개 중 ${reviewedCount}개를 판정했습니다.` : `${job.completedUnits} / ${job.totalUnits} 체크포인트 완료${job.mediaDurationSeconds ? ` · 원본 ${formatTime(Math.round(job.mediaDurationSeconds))}` : ""}${active && timing ? ` · 경과 ${formatDuration(timing.elapsedSeconds)}${timing.remainingSeconds === null ? " · 남은 시간 계산 중" : ` · 약 ${formatDuration(timing.remainingSeconds)} 남음`}` : ""}`}</p>
                 {job.sourceKind === "youtube" && captionSummaryLabel(job.captions) ? <small className="caption-summary">{captionSummaryLabel(job.captions)}</small> : null}
                 {job.sourceKind === "youtube" && job.captions ? <CaptionDetails captions={job.captions} /> : null}
-                <small className="whisper-status">음성 인식: {WHISPER_DEVICES.find((item) => item.value === (job.whisper?.deviceMode ?? "auto"))?.label} · {WHISPER_PROFILES.find((item) => item.value === (job.whisper?.profile ?? "balanced"))?.label} · CPU {job.whisper?.cpuThreads == null ? "자동" : `${job.whisper.cpuThreads}개 스레드`} · 실제 {whisperRuntimeLabel(job.whisperRuntime?.status)}{job.whisperRuntime?.unitIndex == null ? "" : ` · 단위 ${job.whisperRuntime.unitIndex + 1}`}{job.whisperRuntime?.effectiveCpuThreads == null ? "" : ` · ${job.whisperRuntime.effectiveCpuThreads}개 스레드 적용`}{job.whisperRuntime?.gpuFailureReason ? ` · ${job.whisperRuntime.gpuFailureReason}` : ""}</small>
+                <small className="whisper-status">{youtubeCaptionsInUse ? "YouTube 자막을 사용 중입니다 · Whisper 실행 안 함" : `음성 인식: ${WHISPER_DEVICES.find((item) => item.value === (job.whisper?.deviceMode ?? "auto"))?.label} · ${WHISPER_PROFILES.find((item) => item.value === (job.whisper?.profile ?? "balanced"))?.label} · CPU ${job.whisper?.cpuThreads == null ? "자동" : `${job.whisper.cpuThreads}개 스레드`} · 실제 ${whisperRuntimeLabel(job.whisperRuntime?.status)}${job.whisperRuntime?.unitIndex == null ? "" : ` · 단위 ${job.whisperRuntime.unitIndex + 1}`}${job.whisperRuntime?.effectiveCpuThreads == null ? "" : ` · ${job.whisperRuntime.effectiveCpuThreads}개 스레드 적용`}${job.whisperRuntime?.gpuFailureReason ? ` · ${job.whisperRuntime.gpuFailureReason}` : ""}`}</small>
               </div>
               <div className="job-actions">
                 {storageBytes !== null ? <span className="storage-label"><HardDrive size={14} /> {formatBytes(storageBytes)}</span> : null}
                 {job.status === "REVIEW_READY" ? <button className="button ghost" disabled={actionBusy} onClick={() => void exportCsv()}><Download size={15} /> CSV</button> : null}
                 {!active && !recognitionBusy ? <button className="button ghost" onClick={() => setNewJobMode(true)}><Square size={15} /> 새 작업</button> : null}
-                {!active && !recognitionBusy ? <button className="button danger" disabled={actionBusy || previewLoading} onClick={() => void removeCurrentJob()}><Trash2 size={15} /> 작업 삭제</button> : null}
+                {!active && !recognitionBusy && currentTranscriptPolicy ? <button className="button danger" disabled={actionBusy || previewLoading} onClick={() => void removeCurrentJob()}><Trash2 size={15} /> 작업 삭제</button> : null}
                 {active || recognitionBusy ? (
                   <button className="button danger" disabled={job.status === "CANCELLING" || actionBusy} onClick={() => void requestCancel()}>
                     <Pause size={16} /> {job.status === "CANCELLING" ? "취소 중…" : "안전하게 취소"}
                   </button>
-                ) : job.status !== "REVIEW_READY" ? (
+                ) : currentTranscriptPolicy && !["REVIEW_READY", "NEEDS_INPUT"].includes(job.status) ? (
                   <>
                     <button className="button primary" disabled={actionBusy} onClick={() => void runPrimary()}>
                       {resumable ? <RotateCcw size={16} /> : <Play size={16} fill="currentColor" />} {primaryLabel}
@@ -1307,6 +1363,36 @@ function App() {
               </div>
             </section>
 
+            {job.status === "NEEDS_INPUT" ? (
+              <section className="error-panel" aria-label="Whisper 사용 여부 확인">
+                <div className="error-symbol"><Mic2 /></div>
+                <div>
+                  <span className="eyebrow">USER DECISION REQUIRED</span>
+                  <h2>사용 가능한 한국어 자막이 없습니다. Whisper로 음성 인식을 진행하시겠습니까?</h2>
+                  <p>선택하기 전에는 영상 다운로드, Whisper 실행, 후보 생성을 시작하지 않습니다.</p>
+                  <section className="analysis-mode-panel whisper-settings-panel" aria-label="Whisper 사전 설정">
+                    <div className="panel-heading"><span><Mic2 size={17} /> 음성 인식 장치</span><strong>{WHISPER_DEVICES.find((item) => item.value === whisperDevice)?.label}</strong></div>
+                    <div className="analysis-mode-options">
+                      {WHISPER_DEVICES.map((item) => <button key={item.value} type="button" className={whisperDevice === item.value ? "selected" : ""} onClick={() => setWhisperDevice(item.value)}><strong>{item.label}</strong><small>{item.detail}</small></button>)}
+                    </div>
+                    <div className="analysis-mode-options">
+                      {WHISPER_PROFILES.map((item) => <button key={item.value} type="button" className={whisperProfile === item.value ? "selected" : ""} onClick={() => setWhisperProfile(item.value)}><strong>{item.label}</strong><small>{item.detail}</small></button>)}
+                    </div>
+                    <label className="cpu-thread-control">CPU 사용량
+                      <select value={cpuThreads} onChange={(event) => setCpuThreads(event.target.value)}>
+                        <option value="auto">자동</option>
+                        {[1, 2, 4, 8, 16, 32].map((value) => <option key={value} value={value}>{value}개 스레드</option>)}
+                      </select>
+                    </label>
+                  </section>
+                  <div className="source-actions">
+                    <button className="button danger" disabled={actionBusy} onClick={() => void requestCancel()}><X size={16} /> 취소</button>
+                    <button className="button primary" disabled={actionBusy} onClick={() => void approveWhisperAndContinue()}><Mic2 size={16} /> Whisper 설정 후 진행</button>
+                  </div>
+                </div>
+              </section>
+            ) : null}
+
             {job.errorMessage ? (
               <section className="error-panel" role="alert">
                 <div className="error-symbol"><AlertTriangle /></div>
@@ -1315,6 +1401,17 @@ function App() {
                   <h2>{job.errorMessage}</h2>
                   <p>완료된 {job.completedUnits}단위는 저장돼 있습니다. 같은 작업을 이어서 실행할 수 있습니다.</p>
                   {job.errorDetail ? <details><summary>진단 상세</summary><code>{job.errorDetail}</code></details> : null}
+                </div>
+              </section>
+            ) : null}
+
+            {!currentTranscriptPolicy ? (
+              <section className="error-panel" role="status">
+                <div className="error-symbol"><AlertTriangle /></div>
+                <div>
+                  <span className="eyebrow">REANALYSIS REQUIRED</span>
+                  <h2>이전 자막·Whisper 정책으로 만든 작업입니다.</h2>
+                  <p>기존 결과와 파일은 그대로 보존합니다. 새 정책을 적용하려면 새 작업에서 명시적으로 다시 분석해 주세요.</p>
                 </div>
               </section>
             ) : null}
@@ -1403,6 +1500,7 @@ function App() {
                     <div className="detail-title">
                       <div>
                         <span className="eyebrow">CANDIDATE {String(selectedIndex + 1).padStart(2, "0")}</span>
+                        {youtubeCaptionsInUse ? <span className="caption-summary">{job.captions?.source === "automatic" ? "YouTube 자동 자막" : "제작자 자막"}</span> : null}
                         <h2>{safeCandidateDerivedText(selected.title)}</h2>
                       </div>
                       <span className="total-score"><small>TOTAL</small>{selected.totalScore}</span>
@@ -1485,9 +1583,13 @@ function App() {
                       </section>
                     ) : null}
                     <div className="candidate-tools">
-                      <button className="button ghost compact" disabled={actionBusy || recognitionBusy} onClick={() => void rerunSelectedCandidate()}>
-                        <Mic2 size={15} /> {recognitionBusy ? "다시 음성 인식 중…" : "다시 음성 인식"}
-                      </button>
+                      {youtubeCaptionsInUse ? (
+                        <span className="field-note"><Mic2 size={15} /> YouTube 자막을 사용하는 작업입니다</span>
+                      ) : (
+                        <button className="button ghost compact" disabled={actionBusy || recognitionBusy || (job.sourceKind !== "demo" && !job.whisperApproved)} onClick={() => void rerunSelectedCandidate()}>
+                          <Mic2 size={15} /> {recognitionBusy ? "다시 음성 인식 중…" : "다시 음성 인식"}
+                        </button>
+                      )}
                       <button className="button ghost compact" onClick={() => void copyTimecode()}><Copy size={15} /> 타임코드 복사</button>
                       <button className="button ghost compact" disabled={actionBusy} onClick={() => void exportCsv()}><Download size={15} /> CSV 내보내기</button>
                     </div>

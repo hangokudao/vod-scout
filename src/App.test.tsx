@@ -19,9 +19,12 @@ import App, {
   normalizeWhisperSettings,
   queueEvaluationExplanation,
   resourceMetricValue,
+  usesYoutubeCaptions,
+  usesCurrentTranscriptPolicy,
+  whisperSettingsForJob,
   type CandidateSortKey
 } from "./App";
-import type { Candidate } from "./types";
+import type { Candidate, JobSnapshot } from "./types";
 
 function candidate(overrides: Partial<Candidate> & { id: string }): Candidate {
   return {
@@ -384,10 +387,33 @@ describe("settings entry visibility", () => {
 
   it("shows GPU device, profile, and bounded CPU controls before starting", async () => {
     render(<App />);
+    fireEvent.click(await screen.findByRole("tab", { name: /로컬 파일/ }));
     expect(await screen.findByRole("button", { name: /자동\(GPU 우선\)/ })).toBeVisible();
     expect(screen.getByRole("button", { name: /빠르게/ })).toBeVisible();
     expect(screen.getByRole("button", { name: /정확하게/ })).toBeVisible();
     expect(screen.getByRole("combobox")).toHaveValue("auto");
+  });
+});
+
+describe("YouTube caption policy controls", () => {
+  it("disables Whisper features only when a usable YouTube caption is in use", () => {
+    const base = {
+      sourceKind: "youtube",
+      captions: {
+        source: "automatic",
+        quality: "usable",
+        localWhisperFallback: false
+      }
+    } as JobSnapshot;
+    expect(usesYoutubeCaptions(base)).toBe(true);
+    expect(usesYoutubeCaptions({ ...base, captions: { ...base.captions!, localWhisperFallback: true } })).toBe(false);
+    expect(usesYoutubeCaptions({ ...base, sourceKind: "local" })).toBe(false);
+  });
+
+  it("keeps legacy media jobs read-only while allowing demo compatibility", () => {
+    expect(usesCurrentTranscriptPolicy({ sourceKind: "youtube", transcriptPolicyVersion: 1 } as JobSnapshot)).toBe(false);
+    expect(usesCurrentTranscriptPolicy({ sourceKind: "local", transcriptPolicyVersion: 1 } as JobSnapshot)).toBe(false);
+    expect(usesCurrentTranscriptPolicy({ sourceKind: "demo", transcriptPolicyVersion: 1 } as JobSnapshot)).toBe(true);
   });
 });
 
@@ -400,6 +426,28 @@ describe("Whisper settings payload", () => {
     });
     expect(normalizeWhisperSettings("cpu", "fast", "99").cpuThreads).toBe(32);
     expect(normalizeWhisperSettings("cpu", "fast", "0").cpuThreads).toBe(1);
+  });
+
+  it("restores device, profile, and CPU threads from each selected job", () => {
+    const first = {
+      id: "job-first",
+      whisper: { deviceMode: "gpu", profile: "accurate", cpuThreads: 7 }
+    } as JobSnapshot;
+    const second = {
+      id: "job-second",
+      whisper: { deviceMode: "cpu", profile: "fast", cpuThreads: 2 }
+    } as JobSnapshot;
+
+    expect(whisperSettingsForJob(first)).toEqual({
+      deviceMode: "gpu",
+      profile: "accurate",
+      cpuThreads: "7"
+    });
+    expect(whisperSettingsForJob(second)).toEqual({
+      deviceMode: "cpu",
+      profile: "fast",
+      cpuThreads: "2"
+    });
   });
 });
 

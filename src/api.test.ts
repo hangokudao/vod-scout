@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  createJob,
   getQueue,
   selectCandidatesForCount,
   syncCandidateDecision,
   syncCandidateTranscript
 } from "./api";
-import type { Candidate } from "./types";
+import type { Candidate, CreateJobInput } from "./types";
 
 function candidate(id: string): Candidate {
   return {
@@ -64,5 +65,37 @@ describe("mock queue evaluation contract", () => {
       parallelAvailable: false,
       sequentialFallbackReason: null
     });
+  });
+});
+
+describe("Whisper approval policy", () => {
+  it("rejects a local file job until the user explicitly approves its settings", async () => {
+    const input = {
+      sourceKind: "local",
+      sourceLabel: "fixture.mp4",
+      scenario: "normal",
+      analysisMode: "full",
+      analysisStartSeconds: null,
+      analysisEndSeconds: null,
+      whisper: { deviceMode: "auto", profile: "balanced", cpuThreads: null },
+      whisperApproved: false,
+      candidateCount: 20
+    } satisfies CreateJobInput;
+    await expect(createJob(input)).rejects.toThrow("사용을 승인한 뒤에만");
+  });
+
+  it("rejects creation-time Whisper approval for a YouTube job", async () => {
+    const input = {
+      sourceKind: "youtube",
+      sourceLabel: "https://www.youtube.com/watch?v=fixture",
+      scenario: "normal",
+      analysisMode: "full",
+      analysisStartSeconds: null,
+      analysisEndSeconds: null,
+      whisper: { deviceMode: "gpu", profile: "accurate", cpuThreads: 6 },
+      whisperApproved: true,
+      candidateCount: 20
+    } satisfies CreateJobInput;
+    await expect(createJob(input)).rejects.toThrow("NEEDS_INPUT 상태에서만");
   });
 });

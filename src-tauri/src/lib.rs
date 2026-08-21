@@ -11,7 +11,7 @@ mod whisper;
 use crate::domain::{
     normalize_candidate_count, AnalysisMode, Candidate, CandidateDecision, CandidateRecognitionRun,
     CandidateRevision, JobSnapshot, JobStatus, RecognitionRunStatus, Scenario, SourceKind,
-    TranscriptQualityStatus,
+    TranscriptQualityStatus, TRANSCRIPT_POLICY_VERSION,
 };
 use crate::whisper::WhisperSettings;
 use crate::resource::{ResourceDecision, ResourceSample, ResourceStage, StageResourceMetric};
@@ -79,6 +79,8 @@ struct CreateJobInput {
     analysis_end_seconds: Option<u32>,
     #[serde(default)]
     whisper: WhisperSettings,
+    #[serde(default)]
+    whisper_approved: bool,
     #[serde(default = "default_candidate_count_input")]
     candidate_count: u8,
 }
@@ -228,6 +230,24 @@ fn next_automatic_job(queue: &QueueIndex, jobs: &[JobSnapshot]) -> Option<JobSna
         .flatten()
 }
 
+fn validate_job_start_policy(job: &JobSnapshot) -> Result<(), String> {
+    if job.source_kind != SourceKind::Demo
+        && job.transcript_policy_version != TRANSCRIPT_POLICY_VERSION
+    {
+        return Err("이전 자막·Whisper 정책으로 만든 작업입니다. 기존 결과는 그대로 보존되며 새 작업에서 명시적으로 다시 분석해야 합니다.".into());
+    }
+    if job.source_kind == SourceKind::Local && !job.whisper_approved {
+        return Err("로컬 파일은 Whisper 설정을 확인하고 사용을 승인한 뒤에만 분석할 수 있습니다.".into());
+    }
+    if job.source_kind == SourceKind::Youtube
+        && job.status == JobStatus::NeedsInput
+        && !job.whisper_approved
+    {
+        return Err("Whisper 설정을 확인하고 사용을 승인하거나 작업을 취소해 주세요.".into());
+    }
+    Ok(())
+}
+
 fn claim_queue_execution(state: &AppState) -> bool {
     state
         .running
@@ -318,6 +338,52 @@ where
     Ok(snapshot)
 }
 
+fn select_job_by_id_if_idle(state: &AppState, job_id: &str) -> Result<(), String> {
+    let current_matches = state
+        .job
+        .lock()
+        .map_err(|_| "작업 상태 잠금이 손상됐습니다.".to_string())?
+        .as_ref()
+        .is_some_and(|job| job.id == job_id);
+    if current_matches {
+        return Ok(());
+    }
+    if state.running.load(Ordering::SeqCst) {
+        return Err("다른 작업이 실행 중이어서 이 작업을 선택할 수 없습니다.".into());
+    }
+    let selected = state
+        .store
+        .list_jobs()
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .find(|job| job.id == job_id)
+        .ok_or_else(|| "요청한 작업을 찾을 수 없습니다.".to_string())?;
+    *state
+        .job
+        .lock()
+        .map_err(|_| "작업 상태 잠금이 손상됐습니다.".to_string())? = Some(selected);
+    Ok(())
+}
+
+fn mutate_job_by_id<R, F>(
+    app: &tauri::AppHandle<R>,
+    state: &AppState,
+    job_id: &str,
+    mutation: F,
+) -> Result<JobSnapshot, String>
+where
+    R: tauri::Runtime,
+    F: FnOnce(&mut JobSnapshot) -> Result<(), String>,
+{
+    select_job_by_id_if_idle(state, job_id)?;
+    mutate_job(app, state, |job| {
+        if job.id != job_id {
+            return Err("현재 작업과 요청한 작업이 다릅니다.".into());
+        }
+        mutation(job)
+    })
+}
+
 fn resume_fixture_status(completed_units: u32) -> JobStatus {
     match completed_units {
         0 | 1 => JobStatus::Acquiring,
@@ -349,32 +415,6 @@ fn resume_media_status(completed_units: u32, total_units: u32) -> JobStatus {
     }
 }
 
-fn migrate_snapshot(mut loaded: JobSnapshot) -> (JobSnapshot, bool) {
-    if loaded.schema_version < 4 {
-        loaded.schema_version = 4;
-        loaded.analysis_mode = AnalysisMode::Full;
-        loaded.analysis_start_seconds = None;
-        loaded.analysis_end_seconds = None;
-        if loaded.status != JobStatus::ReviewReady {
-            loaded.completed_units = 0;
-            loaded.total_units = 12;
-            loaded.status = JobStatus::Interrupted;
-            loaded.error_message =
-                Some("이전 버전 작업은 분석 설정을 확인한 뒤 다시 시작해야 합니다.".into());
-            loaded.error_detail = Some("v0.3.2 체크포인트 fingerprint 초기화".into());
-            loaded.push_activity("migration", "이전 체크포인트를 안전하게 무효화했습니다.");
-        }
-        return (loaded, true);
-    }
-
-    if loaded.schema_version == 4 {
-        loaded.schema_version = 5;
-        loaded.push_activity("migration", "schema 4 작업을 새 음성 인식 설정으로 복원했습니다.");
-        return (loaded, true);
-    }
-    (loaded, false)
-}
-
 const APP_INTERRUPTED_RECOGNITION_REASON: &str = "앱 종료로 음성 인식이 중단됐습니다.";
 
 fn recover_started_recognition_runs(job: &mut JobSnapshot) -> bool {
@@ -394,6 +434,11 @@ fn recover_started_recognition_runs(job: &mut JobSnapshot) -> bool {
     recovered
 }
 
+fn should_recover_on_bootstrap(job: &JobSnapshot) -> bool {
+    job.source_kind == SourceKind::Demo
+        || job.transcript_policy_version == TRANSCRIPT_POLICY_VERSION
+}
+
 #[tauri::command]
 fn bootstrap(
     app: tauri::AppHandle,
@@ -402,8 +447,10 @@ fn bootstrap(
     let jobs = state.store.list_jobs().map_err(|error| error.to_string())?;
     if jobs.is_empty() { return Ok(None); }
     let mut interrupted = false;
-    for original in jobs {
-        let (mut loaded, migrated) = migrate_snapshot(original);
+    for mut loaded in jobs {
+        if !should_recover_on_bootstrap(&loaded) {
+            continue;
+        }
         let recovered_runs = recover_started_recognition_runs(&mut loaded);
         let was_active = loaded.status.is_active();
         if was_active {
@@ -413,7 +460,7 @@ fn bootstrap(
             loaded.push_activity("recovery", "중단된 작업을 복원했습니다. 사용자가 재개 또는 취소해야 합니다.");
             interrupted = true;
         }
-        if migrated || recovered_runs || was_active {
+        if recovered_runs || was_active {
             state.store.save(&loaded).map_err(|error| error.to_string())?;
         }
     }
@@ -442,6 +489,12 @@ fn create_job(
     input: CreateJobInput,
 ) -> Result<JobSnapshot, String> {
     validate_source(&input)?;
+    if input.source_kind == SourceKind::Youtube && input.whisper_approved {
+        return Err("YouTube 작업은 한국어 자막을 확인한 뒤 NEEDS_INPUT 상태에서만 Whisper를 승인할 수 있습니다.".into());
+    }
+    if input.source_kind == SourceKind::Local && !input.whisper_approved {
+        return Err("로컬 파일은 Whisper 설정을 확인하고 사용을 승인한 뒤에만 분석할 수 있습니다.".into());
+    }
     let job = JobSnapshot::new(
         Uuid::new_v4().to_string(),
         input.source_kind,
@@ -454,6 +507,7 @@ fn create_job(
     let mut job = job;
     job.candidate_count = normalize_candidate_count(input.candidate_count);
     job.whisper = input.whisper.normalized();
+    job.whisper_approved = input.whisper_approved;
     state.store.save(&job).map_err(|error| error.to_string())?;
     register_job_in_queue(&state, job.id.clone())?;
     if let Some(event) = job.activity.last() {
@@ -471,6 +525,31 @@ fn create_job(
             .map_err(|error| error.to_string())?;
     }
     Ok(job)
+}
+
+#[tauri::command]
+fn approve_whisper(
+    app: tauri::AppHandle,
+    state: State<'_, Arc<AppState>>,
+    job_id: String,
+    whisper: WhisperSettings,
+) -> Result<JobSnapshot, String> {
+    mutate_job_by_id(&app, &state, &job_id, |job| {
+        if job.source_kind != SourceKind::Youtube || job.status != JobStatus::NeedsInput {
+            return Err("한국어 자막이 없어 사용자 선택을 기다리는 YouTube 작업에서만 Whisper를 승인할 수 있습니다.".into());
+        }
+        if job.transcript_policy_version != TRANSCRIPT_POLICY_VERSION {
+            return Err("이전 자막 정책으로 만든 작업입니다. 새 작업에서 명시적으로 다시 분석해 주세요.".into());
+        }
+        if job.whisper_approved {
+            return Err("이 작업의 Whisper 설정은 이미 승인됐습니다.".into());
+        }
+        job.whisper = whisper.clone().normalized();
+        job.whisper_approved = true;
+        job.current_stage_label = "Whisper 승인 완료".into();
+        job.push_activity("approval", "사용자가 Whisper 설정을 확인하고 음성 인식을 승인했습니다.");
+        Ok(())
+    })
 }
 
 fn preserve_candidate_revision(job: &mut JobSnapshot, reason: &str) {
@@ -525,6 +604,7 @@ pub(crate) fn continue_queue<R: tauri::Runtime>(app: tauri::AppHandle<R>, state:
             set_queue_state(&state, QueueTransitionState::Idle)?;
             return Ok(());
         };
+        validate_job_start_policy(&next)?;
         next.current_stage_label = "worker 시작".into();
         next.push_activity("start", "앞선 작업이 끝나 대기열의 다음 작업을 시작합니다.");
         next.transition(JobStatus::Acquiring)?;
@@ -895,9 +975,10 @@ async fn start_job(
             if job.id != job_id {
                 return Err("현재 작업과 요청한 작업이 다릅니다.".into());
             }
+            validate_job_start_policy(job)?;
             if !matches!(
                 job.status,
-                JobStatus::Created | JobStatus::Cancelled | JobStatus::Interrupted | JobStatus::Failed
+                JobStatus::Created | JobStatus::Cancelled | JobStatus::Interrupted | JobStatus::Failed | JobStatus::NeedsInput
             ) {
                 return Err("이 상태에서는 작업을 시작하거나 재개할 수 없습니다.".into());
             }
@@ -965,6 +1046,16 @@ async fn rerun_candidate_transcription(
     let started = mutate_job(&app, &state, |job| {
         if job.id != job_id || job.status != JobStatus::ReviewReady {
             return Err("검토 준비가 끝난 현재 작업에서만 다시 음성 인식을 실행할 수 있습니다.".into());
+        }
+        if job.source_kind != SourceKind::Demo && !job.whisper_approved {
+            return Err("이 작업은 YouTube 자막을 사용하므로 다시 음성 인식을 실행할 수 없습니다.".into());
+        }
+        if job.source_kind == SourceKind::Youtube
+            && job.captions.as_ref().is_some_and(|captions| {
+                captions.source.is_some() && !captions.local_whisper_fallback
+            })
+        {
+            return Err("YouTube 자막을 사용하는 작업입니다.".into());
         }
         let original_result = job.candidates.iter().find(|candidate| candidate.id == candidate_id)
             .map(|candidate| candidate.transcript_excerpt.clone())
@@ -1099,14 +1190,25 @@ fn cancel_job(
     job_id: String,
 ) -> Result<JobSnapshot, String> {
     if !state.running.load(Ordering::SeqCst) {
-        let interrupted = state.job.lock().map_err(|_| "작업 상태 잠금이 손상됐습니다.".to_string())?.as_ref().is_some_and(|job| job.id == job_id && job.status == JobStatus::Interrupted);
-        if interrupted {
-            let snapshot = mutate_job(&app, &state, |job| {
+        select_job_by_id_if_idle(&state, &job_id)?;
+        let stopped_status = state.job.lock().map_err(|_| "작업 상태 잠금이 손상됐습니다.".to_string())?.as_ref()
+            .filter(|job| job.id == job_id)
+            .map(|job| job.status);
+        if matches!(stopped_status, Some(JobStatus::Interrupted | JobStatus::NeedsInput)) {
+            let awaiting_whisper_decision = stopped_status == Some(JobStatus::NeedsInput);
+            let snapshot = mutate_job_by_id(&app, &state, &job_id, |job| {
                 job.transition(JobStatus::Cancelled)?;
-                job.current_stage_label = "사용자가 중단 작업을 취소함".into();
+                job.current_stage_label = "사용자가 작업을 취소함".into();
                 job.error_message = None;
                 job.error_detail = None;
-                job.push_activity("cancel", "중단된 작업을 사용자가 취소했습니다. 대기열은 다음 작업을 진행합니다.");
+                job.push_activity(
+                    "cancel",
+                    if awaiting_whisper_decision {
+                        "사용자가 Whisper를 실행하지 않고 작업을 취소했습니다. 대기열은 다음 작업을 진행합니다."
+                    } else {
+                        "중단된 작업을 사용자가 취소했습니다. 대기열은 다음 작업을 진행합니다."
+                    },
+                );
                 Ok(())
             })?;
             set_queue_state(&state, QueueTransitionState::Running)?;
@@ -1661,6 +1763,95 @@ mod tests {
     }
 
     #[test]
+    fn manual_and_automatic_starts_share_the_same_whisper_policy_gate() {
+        let id = Uuid::new_v4().to_string();
+        let mut queue = QueueIndex::default();
+        queue.transition_state = QueueTransitionState::Running;
+        queue.ordered_job_ids = vec![id.clone()];
+        let mut legacy = JobSnapshot::new(
+            id,
+            SourceKind::Youtube,
+            "https://www.youtube.com/watch?v=legacy".into(),
+            Scenario::Normal,
+            AnalysisMode::Full,
+            None,
+            None,
+        );
+        legacy.transcript_policy_version = 1;
+        let selected = next_automatic_job(&queue, &[legacy.clone()]).unwrap();
+        assert!(validate_job_start_policy(&selected).is_err());
+        assert_eq!(selected.status, JobStatus::Created);
+
+        let mut waiting = JobSnapshot::new(
+            Uuid::new_v4().to_string(),
+            SourceKind::Youtube,
+            "https://www.youtube.com/watch?v=waiting".into(),
+            Scenario::Normal,
+            AnalysisMode::Full,
+            None,
+            None,
+        );
+        waiting.status = JobStatus::NeedsInput;
+        assert!(validate_job_start_policy(&waiting).is_err());
+        waiting.whisper_approved = true;
+        assert!(validate_job_start_policy(&waiting).is_ok());
+
+        let mut local = JobSnapshot::new(
+            Uuid::new_v4().to_string(),
+            SourceKind::Local,
+            "fixture.mp4".into(),
+            Scenario::Normal,
+            AnalysisMode::Full,
+            None,
+            None,
+        );
+        assert!(validate_job_start_policy(&local).is_err());
+        local.whisper_approved = true;
+        assert!(validate_job_start_policy(&local).is_ok());
+    }
+
+    #[test]
+    fn reordered_needs_input_job_is_selected_by_id_with_its_own_settings() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let data_dir = temp.path().to_path_buf();
+        let state = AppState::new(data_dir.clone(), data_dir).expect("AppState");
+        let first_id = Uuid::new_v4().to_string();
+        let target_id = Uuid::new_v4().to_string();
+        let first = test_job(&first_id, JobStatus::Created);
+        let mut target = JobSnapshot::new(
+            target_id.clone(),
+            SourceKind::Youtube,
+            "https://www.youtube.com/watch?v=waiting".into(),
+            Scenario::Normal,
+            AnalysisMode::Range,
+            Some(15),
+            Some(45),
+        );
+        target.status = JobStatus::NeedsInput;
+        target.whisper = WhisperSettings {
+            device_mode: crate::whisper::WhisperDeviceMode::Gpu,
+            profile: crate::whisper::WhisperProfile::Accurate,
+            cpu_threads: Some(7),
+        };
+        state.store.save(&first).unwrap();
+        state.store.save(&target).unwrap();
+        register_job_in_queue(&state, first_id).unwrap();
+        register_job_in_queue(&state, target_id.clone()).unwrap();
+        mutate_queue(&state, |queue| queue.move_job(&target_id, 0)).unwrap();
+        *state.job.lock().unwrap() = Some(first);
+
+        select_job_by_id_if_idle(&state, &target_id).unwrap();
+
+        let selected = state.job.lock().unwrap().clone().unwrap();
+        assert_eq!(selected.id, target_id);
+        assert_eq!(selected.status, JobStatus::NeedsInput);
+        assert_eq!(selected.analysis_start_seconds, Some(15));
+        assert_eq!(selected.whisper.device_mode, crate::whisper::WhisperDeviceMode::Gpu);
+        assert_eq!(selected.whisper.profile, crate::whisper::WhisperProfile::Accurate);
+        assert_eq!(selected.whisper.cpu_threads, Some(7));
+    }
+
+    #[test]
     fn queue_execution_claim_is_exclusive() {
         let state = test_state_with_running_job(&Uuid::new_v4().to_string());
         state.running.store(false, Ordering::SeqCst);
@@ -1827,37 +2018,32 @@ mod tests {
     }
 
     #[test]
-    fn bootstrap_migration_invalidates_unfinished_schema3_jobs_like_v04() {
+    fn bootstrap_leaves_legacy_youtube_jobs_untouched() {
         let mut job = JobSnapshot::new(
             Uuid::new_v4().to_string(),
-            SourceKind::Demo,
-            "fixture".into(),
+            SourceKind::Youtube,
+            "https://www.youtube.com/watch?v=legacy".into(),
             Scenario::Normal,
             AnalysisMode::Range,
             Some(10),
             Some(20),
         );
-        job.schema_version = 3;
+        job.transcript_policy_version = 1;
         job.completed_units = 7;
         job.status = JobStatus::Transcribing;
+        let before = serde_json::to_value(&job).unwrap();
 
-        let (migrated, changed) = migrate_snapshot(job);
-        assert!(changed);
-        assert_eq!(migrated.schema_version, 4);
-        assert_eq!(migrated.analysis_mode, AnalysisMode::Full);
-        assert_eq!(migrated.analysis_start_seconds, None);
-        assert_eq!(migrated.analysis_end_seconds, None);
-        assert_eq!(migrated.completed_units, 0);
-        assert_eq!(migrated.total_units, 12);
-        assert_eq!(migrated.status, JobStatus::Interrupted);
+        assert!(!should_recover_on_bootstrap(&job));
+        assert!(validate_job_start_policy(&job).is_err());
+        assert_eq!(serde_json::to_value(&job).unwrap(), before);
     }
 
     #[test]
-    fn schema4_snapshot_migration_preserves_completed_units_and_uses_legacy_whisper_defaults() {
+    fn schema4_snapshot_keeps_legacy_defaults_and_requires_explicit_reanalysis() {
         let job = JobSnapshot::new(
             Uuid::new_v4().to_string(),
-            SourceKind::Demo,
-            "fixture".into(),
+            SourceKind::Local,
+            "legacy.mp4".into(),
             Scenario::Normal,
             AnalysisMode::Full,
             None,
@@ -1867,15 +2053,17 @@ mod tests {
         json["schemaVersion"] = 4.into();
         json["completedUnits"] = 5.into();
         json.as_object_mut().unwrap().remove("whisper");
+        json.as_object_mut().unwrap().remove("whisperApproved");
+        json.as_object_mut().unwrap().remove("transcriptPolicyVersion");
         let loaded: JobSnapshot = serde_json::from_value(json).unwrap();
         assert_eq!(loaded.whisper.device_mode, crate::whisper::WhisperDeviceMode::Cpu);
         assert_eq!(loaded.whisper.profile, crate::whisper::WhisperProfile::Balanced);
         assert_eq!(loaded.whisper.cpu_threads, None);
-
-        let (migrated, changed) = migrate_snapshot(loaded);
-        assert!(changed);
-        assert_eq!(migrated.schema_version, 5);
-        assert_eq!(migrated.completed_units, 5);
+        assert_eq!(loaded.transcript_policy_version, 1);
+        assert!(!should_recover_on_bootstrap(&loaded));
+        assert!(validate_job_start_policy(&loaded).is_err());
+        assert_eq!(loaded.schema_version, 4);
+        assert_eq!(loaded.completed_units, 5);
     }
 
     #[test]
@@ -1891,6 +2079,8 @@ mod tests {
         );
         assert_eq!(job.whisper, WhisperSettings::default());
         assert_eq!(job.whisper.device_mode, crate::whisper::WhisperDeviceMode::Auto);
+        assert!(!job.whisper_approved);
+        assert_eq!(job.transcript_policy_version, TRANSCRIPT_POLICY_VERSION);
     }
 }
 
@@ -1931,6 +2121,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             bootstrap,
             create_job,
+            approve_whisper,
             start_job,
             cancel_job,
             get_job_storage_info,
